@@ -42,9 +42,12 @@ export function activate(context: vscode.ExtensionContext) {
   // 注册命令：显示/隐藏配置面板
   const showConfigCmd = vscode.commands.registerCommand('greplogviewer.showConfig', () => {
     const editor = vscode.window.activeTextEditor;
-    if (editor) {
-      viewController!.attach(editor);
+    if (!editor) {
+      vscode.window.showWarningMessage('GrepLogViewer: 请先打开一个文件');
+      return;
     }
+    vscode.window.showInformationMessage('GrepLogViewer: 配置面板已打开在编辑器右侧');
+    viewController!.attach(editor);
   });
 
   // 监听编辑器切换
