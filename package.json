@@ -10,7 +10,7 @@
     "Other"
   ],
   "activationEvents": [
-    "onStartupFinished"
+    "onCommand:greplogviewer.showConfig"
   ],
   "main": "./out/extension.js",
   "contributes": {

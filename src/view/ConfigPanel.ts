@@ -16,29 +16,30 @@ export class ConfigPanel {
     }
   }
 
-  /** 显示/创建面板 */
-  show(): void {
+  /** 显示/创建面板，groups 作为初始数据注入 HTML */
+  show(initialGroups?: RegexGroup[]): void {
     if (this.panel) {
-      this.panel.reveal();
+      this.panel.reveal(vscode.ViewColumn.Two);
       return;
     }
 
-    this.panel = vscode.window.createWebviewPanel(
-      'greplogviewer.config',
-      'GrepLogViewer',
-      vscode.ViewColumn.Beside,
-      {
-        enableScripts: true,
-        retainContextWhenHidden: true,
-      }
-    );
+    try {
+      this.panel = vscode.window.createWebviewPanel(
+        'greplogviewer.config',
+        'GrepLogViewer',
+        vscode.ViewColumn.Two,
+        { enableScripts: true, retainContextWhenHidden: true }
+      );
 
-    this.panel.webview.html = this.buildHtml();
-    this.setupMessageHandler();
+      this.panel.webview.html = this.buildHtml(initialGroups);
+      this.setupMessageHandler();
 
-    this.panel.onDidDispose(() => {
-      this.panel = undefined;
-    });
+      this.panel.onDidDispose(() => {
+        this.panel = undefined;
+      });
+    } catch (e: any) {
+      vscode.window.showErrorMessage(`创建面板失败: ${e.message}`);
+    }
   }
 
   /** 隐藏面板 */
@@ -75,8 +76,11 @@ export class ConfigPanel {
     });
   }
 
-  /** 构建 Webview HTML */
-  private buildHtml(): string {
+  /** 构建 Webview HTML，可注入初始组数据 */
+  private buildHtml(initialGroups?: RegexGroup[]): string {
+    const initialData = initialGroups && initialGroups.length > 0
+      ? JSON.stringify(initialGroups)
+      : '[]';
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -122,8 +126,9 @@ export class ConfigPanel {
 <script>
 (function() {
   const vscode = acquireVsCodeApi();
-  // 从持久化 state 恢复或初始化
-  let state = vscode.getState() || { groups: [] };
+  // 从持久化 state 恢复，否则使用注入的初始数据
+  const injected = ${initialData};
+  let state = vscode.getState() || { groups: injected };
   let groups = state.groups;
 
   function saveState() {

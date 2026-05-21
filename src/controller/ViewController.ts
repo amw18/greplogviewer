@@ -50,7 +50,9 @@ export class ViewController {
       this.regexGroupModel.setGroups([]);
     }
 
-    // 刷新配置面板显示
+    // 显示配置面板（首次创建时注入初始数据）
+    this.configPanel.show(this.regexGroupModel.getGroups());
+    // 面板已存在时发送更新消息
     this.configPanel.render(this.regexGroupModel.getGroups());
   }
 
