@@ -1,0 +1,48 @@
+{
+  "name": "greplogviewer",
+  "displayName": "GrepLogViewer",
+  "description": "Regex-based text file viewer with color highlighting and auto-folding",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:greplogviewer.showConfig"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "greplogviewer.showConfig",
+        "title": "GrepLogViewer: Show Config Panel"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "greplogviewer.showConfig",
+          "group": "navigation",
+          "when": "resourceScheme == file"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "test": "ts-mocha test/**/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "mocha": "^11.7.6",
+    "ts-mocha": "^11.1.0",
+    "typescript": "^5.3.0"
+  }
+}
