@@ -1,11 +1,12 @@
 // ViewController — 协调 View 和 Controller，管理编辑器生命周期
 import * as vscode from 'vscode';
-import { RegexGroup } from '../types';
+import { RegexGroup, TimePatternConfig } from '../types';
 import { ConfigController } from './ConfigController';
 import { FilterController } from './FilterController';
 import { EditorStateModel } from '../model/EditorStateModel';
 import { FilterResultModel } from '../model/FilterResultModel';
 import { RegexGroupModel } from '../model/RegexGroupModel';
+import { TimeMatchModel } from '../model/TimeMatchModel';
 import { ConfigPanel } from '../view/ConfigPanel';
 import { EditorDecorations } from '../view/EditorDecorations';
 
@@ -21,12 +22,13 @@ export class ViewController {
     private filterController: FilterController,
     private editorStateModel: EditorStateModel,
     private filterResultModel: FilterResultModel,
-    private regexGroupModel: RegexGroupModel
+    private regexGroupModel: RegexGroupModel,
+    private timeMatchModel: TimeMatchModel
   ) {
     this.configPanel = new ConfigPanel();
     this.decorations = new EditorDecorations();
 
-    this.configPanel.onGo((g, s, e) => this.handleGo(g, s, e));
+    this.configPanel.onGo((g, s, e, tp) => this.handleGo(g, s, e, tp));
     this.configPanel.onReset(() => this.handleReset());
     this.configPanel.onClear(() => this.handleClear());
   }
@@ -48,14 +50,29 @@ export class ViewController {
       this.currentStartLine = savedConfig.startLine;
       this.currentEndLine = savedConfig.endLine;
 
+      // 恢复时间匹配配置
+      if (savedConfig.timePattern) {
+        this.timeMatchModel.setConfig(savedConfig.timePattern);
+      }
+
       if (this.editorStateModel.isActive(editorId)) {
-        // 已激活：恢复颜色装饰（折叠由 VS Code 自动保持）
+        // 已激活：恢复颜色装饰 + 时间标注（折叠由 VS Code 自动保持）
+        const lines = this.readLines(editor);
         const results = this.filterController.filter(
-          this.readLines(editor), savedConfig.groups,
+          lines, savedConfig.groups,
           savedConfig.startLine, savedConfig.endLine
         );
         this.filterResultModel.setResults(editorId, results);
         this.decorations.apply(results, editor);
+
+        // 恢复时间标注
+        if (this.timeMatchModel.isConfigured()) {
+          this.timeMatchModel.parseTimestamps(lines, savedConfig.startLine, savedConfig.endLine);
+          const foldRanges = this.filterResultModel.getFoldRanges(
+            editorId, this.timeMatchModel, editor.document.lineCount
+          );
+          this.decorations.applyTimeAnnotations(foldRanges, editor);
+        }
       } else {
         // 未激活但有旧配置：清除持久化的手动折叠残留
         await this.removeAllManualFolds(editor);
@@ -66,11 +83,16 @@ export class ViewController {
       this.currentEndLine = undefined;
     }
 
-    this.configPanel.render(this.regexGroupModel.getGroups(), this.currentStartLine, this.currentEndLine);
+    const tp = this.timeMatchModel.getConfig();
+    this.configPanel.render(
+      this.regexGroupModel.getGroups(),
+      this.currentStartLine, this.currentEndLine,
+      tp.format ? tp : undefined
+    );
   }
 
-  /** Go: 应用过滤 + 颜色高亮 + 创建折叠 */
-  private async handleGo(groups: RegexGroup[], startLine?: number, endLine?: number): Promise<void> {
+  /** Go: 应用过滤 + 颜色高亮 + 创建折叠 + 时间标注 */
+  private async handleGo(groups: RegexGroup[], startLine?: number, endLine?: number, timePattern?: TimePatternConfig): Promise<void> {
     if (!this.currentEditor) { return; }
     const editor = this.currentEditor;
     const editorId = editor.document.uri.toString();
@@ -78,12 +100,32 @@ export class ViewController {
     this.regexGroupModel.setGroups(groups);
     this.currentStartLine = startLine;
     this.currentEndLine = endLine;
-    this.editorStateModel.saveConfig(editorId, { groups, startLine, endLine });
+
+    // 时间匹配配置
+    if (timePattern && timePattern.format) {
+      this.timeMatchModel.setConfig(timePattern);
+    }
+
+    this.editorStateModel.saveConfig(editorId, {
+      groups, startLine, endLine,
+      timePattern: this.timeMatchModel.isConfigured() ? this.timeMatchModel.getConfig() : undefined,
+    });
     this.editorStateModel.setActive(editorId, true);
 
-    const results = this.filterController.filter(this.readLines(editor), groups, startLine, endLine);
+    const lines = this.readLines(editor);
+    const results = this.filterController.filter(lines, groups, startLine, endLine);
     this.filterResultModel.setResults(editorId, results);
     this.decorations.apply(results, editor);
+
+    // 时间匹配：解析时间戳并计算折叠区间的元数据
+    if (this.timeMatchModel.isConfigured()) {
+      this.timeMatchModel.parseTimestamps(lines, startLine, endLine);
+      const foldRanges = this.filterResultModel.getFoldRanges(
+        editorId, this.timeMatchModel, editor.document.lineCount
+      );
+      this.decorations.applyTimeAnnotations(foldRanges, editor);
+    }
+
     await this.applyFolding(editor);
   }
 
@@ -103,7 +145,7 @@ export class ViewController {
     }
   }
 
-  /** Clear: 清除所有显示效果（高亮+折叠），保留配置 */
+  /** Clear: 清除所有显示效果（高亮+折叠+时间标注），保留配置 */
   private async handleClear(): Promise<void> {
     if (!this.currentEditor) { return; }
     const editor = this.currentEditor;
@@ -112,6 +154,7 @@ export class ViewController {
     this.editorStateModel.setActive(editorId, false);
     this.filterResultModel.clearResults(editorId);
     this.decorations.clear();
+    this.decorations.clearTimeAnnotations();
     await this.removeAllManualFolds(editor);
   }
 
@@ -124,9 +167,11 @@ export class ViewController {
     this.regexGroupModel.setGroups([]);
     this.currentStartLine = undefined;
     this.currentEndLine = undefined;
+    this.timeMatchModel.setConfig({ format: '' });
     this.editorStateModel.clearEditor(editorId);
     this.filterResultModel.clearResults(editorId);
     this.decorations.clear();
+    this.decorations.clearTimeAnnotations();
     await this.removeAllManualFolds(editor);
   }
 
@@ -150,9 +195,19 @@ export class ViewController {
     const groups = this.regexGroupModel.getGroups();
     if (groups.length === 0) { return; }
 
-    const results = this.filterController.filter(this.readLines(editor), groups, this.currentStartLine, this.currentEndLine);
+    const lines = this.readLines(editor);
+    const results = this.filterController.filter(lines, groups, this.currentStartLine, this.currentEndLine);
     this.filterResultModel.setResults(editorId, results);
     this.decorations.apply(results, editor);
+
+    // 重新计算时间标注
+    if (this.timeMatchModel.isConfigured()) {
+      this.timeMatchModel.parseTimestamps(lines, this.currentStartLine, this.currentEndLine);
+      const foldRanges = this.filterResultModel.getFoldRanges(
+        editorId, this.timeMatchModel, editor.document.lineCount
+      );
+      this.decorations.applyTimeAnnotations(foldRanges, editor);
+    }
   }
 
   private readLines(editor: vscode.TextEditor): string[] {

@@ -1,10 +1,10 @@
 // ConfigPanel — 左侧边栏 WebviewView 配置面板
 import * as vscode from 'vscode';
-import { RegexGroup, RegexExpression, LogicOperator, WebviewMessage, ExtensionMessage } from '../types';
+import { RegexGroup, RegexExpression, LogicOperator, TimePatternConfig, WebviewMessage, ExtensionMessage } from '../types';
 
 export class ConfigPanel implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
-  private goCallback: ((groups: RegexGroup[], startLine?: number, endLine?: number) => void) | undefined;
+  private goCallback: ((groups: RegexGroup[], startLine?: number, endLine?: number, timePattern?: TimePatternConfig) => void) | undefined;
   private resetCallback: (() => void) | undefined;
   private clearCallback: (() => void) | undefined;
   /** 缓存最近一次 groups 和行范围用于 webview 尚未就绪时 */
@@ -22,7 +22,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     webviewView.webview.onDidReceiveMessage((msg: WebviewMessage) => {
       switch (msg.type) {
         case 'go':
-          this.goCallback?.(msg.groups, msg.startLine, msg.endLine);
+          this.goCallback?.(msg.groups, msg.startLine, msg.endLine, msg.timePattern);
           break;
         case 'reset':
           this.resetCallback?.();
@@ -34,23 +34,26 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     });
 
     // 如果之前已经有数据，发送过去
-    if (this.pendingGroups.length > 0) {
-      this.sendUpdate(this.pendingGroups, this.pendingStartLine, this.pendingEndLine);
+    if (this.pendingGroups.length > 0 || this.pendingTimePattern) {
+      this.sendUpdate(this.pendingGroups, this.pendingStartLine, this.pendingEndLine, this.pendingTimePattern);
     }
   }
 
+  private pendingTimePattern?: TimePatternConfig;
+
   /** 发送最新配置到 webview */
-  render(groups: RegexGroup[], startLine?: number, endLine?: number): void {
+  render(groups: RegexGroup[], startLine?: number, endLine?: number, timePattern?: TimePatternConfig): void {
     this.pendingGroups = groups;
     this.pendingStartLine = startLine;
     this.pendingEndLine = endLine;
+    this.pendingTimePattern = timePattern;
     if (this.view) {
-      this.sendUpdate(groups, startLine, endLine);
+      this.sendUpdate(groups, startLine, endLine, timePattern);
     }
   }
 
   /** 设置 Go 回调 */
-  onGo(callback: (groups: RegexGroup[], startLine?: number, endLine?: number) => void): void {
+  onGo(callback: (groups: RegexGroup[], startLine?: number, endLine?: number, timePattern?: TimePatternConfig) => void): void {
     this.goCallback = callback;
   }
 
@@ -64,12 +67,13 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     this.clearCallback = callback;
   }
 
-  private sendUpdate(groups: RegexGroup[], startLine?: number, endLine?: number): void {
+  private sendUpdate(groups: RegexGroup[], startLine?: number, endLine?: number, timePattern?: TimePatternConfig): void {
     this.view?.webview.postMessage({
       type: 'updateConfig' as const,
       groups,
       startLine,
       endLine,
+      timePattern,
     } satisfies ExtensionMessage);
   }
 
@@ -134,10 +138,11 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
 <script>
 (function() {
   const vscode = acquireVsCodeApi();
-  let state = vscode.getState() || { groups: [], startLine: undefined, endLine: undefined };
+  let state = vscode.getState() || { groups: [], startLine: undefined, endLine: undefined, timePattern: undefined };
   let groups = state.groups;
   let startLine = state.startLine;
   let endLine = state.endLine;
+  let timePattern = state.timePattern || { format: '' };
 
   function saveState() { vscode.setState({ groups, startLine, endLine }); }
 
@@ -166,6 +171,16 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     html += '<label>To:</label>';
     html += '<input type="number" id="end-line" value="' + (endLine || '') + '" placeholder="end" min="1">';
     html += '<span class="hint">leave empty for all</span>';
+    html += '</div></div></div>';
+
+    // ── Section: Time Pattern ──
+    html += '<div class="section">';
+    html += '<div class="section-header">Time Pattern</div>';
+    html += '<div class="section-body">';
+    html += '<div class="time-pattern">';
+    html += '<label style="font-size:11px;color:var(--vscode-descriptionForeground)">Format string</label>';
+    html += '<input type="text" id="time-format" value="' + esc(timePattern?.format || '') + '" placeholder="e.g. [YYYY-MM-DD HH:mm:ss{.SSS}]" style="width:100%">';
+    html += '<span style="font-size:10px;color:var(--vscode-descriptionForeground)">Write the timestamp exactly as it appears in your log.<br>Tokens: YYYY YY MM DD HH mm ss SSS. Optional parts: {...}.<br>Example: <code>[YYYY-MM-DD HH:mm:ss{.SSS}]</code></span>';
     html += '</div></div></div>';
 
     // ── Section: Pattern Groups ──
@@ -228,12 +243,16 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     var gi = parseInt(btn.dataset.gi), ei = parseInt(btn.dataset.ei);
     if (btn.id === 'go-btn') {
       collectData(); var se = collectStartEnd();
-      startLine = se.startLine; endLine = se.endLine; saveState();
-      vscode.postMessage({ type: 'go', groups: groups, startLine: startLine, endLine: endLine });
+      startLine = se.startLine; endLine = se.endLine;
+      var tf = document.getElementById('time-format');
+      timePattern = { format: tf ? tf.value : '' };
+      saveState();
+      vscode.postMessage({ type: 'go', groups: groups, startLine: startLine, endLine: endLine, timePattern: timePattern });
     } else if (btn.id === 'clear-btn') {
       vscode.postMessage({ type: 'clear' });
     } else if (btn.id === 'reset-btn') {
-      groups = []; startLine = undefined; endLine = undefined; saveState();
+      groups = []; startLine = undefined; endLine = undefined;
+      timePattern = { format: '' }; saveState();
       vscode.postMessage({ type: 'reset' });
       render();
     } else if (action === 'addGroup') {
@@ -248,6 +267,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
 
   document.getElementById('app').addEventListener('input', function(e) {
     var el = e.target, gi = parseInt(el.dataset.gi), ei = parseInt(el.dataset.ei);
+    if (el.id === 'time-format') { timePattern.format = el.value; saveState(); return; }
     if (el.id === 'start-line') { startLine = toNum(el.value); saveState(); return; }
     if (el.id === 'end-line') { endLine = toNum(el.value); saveState(); return; }
     if (isNaN(gi)) return;
@@ -293,6 +313,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       groups = msg.groups;
       startLine = msg.startLine;
       endLine = msg.endLine;
+      timePattern = msg.timePattern || { format: '' };
       saveState();
       render();
     }

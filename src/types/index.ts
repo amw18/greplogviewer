@@ -33,13 +33,43 @@ export interface FilterResult {
   color: string | undefined;
 }
 
-/** 编辑器级别的配置（正则组 + 行范围） */
+/** 时间匹配配置：仅需一个格式字符串，描述时间戳在日志中的完整形态 */
+export interface TimePatternConfig {
+  /**
+   * 时间格式字符串，需与日志中的时间戳形态完全一致。
+   * 系统会根据 token 自动生成匹配正则。
+   * 示例："[YYYY-MM-DD HH:mm:ss]" 匹配 "[2023-01-01 10:00:05]"
+   * "YYYY-MM-DD HH:mm:ss{.SSS}" 匹配 "2023-01-01 10:00:05.123"
+   * "{.SSS}" 表示毫秒可选
+   */
+  format: string;
+}
+
+/** 带时间元数据的折叠区间 */
+export interface FoldRange {
+  /** 未匹配起始行 (0-based) */
+  start: number;
+  /** 未匹配结束行 (0-based) */
+  end: number;
+  /** 折叠行数 */
+  lineCount: number;
+  /** 折叠区间前最后一个匹配行的时间 */
+  timeFrom?: Date;
+  /** 折叠区间后第一个匹配行的时间 */
+  timeTo?: Date;
+  /** 时间跨度（毫秒），仅 timeFrom 和 timeTo 都存在时有值 */
+  durationMs?: number;
+}
+
+/** 编辑器级别的配置（正则组 + 行范围 + 时间模式） */
 export interface EditorConfig {
   groups: RegexGroup[];
   /** 开始匹配的行号（1-based），用户可见行号。未配置时为 undefined */
   startLine?: number;
   /** 结束匹配的行号（1-based），用户可见行号。未配置时为 undefined */
   endLine?: number;
+  /** 时间匹配模式，未配置时不提取时间信息 */
+  timePattern?: TimePatternConfig;
 }
 
 // ===== Webview ↔ Extension 消息协议 =====
@@ -49,6 +79,7 @@ export interface UpdateConfigMessage {
   groups: RegexGroup[];
   startLine?: number;
   endLine?: number;
+  timePattern?: TimePatternConfig;
 }
 
 export interface GoMessage {
@@ -56,6 +87,7 @@ export interface GoMessage {
   groups: RegexGroup[];
   startLine?: number;
   endLine?: number;
+  timePattern?: TimePatternConfig;
 }
 
 export interface ResetMessage {

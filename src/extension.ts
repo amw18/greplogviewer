@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import { RegexGroupModel } from './model/RegexGroupModel';
 import { EditorStateModel } from './model/EditorStateModel';
 import { FilterResultModel } from './model/FilterResultModel';
+import { TimeMatchModel } from './model/TimeMatchModel';
 import { ConfigController } from './controller/ConfigController';
 import { FilterController } from './controller/FilterController';
 import { ViewController } from './controller/ViewController';
@@ -13,12 +14,13 @@ export function activate(context: vscode.ExtensionContext) {
   const regexGroupModel = new RegexGroupModel();
   const editorStateModel = new EditorStateModel(context);
   const filterResultModel = new FilterResultModel();
+  const timeMatchModel = new TimeMatchModel();
   const configController = new ConfigController(regexGroupModel, editorStateModel);
   const filterController = new FilterController();
 
   viewController = new ViewController(
     configController, filterController,
-    editorStateModel, filterResultModel, regexGroupModel
+    editorStateModel, filterResultModel, regexGroupModel, timeMatchModel
   );
 
   const panelProvider = viewController.getPanelProvider();
