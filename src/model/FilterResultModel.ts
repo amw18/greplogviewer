@@ -3,20 +3,6 @@ import { FilterResult } from '../types';
 
 export class FilterResultModel {
   private resultsMap = new Map<string, FilterResult[]>();
-  /** 标记哪些编辑器需要在 Provider 查询后自动折叠 */
-  private pendingFoldSet = new Set<string>();
-
-  /** 请求自动折叠 */
-  requestFold(editorId: string): void {
-    this.pendingFoldSet.add(editorId);
-  }
-
-  /** 消费自动折叠标记，返回是否需要折叠 */
-  consumeFold(editorId: string): boolean {
-    const need = this.pendingFoldSet.has(editorId);
-    this.pendingFoldSet.delete(editorId);
-    return need;
-  }
 
   /** 设置过滤结果 */
   setResults(editorId: string, results: FilterResult[]): void {

@@ -1,11 +1,13 @@
 // EditorStateModel — 管理编辑器与配置的绑定关系及持久化
 import * as vscode from 'vscode';
-import { RegexGroup } from '../types';
+import { RegexGroup, EditorConfig } from '../types';
 
 export class EditorStateModel {
   private configMap = new Map<string, RegexGroup[]>();
   private activeSet = new Set<string>();
   private context: vscode.ExtensionContext;
+  /** 编辑器级别的行范围配置 */
+  private lineRangeMap = new Map<string, { startLine?: number; endLine?: number }>();
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
@@ -19,6 +21,16 @@ export class EditorStateModel {
   /** 设置编辑器配置并持久化 */
   setConfig(editorId: string, groups: RegexGroup[]): void {
     this.configMap.set(editorId, groups);
+  }
+
+  /** 获取行范围配置 */
+  getLineRange(editorId: string): { startLine?: number; endLine?: number } {
+    return this.lineRangeMap.get(editorId) || {};
+  }
+
+  /** 设置行范围配置 */
+  setLineRange(editorId: string, startLine?: number, endLine?: number): void {
+    this.lineRangeMap.set(editorId, { startLine, endLine });
   }
 
   /** 是否已激活过滤 */
@@ -38,16 +50,23 @@ export class EditorStateModel {
   /** 清除编辑器状态 */
   clearEditor(editorId: string): void {
     this.configMap.delete(editorId);
+    this.lineRangeMap.delete(editorId);
     this.activeSet.delete(editorId);
   }
 
-  /** 从 workspaceState 加载配置 */
-  loadConfig(documentUri: string): RegexGroup[] | undefined {
-    return this.context.workspaceState.get<RegexGroup[]>(`greplogviewer.config.${documentUri}`);
+  /** 从 workspaceState 加载配置（兼容旧格式 RegexGroup[]） */
+  loadConfig(documentUri: string): EditorConfig | undefined {
+    const raw = this.context.workspaceState.get<EditorConfig | RegexGroup[]>(`greplogviewer.config.${documentUri}`);
+    if (!raw) { return undefined; }
+    // 兼容旧格式：旧版本存的是 RegexGroup[] 数组
+    if (Array.isArray(raw)) {
+      return { groups: raw };
+    }
+    return raw as EditorConfig;
   }
 
   /** 持久化到 workspaceState */
-  saveConfig(documentUri: string, groups: RegexGroup[]): void {
-    this.context.workspaceState.update(`greplogviewer.config.${documentUri}`, groups);
+  saveConfig(documentUri: string, config: EditorConfig): void {
+    this.context.workspaceState.update(`greplogviewer.config.${documentUri}`, config);
   }
 }

@@ -4,10 +4,13 @@ import { RegexGroup, RegexExpression, LogicOperator, WebviewMessage, ExtensionMe
 
 export class ConfigPanel implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
-  private goCallback: ((groups: RegexGroup[]) => void) | undefined;
+  private goCallback: ((groups: RegexGroup[], startLine?: number, endLine?: number) => void) | undefined;
   private resetCallback: (() => void) | undefined;
-  /** 缓存最近一次 groups 用于 webview 尚未就绪时 */
+  private clearCallback: (() => void) | undefined;
+  /** 缓存最近一次 groups 和行范围用于 webview 尚未就绪时 */
   private pendingGroups: RegexGroup[] = [];
+  private pendingStartLine?: number;
+  private pendingEndLine?: number;
 
   /** WebviewViewProvider 接口：VS Code 创建/重建 webview 时调用 */
   resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -19,30 +22,35 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     webviewView.webview.onDidReceiveMessage((msg: WebviewMessage) => {
       switch (msg.type) {
         case 'go':
-          this.goCallback?.(msg.groups);
+          this.goCallback?.(msg.groups, msg.startLine, msg.endLine);
           break;
         case 'reset':
           this.resetCallback?.();
+          break;
+        case 'clear':
+          this.clearCallback?.();
           break;
       }
     });
 
     // 如果之前已经有数据，发送过去
     if (this.pendingGroups.length > 0) {
-      this.sendMessage({ type: 'updateConfig', groups: this.pendingGroups });
+      this.sendUpdate(this.pendingGroups, this.pendingStartLine, this.pendingEndLine);
     }
   }
 
   /** 发送最新配置到 webview */
-  render(groups: RegexGroup[]): void {
+  render(groups: RegexGroup[], startLine?: number, endLine?: number): void {
     this.pendingGroups = groups;
+    this.pendingStartLine = startLine;
+    this.pendingEndLine = endLine;
     if (this.view) {
-      this.sendMessage({ type: 'updateConfig', groups });
+      this.sendUpdate(groups, startLine, endLine);
     }
   }
 
   /** 设置 Go 回调 */
-  onGo(callback: (groups: RegexGroup[]) => void): void {
+  onGo(callback: (groups: RegexGroup[], startLine?: number, endLine?: number) => void): void {
     this.goCallback = callback;
   }
 
@@ -51,8 +59,18 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     this.resetCallback = callback;
   }
 
-  private sendMessage(msg: ExtensionMessage): void {
-    this.view?.webview.postMessage(msg);
+  /** 设置 Clear 回调 */
+  onClear(callback: () => void): void {
+    this.clearCallback = callback;
+  }
+
+  private sendUpdate(groups: RegexGroup[], startLine?: number, endLine?: number): void {
+    this.view?.webview.postMessage({
+      type: 'updateConfig' as const,
+      groups,
+      startLine,
+      endLine,
+    } satisfies ExtensionMessage);
   }
 
   /** 构建 Webview HTML */
@@ -94,6 +112,21 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   .reset-btn { background: var(--vscode-button-secondaryBackground);
                color: var(--vscode-button-secondaryForeground); }
   .reset-btn:hover { background: var(--vscode-button-secondaryHoverBackground); }
+
+  .section { margin-bottom: 8px; }
+  .section-header { font-size: 11px; font-weight: 600; text-transform: uppercase;
+                    color: var(--vscode-descriptionForeground); letter-spacing: 0.5px;
+                    padding: 4px 6px; border-bottom: 1px solid var(--vscode-panel-border);
+                    margin-bottom: 4px; }
+  .section-body { padding: 0 2px; }
+
+  .line-range { display: flex; align-items: center; gap: 4px;
+                padding: 4px; }
+  .line-range label { font-size: 11px; color: var(--vscode-descriptionForeground); }
+  .line-range input[type="number"] { width: 55px; background: var(--vscode-input-background);
+        color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border);
+        padding: 1px 4px; border-radius: 2px; font-size: 11px; }
+  .line-range .hint { font-size: 10px; color: var(--vscode-descriptionForeground); }
 </style>
 </head>
 <body>
@@ -101,10 +134,12 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
 <script>
 (function() {
   const vscode = acquireVsCodeApi();
-  let state = vscode.getState() || { groups: [] };
+  let state = vscode.getState() || { groups: [], startLine: undefined, endLine: undefined };
   let groups = state.groups;
+  let startLine = state.startLine;
+  let endLine = state.endLine;
 
-  function saveState() { vscode.setState({ groups }); }
+  function saveState() { vscode.setState({ groups, startLine, endLine }); }
 
   function uuid() {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -116,8 +151,28 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
 
   function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
+  function toNum(v) { var n = parseInt(v, 10); return isNaN(n) || n <= 0 ? undefined : n; }
+
   function render() {
     var html = '';
+
+    // ── Section: Line Range ──
+    html += '<div class="section">';
+    html += '<div class="section-header">Line Range</div>';
+    html += '<div class="section-body">';
+    html += '<div class="line-range">';
+    html += '<label>From:</label>';
+    html += '<input type="number" id="start-line" value="' + (startLine || '') + '" placeholder="1" min="1">';
+    html += '<label>To:</label>';
+    html += '<input type="number" id="end-line" value="' + (endLine || '') + '" placeholder="end" min="1">';
+    html += '<span class="hint">leave empty for all</span>';
+    html += '</div></div></div>';
+
+    // ── Section: Pattern Groups ──
+    html += '<div class="section">';
+    html += '<div class="section-header">Pattern Groups</div>';
+    html += '<div class="section-body">';
+
     for (var gi = 0; gi < groups.length; gi++) {
       var g = groups[gi];
       html += '<div class="group-card">';
@@ -146,12 +201,24 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       html += '<button class="add-btn" data-action="addExpr" data-gi="' + gi + '" style="margin-top:2px">+ Expr</button>';
       html += '</div>';
     }
-    html += '<button class="add-btn" data-action="addGroup" style="display:block;width:100%;margin-bottom:6px">+ Add Group</button>';
+    html += '<button class="add-btn" data-action="addGroup" style="display:block;width:100%">+ Add Group</button>';
+    html += '</div></div>';
+
     html += '<div class="action-bar">';
     html += '<button class="action-btn" id="go-btn">Go</button>';
+    html += '<button class="action-btn reset-btn" id="clear-btn">Clear</button>';
     html += '<button class="action-btn reset-btn" id="reset-btn">Reset</button>';
     html += '</div>';
     document.getElementById('app').innerHTML = html;
+  }
+
+  function collectStartEnd() {
+    var sl = document.getElementById('start-line');
+    var el = document.getElementById('end-line');
+    return {
+      startLine: sl ? toNum(sl.value) : undefined,
+      endLine: el ? toNum(el.value) : undefined
+    };
   }
 
   // 事件委托：在 #app 上只绑定一次，不随 innerHTML 重建而累积
@@ -160,10 +227,13 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     var action = btn.dataset.action;
     var gi = parseInt(btn.dataset.gi), ei = parseInt(btn.dataset.ei);
     if (btn.id === 'go-btn') {
-      collectData(); saveState();
-      vscode.postMessage({ type: 'go', groups: groups });
+      collectData(); var se = collectStartEnd();
+      startLine = se.startLine; endLine = se.endLine; saveState();
+      vscode.postMessage({ type: 'go', groups: groups, startLine: startLine, endLine: endLine });
+    } else if (btn.id === 'clear-btn') {
+      vscode.postMessage({ type: 'clear' });
     } else if (btn.id === 'reset-btn') {
-      groups = []; saveState();
+      groups = []; startLine = undefined; endLine = undefined; saveState();
       vscode.postMessage({ type: 'reset' });
       render();
     } else if (action === 'addGroup') {
@@ -178,6 +248,8 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
 
   document.getElementById('app').addEventListener('input', function(e) {
     var el = e.target, gi = parseInt(el.dataset.gi), ei = parseInt(el.dataset.ei);
+    if (el.id === 'start-line') { startLine = toNum(el.value); saveState(); return; }
+    if (el.id === 'end-line') { endLine = toNum(el.value); saveState(); return; }
     if (isNaN(gi)) return;
     if (el.classList.contains('group-name')) groups[gi].name = el.value;
     else if (el.classList.contains('group-color')) groups[gi].color = el.value;
@@ -217,7 +289,13 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
 
   window.addEventListener('message', function(event) {
     var msg = event.data;
-    if (msg.type === 'updateConfig') { groups = msg.groups; saveState(); render(); }
+    if (msg.type === 'updateConfig') {
+      groups = msg.groups;
+      startLine = msg.startLine;
+      endLine = msg.endLine;
+      saveState();
+      render();
+    }
   });
 
   render();

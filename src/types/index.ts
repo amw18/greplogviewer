@@ -33,21 +33,38 @@ export interface FilterResult {
   color: string | undefined;
 }
 
+/** 编辑器级别的配置（正则组 + 行范围） */
+export interface EditorConfig {
+  groups: RegexGroup[];
+  /** 开始匹配的行号（1-based），用户可见行号。未配置时为 undefined */
+  startLine?: number;
+  /** 结束匹配的行号（1-based），用户可见行号。未配置时为 undefined */
+  endLine?: number;
+}
+
 // ===== Webview ↔ Extension 消息协议 =====
 
 export interface UpdateConfigMessage {
   type: 'updateConfig';
   groups: RegexGroup[];
+  startLine?: number;
+  endLine?: number;
 }
 
 export interface GoMessage {
   type: 'go';
   groups: RegexGroup[];
+  startLine?: number;
+  endLine?: number;
 }
 
 export interface ResetMessage {
   type: 'reset';
 }
 
-export type WebviewMessage = GoMessage | ResetMessage;
+export interface ClearMessage {
+  type: 'clear';
+}
+
+export type WebviewMessage = GoMessage | ResetMessage | ClearMessage;
 export type ExtensionMessage = UpdateConfigMessage;

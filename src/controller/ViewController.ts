@@ -13,6 +13,8 @@ export class ViewController {
   private configPanel: ConfigPanel;
   private decorations: EditorDecorations;
   private currentEditor: vscode.TextEditor | undefined;
+  private currentStartLine?: number;
+  private currentEndLine?: number;
 
   constructor(
     configController: ConfigController,
@@ -24,61 +26,68 @@ export class ViewController {
     this.configPanel = new ConfigPanel();
     this.decorations = new EditorDecorations();
 
-    // 绑定面板回调
-    this.configPanel.onGo(groups => this.handleGo(groups));
+    this.configPanel.onGo((g, s, e) => this.handleGo(g, s, e));
     this.configPanel.onReset(() => this.handleReset());
+    this.configPanel.onClear(() => this.handleClear());
   }
 
-  /** 返回 ConfigPanel 供 extension.ts 注册 WebviewViewProvider */
   getPanelProvider(): ConfigPanel {
     return this.configPanel;
   }
 
-  /** 切换到指定编辑器，加载其配置 */
-  attach(editor: vscode.TextEditor): void {
+  /** 切换编辑器，激活状态则恢复效果，否则只加载配置 */
+  async attach(editor: vscode.TextEditor): Promise<void> {
     this.decorations.clear();
     this.currentEditor = editor;
 
-    // 加载该文档的持久化配置
-    const savedConfig = this.editorStateModel.loadConfig(editor.document.uri.toString());
+    const editorId = editor.document.uri.toString();
+    const savedConfig = this.editorStateModel.loadConfig(editorId);
+
     if (savedConfig) {
-      this.regexGroupModel.setGroups(savedConfig);
-      if (this.editorStateModel.isActive(editor.document.uri.toString())) {
-        this.reapplyFilter();
+      this.regexGroupModel.setGroups(savedConfig.groups);
+      this.currentStartLine = savedConfig.startLine;
+      this.currentEndLine = savedConfig.endLine;
+
+      if (this.editorStateModel.isActive(editorId)) {
+        // 已激活：恢复颜色装饰（折叠由 VS Code 自动保持）
+        const results = this.filterController.filter(
+          this.readLines(editor), savedConfig.groups,
+          savedConfig.startLine, savedConfig.endLine
+        );
+        this.filterResultModel.setResults(editorId, results);
+        this.decorations.apply(results, editor);
+      } else {
+        // 未激活但有旧配置：清除持久化的手动折叠残留
+        await this.removeAllManualFolds(editor);
       }
     } else {
       this.regexGroupModel.setGroups([]);
+      this.currentStartLine = undefined;
+      this.currentEndLine = undefined;
     }
 
-    // 刷新侧边栏面板数据
-    this.configPanel.render(this.regexGroupModel.getGroups());
+    this.configPanel.render(this.regexGroupModel.getGroups(), this.currentStartLine, this.currentEndLine);
   }
 
-  /** 分离编辑器 */
-  detach(editor: vscode.TextEditor): void {
-    if (this.currentEditor === editor) {
-      this.decorations.clear();
-    }
-  }
-
-  /** Go 按钮处理：保存配置 → 执行过滤 → 应用显示 */
-  private async handleGo(groups: RegexGroup[]): Promise<void> {
+  /** Go: 应用过滤 + 颜色高亮 + 创建折叠 */
+  private async handleGo(groups: RegexGroup[], startLine?: number, endLine?: number): Promise<void> {
     if (!this.currentEditor) { return; }
-
     const editor = this.currentEditor;
     const editorId = editor.document.uri.toString();
 
     this.regexGroupModel.setGroups(groups);
-    this.editorStateModel.saveConfig(editor.document.uri.toString(), groups);
+    this.currentStartLine = startLine;
+    this.currentEndLine = endLine;
+    this.editorStateModel.saveConfig(editorId, { groups, startLine, endLine });
     this.editorStateModel.setActive(editorId, true);
 
-    const results = this.filterController.filter(this.readLines(editor), groups);
+    const results = this.filterController.filter(this.readLines(editor), groups, startLine, endLine);
     this.filterResultModel.setResults(editorId, results);
     this.decorations.apply(results, editor);
     await this.applyFolding(editor);
   }
 
-  /** 触发自动折叠 */
+  /** 使用 createFoldingRangeFromSelection 折叠未匹配行 */
   private async applyFolding(editor: vscode.TextEditor): Promise<void> {
     const editorId = editor.document.uri.toString();
     const ranges = this.filterResultModel.getUnmatchedRanges(editorId);
@@ -86,53 +95,62 @@ export class ViewController {
 
     await vscode.commands.executeCommand('editor.unfoldAll');
 
-    const currentLang = editor.document.languageId;
-    const altLang = currentLang === 'plaintext' ? 'log' : 'plaintext';
-    await vscode.languages.setTextDocumentLanguage(editor.document, altLang);
-    await vscode.languages.setTextDocumentLanguage(editor.document, currentLang);
-
-    await new Promise(r => setTimeout(r, 500));
-    await vscode.commands.executeCommand('editor.foldAllMarkerRegions');
+    for (const range of ranges) {
+      if (range.start >= range.end) { continue; }
+      const endLen = editor.document.lineAt(range.end).text.length;
+      editor.selection = new vscode.Selection(range.start, 0, range.end, endLen);
+      await vscode.commands.executeCommand('editor.createFoldingRangeFromSelection');
+    }
   }
 
-  /** Reset 按钮 */
-  private handleReset(): void {
+  /** Clear: 清除所有显示效果（高亮+折叠），保留配置 */
+  private async handleClear(): Promise<void> {
     if (!this.currentEditor) { return; }
+    const editor = this.currentEditor;
+    const editorId = editor.document.uri.toString();
 
+    this.editorStateModel.setActive(editorId, false);
+    this.filterResultModel.clearResults(editorId);
+    this.decorations.clear();
+    await this.removeAllManualFolds(editor);
+  }
+
+  /** Reset: 清除配置 + 显示效果 */
+  private async handleReset(): Promise<void> {
+    if (!this.currentEditor) { return; }
     const editor = this.currentEditor;
     const editorId = editor.document.uri.toString();
 
     this.regexGroupModel.setGroups([]);
+    this.currentStartLine = undefined;
+    this.currentEndLine = undefined;
     this.editorStateModel.clearEditor(editorId);
     this.filterResultModel.clearResults(editorId);
     this.decorations.clear();
-    vscode.commands.executeCommand('editor.unfoldAll');
+    await this.removeAllManualFolds(editor);
   }
 
-  /** 文档变更时重新过滤 */
+  /** 使用 VS Code 原生 API 清除指定编辑器的所有手动折叠 */
+  private async removeAllManualFolds(editor: vscode.TextEditor): Promise<void> {
+    await vscode.commands.executeCommand('editor.unfoldAll');
+    const lastLine = editor.document.lineCount - 1;
+    editor.selection = new vscode.Selection(0, 0, lastLine, editor.document.lineAt(lastLine).text.length);
+    await vscode.commands.executeCommand('editor.removeManualFoldingRanges');
+  }
+
+  /** 文档变更时重新过滤（仅已激活编辑器） */
   onDocumentChange(document: vscode.TextDocument): void {
     if (!this.currentEditor) { return; }
     if (document !== this.currentEditor.document) { return; }
 
     const editor = this.currentEditor;
     const editorId = editor.document.uri.toString();
-
     if (!this.editorStateModel.isActive(editorId)) { return; }
 
     const groups = this.regexGroupModel.getGroups();
     if (groups.length === 0) { return; }
 
-    const results = this.filterController.filter(this.readLines(editor), groups);
-    this.filterResultModel.setResults(editorId, results);
-    this.decorations.apply(results, editor);
-  }
-
-  private reapplyFilter(): void {
-    if (!this.currentEditor) { return; }
-    const editor = this.currentEditor;
-    const editorId = editor.document.uri.toString();
-    const groups = this.regexGroupModel.getGroups();
-    const results = this.filterController.filter(this.readLines(editor), groups);
+    const results = this.filterController.filter(this.readLines(editor), groups, this.currentStartLine, this.currentEndLine);
     this.filterResultModel.setResults(editorId, results);
     this.decorations.apply(results, editor);
   }

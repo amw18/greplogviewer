@@ -1,5 +1,5 @@
 // ConfigController — 配置操作的业务逻辑层
-import { RegexGroup, RegexExpression, LogicOperator } from '../types';
+import { RegexGroup, RegexExpression, LogicOperator, EditorConfig } from '../types';
 import { RegexGroupModel } from '../model/RegexGroupModel';
 import { EditorStateModel } from '../model/EditorStateModel';
 
@@ -50,12 +50,12 @@ export class ConfigController {
   }
 
   /** 加载持久化配置 */
-  loadConfig(documentUri: string): RegexGroup[] | undefined {
+  loadConfig(documentUri: string): EditorConfig | undefined {
     return this.editorStateModel.loadConfig(documentUri);
   }
 
   /** 保存配置到持久化存储 */
-  saveConfig(documentUri: string, groups: RegexGroup[]): void {
-    this.editorStateModel.saveConfig(documentUri, groups);
+  saveConfig(documentUri: string, config: EditorConfig): void {
+    this.editorStateModel.saveConfig(documentUri, config);
   }
 }
