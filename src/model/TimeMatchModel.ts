@@ -1,4 +1,5 @@
-// TimeMatchModel — 时间匹配引擎：从行文本开头提取时间戳
+// TimeMatchModel — 时间匹配引擎：直接从行文本开头逐字符解析时间戳
+// 无需生成正则，直接用格式 segment 树 walk 匹配
 import { TimePatternConfig, FoldRange } from '../types';
 
 /** 格式解析内部节点 */
@@ -13,27 +14,27 @@ const TOKEN_DIGITS: Record<string, number> = {
   HH: 2, mm: 2, ss: 2, SSS: 3,
 };
 
+/** walk 返回值 */
+interface WalkResult {
+  /** token → 解析出的数值 */
+  values: Record<string, number>;
+  /** 匹配结束后在字符串中的位置 */
+  endPos: number;
+}
+
 export class TimeMatchModel {
   private format: string = '';
-  /** 行匹配正则：匹配整行开头的完整时间戳，捕获组 1 = 时间戳字符串 */
-  private lineRegex: RegExp | null = null;
   private formatSegments: FormatSegment[] = [];
   private timestamps = new Map<number, Date>();
 
   /** 设置时间匹配配置 */
   setConfig(config: TimePatternConfig): void {
     this.format = config.format;
-    this.lineRegex = null;
     this.formatSegments = [];
     this.timestamps.clear();
 
     if (this.format) {
       this.formatSegments = this.parseFormat(this.format);
-      try {
-        this.lineRegex = this.buildLineRegex(this.formatSegments);
-      } catch {
-        this.lineRegex = null;
-      }
     }
   }
 
@@ -44,26 +45,23 @@ export class TimeMatchModel {
 
   /** 是否已配置时间匹配 */
   isConfigured(): boolean {
-    return this.format !== '' && this.lineRegex !== null;
+    return this.formatSegments.length > 0;
   }
 
   /**
-   * 解析所有行的时间戳
-   * @param lines 所有行文本
-   * @param startLine 扫描起始行（1-based）
-   * @param endLine 扫描结束行（1-based）
+   * 解析所有行的时间戳（从行首直接 walk 匹配，无需正则）
    */
   parseTimestamps(lines: string[], startLine?: number, endLine?: number): void {
     this.timestamps.clear();
-    if (!this.isConfigured() || !this.lineRegex) { return; }
+    if (this.formatSegments.length === 0) { return; }
 
     const scanStart = startLine !== undefined ? Math.max(0, startLine - 1) : 0;
     const scanEnd = endLine !== undefined ? Math.min(lines.length, endLine) : lines.length;
 
     for (let i = scanStart; i < scanEnd; i++) {
-      const match = lines[i].match(this.lineRegex);
-      if (match) {
-        const date = this.parseDate(match[1], this.formatSegments);
+      const result = walkSegments(lines[i], this.formatSegments, 0);
+      if (result) {
+        const date = this.buildDate(result.values);
         if (date) {
           this.timestamps.set(i, date);
         }
@@ -78,8 +76,6 @@ export class TimeMatchModel {
 
   /**
    * 为未匹配区间填充时间元数据
-   * timeFrom: 区间前最近一个匹配行的时间
-   * timeTo:   区间后最近一个匹配行的时间
    */
   enrichFoldRanges(ranges: Array<{ start: number; end: number }>, totalLines: number): FoldRange[] {
     return ranges.map(r => {
@@ -126,7 +122,6 @@ export class TimeMatchModel {
       if (format[i] === '{') {
         const end = this.findMatchingBrace(format, i);
         if (end === -1) {
-          // 括号不匹配，当作普通字符
           segments.push({ type: 'literal', value: format[i] });
           i++;
         } else {
@@ -177,65 +172,29 @@ export class TimeMatchModel {
     return null;
   }
 
-  /** 从格式 segment 树构建行匹配正则（用于从行开头匹配并提取时间戳字符串） */
-  buildLineRegex(segments: FormatSegment[]): RegExp {
-    const pattern = this.buildLinePattern(segments);
-    // 整个时间戳是一个捕获组，锚定在行首
-    return new RegExp('^(' + pattern + ')');
-  }
-
-  /** 从 segment 树构建行匹配模式（不含捕获组和锚定） */
-  private buildLinePattern(segments: FormatSegment[]): string {
-    const parts: string[] = [];
-
-    const walk = (segs: FormatSegment[]): void => {
-      for (const seg of segs) {
-        if (seg.type === 'token') {
-          parts.push(`\\d{${TOKEN_DIGITS[seg.value]}}`);
-        } else if (seg.type === 'literal') {
-          parts.push(this.escapeRegex(seg.value));
-        } else if (seg.type === 'optional') {
-          parts.push('(?:' + this.buildLinePattern(seg.segments) + ')?');
-        }
-      }
-    };
-
-    walk(segments);
-    return parts.join('');
-  }
-
-  // ===== 日期解析 =====
+  // ===== 日期解析（基于 walk） =====
 
   /**
-   * 根据格式 segment 树解析时间字符串为 Date
-   * @returns 解析成功返回 Date，失败返回 null
+   * 解析时间字符串为 Date（字符串需完整匹配整个格式，用于测试）
+   * @param timeStr 纯时间字符串（不含后续文本）
+   * @param segments 格式 segment 树
    */
   parseDate(timeStr: string, segments: FormatSegment[]): Date | null {
-    const { regex, tokens } = this.buildMatchRegex(segments);
-    const match = timeStr.match(regex);
-    if (!match) { return null; }
+    const result = walkSegments(timeStr, segments, 0);
+    // 必须完整匹配整个字符串
+    if (!result || result.endPos !== timeStr.length) { return null; }
+    return this.buildDate(result.values);
+  }
 
-    let year = 2000, month = 1, day = 1, hour = 0, minute = 0, second = 0, ms = 0;
-    let captureIdx = 1;
-
-    for (const token of tokens) {
-      const value = match[captureIdx];
-      // undefined = 可选组未匹配
-      if (value !== undefined) {
-        const num = parseInt(value, 10);
-        switch (token) {
-          case 'YYYY': year = num; break;
-          case 'YY': year = 2000 + num; break;
-          case 'MM': month = num; break;
-          case 'DD': day = num; break;
-          case 'HH': hour = num; break;
-          case 'mm': minute = num; break;
-          case 'ss': second = num; break;
-          case 'SSS': ms = num; break;
-        }
-      }
-      captureIdx++;
-    }
+  /** 从解析出的 token 数值构建 Date，并验证合法性 */
+  private buildDate(values: Record<string, number>): Date | null {
+    const year = values['YYYY'] ?? (values['YY'] !== undefined ? 2000 + values['YY'] : 2000);
+    const month = values['MM'] ?? 1;
+    const day = values['DD'] ?? 1;
+    const hour = values['HH'] ?? 0;
+    const minute = values['mm'] ?? 0;
+    const second = values['ss'] ?? 0;
+    const ms = values['SSS'] ?? 0;
 
     const date = new Date(year, month - 1, day, hour, minute, second, ms);
     // 验证日期合法性（new Date 会溢出如 2月30日 → 3月2日）
@@ -244,44 +203,44 @@ export class TimeMatchModel {
     }
     return date;
   }
+}
 
-  /** 从 segment 树构建解析正则（每个 token 一个独立捕获组）和 token 顺序列表 */
-  buildMatchRegex(segments: FormatSegment[]): { regex: RegExp; tokens: string[] } {
-    const parts: string[] = [];
-    const tokens: string[] = [];
+// ===== 核心 walk 函数（纯函数，不依赖实例） =====
 
-    const walk = (segs: FormatSegment[]): void => {
-      for (const seg of segs) {
-        if (seg.type === 'token') {
-          const dig = TOKEN_DIGITS[seg.value];
-          parts.push(`(\\d{${dig}})`);
-          tokens.push(seg.value);
-        } else if (seg.type === 'literal') {
-          parts.push(this.escapeRegex(seg.value));
-        } else if (seg.type === 'optional') {
-          const innerParts: string[] = [];
-          const innerTokens: string[] = [];
-          for (const s of seg.segments) {
-            if (s.type === 'token') {
-              const dig = TOKEN_DIGITS[s.value];
-              innerParts.push(`(\\d{${dig}})`);
-              innerTokens.push(s.value);
-            } else if (s.type === 'literal') {
-              innerParts.push(this.escapeRegex(s.value));
-            }
-          }
-          parts.push(`(?:${innerParts.join('')})?`);
-          tokens.push(...innerTokens);
-        }
+/**
+ * 从字符串指定位置开始，按 segment 树逐字符匹配。
+ * 字面量直接比对；token 读取指定位数数字；可选组尝试匹配，失败则跳过。
+ * @returns 匹配成功返回 { values, endPos }，失败返回 null
+ */
+function walkSegments(str: string, segments: FormatSegment[], startPos: number): WalkResult | null {
+  let pos = startPos;
+  const values: Record<string, number> = {};
+
+  for (const seg of segments) {
+    if (str.length < pos) { return null; }
+
+    if (seg.type === 'literal') {
+      if (str.substring(pos, pos + seg.value.length) !== seg.value) {
+        return null;
       }
-    };
-
-    walk(segments);
-    return { regex: new RegExp('^' + parts.join('') + '$'), tokens };
+      pos += seg.value.length;
+    } else if (seg.type === 'token') {
+      const digits = TOKEN_DIGITS[seg.value];
+      if (pos + digits > str.length) { return null; }
+      const val = parseInt(str.substring(pos, pos + digits), 10);
+      if (isNaN(val)) { return null; }
+      values[seg.value] = val;
+      pos += digits;
+    } else if (seg.type === 'optional') {
+      const optResult = walkSegments(str, seg.segments, pos);
+      if (optResult) {
+        // 可选组匹配成功，合并值并前进
+        Object.assign(values, optResult.values);
+        pos = optResult.endPos;
+      }
+      // 可选组匹配失败，跳过不推进 pos
+    }
   }
 
-  /** 转义正则特殊字符 */
-  private escapeRegex(s: string): string {
-    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  }
+  return { values, endPos: pos };
 }

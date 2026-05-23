@@ -51,31 +51,41 @@ describe('TimeMatchModel', () => {
     });
   });
 
-  // ===== 行匹配正则构建 =====
-  describe('buildLineRegex', () => {
-    it('从格式生成行匹配正则 — 纯格式', () => {
-      const segs = model.parseFormat('YYYY-MM-DD HH:mm:ss');
-      const regex = model.buildLineRegex(segs);
-      // 应匹配标准时间戳
-      assert.ok('2024-01-15 12:30:45'.match(regex));
-      assert.strictEqual('2024-01-15 12:30:45'.match(regex)![1], '2024-01-15 12:30:45');
-      // 不应匹配不完整的
-      assert.strictEqual('2024-01-15 12:30'.match(regex), null);
+  // ===== walkSegments 直接匹配（替代原 buildLineRegex） =====
+  describe('parseTimestamps — 行首匹配', () => {
+    it('纯格式匹配行首时间戳', () => {
+      model.setConfig({ format: 'YYYY-MM-DD HH:mm:ss' });
+      const lines = [
+        '2024-01-15 12:30:45 INFO',
+        '2024-01-15 12:30 incomplete',
+      ];
+      model.parseTimestamps(lines);
+      assert.ok(model.getTimestamp(0) instanceof Date);
+      assert.strictEqual(model.getTimestamp(1), undefined); // 不完整
     });
 
-    it('从格式生成行匹配正则 — 带方括号', () => {
-      const segs = model.parseFormat('[YYYY-MM-DD HH:mm:ss]');
-      const regex = model.buildLineRegex(segs);
-      const match = '[2023-01-01 10:00:05] INFO'.match(regex);
-      assert.ok(match);
-      assert.strictEqual(match![1], '[2023-01-01 10:00:05]');
+    it('带方括号匹配行首', () => {
+      model.setConfig({ format: '[YYYY-MM-DD HH:mm:ss]' });
+      const lines = [
+        '[2023-01-01 10:00:05] INFO',
+        ' [2023-01-01 10:00:05] INFO', // 行首有空格不匹配
+      ];
+      model.parseTimestamps(lines);
+      assert.ok(model.getTimestamp(0) instanceof Date);
+      assert.strictEqual(model.getTimestamp(1), undefined);
     });
 
-    it('从格式生成行匹配正则 — 带可选毫秒', () => {
-      const segs = model.parseFormat('YYYY-MM-DD HH:mm:ss{.SSS}');
-      const regex = model.buildLineRegex(segs);
-      assert.ok('2024-01-15 12:30:45.123'.match(regex));
-      assert.ok('2024-01-15 12:30:45'.match(regex));
+    it('带可选毫秒匹配', () => {
+      model.setConfig({ format: 'YYYY-MM-DD HH:mm:ss{.SSS}' });
+      const lines = [
+        '2024-01-15 12:30:45.123 INFO',
+        '2024-01-15 12:30:45 INFO',
+      ];
+      model.parseTimestamps(lines);
+      assert.ok(model.getTimestamp(0) instanceof Date);
+      assert.strictEqual(model.getTimestamp(0)!.getMilliseconds(), 123);
+      assert.ok(model.getTimestamp(1) instanceof Date);
+      assert.strictEqual(model.getTimestamp(1)!.getMilliseconds(), 0);
     });
   });
 
