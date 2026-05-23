@@ -32,6 +32,7 @@ export function activate(context: vscode.ExtensionContext) {
       provideFoldingRanges(document: vscode.TextDocument): vscode.FoldingRange[] {
         const editorId = document.uri.toString();
         const ranges = filterResultModel.getUnmatchedRanges(editorId);
+        console.log(`[GrepLogViewer] Folding provider queried, editorId=${editorId}, ranges=${ranges.length}`);
         return ranges
           .filter(r => r.start < r.end)
           .map(r => new vscode.FoldingRange(r.start, r.end));

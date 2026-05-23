@@ -86,28 +86,37 @@ export class ViewController {
     await this.applyFolding(editor);
   }
 
-  /** 折叠未匹配行：通过临时编辑触发 Provider 刷新，再 foldAll */
+  /**
+   * 折叠未匹配行。
+   * 通过 editor.edit 触发文档变更 → VS Code 重新查询 FoldingRangeProvider →
+   * foldAll 折叠。两次 edit（插入+撤销）确保 Provider 拿到最新 filterResult。
+   */
   private async applyFolding(editor: vscode.TextEditor): Promise<void> {
     const editorId = editor.document.uri.toString();
     const ranges = this.filterResultModel.getUnmatchedRanges(editorId);
+    console.log(`[GrepLogViewer] applyFolding: ${ranges.length} ranges to fold`);
     if (ranges.length === 0) { return; }
 
-    // 先展开全部折叠
+    // 先展开所有折叠
     await vscode.commands.executeCommand('editor.unfoldAll');
+    console.log('[GrepLogViewer] unfoldAll done');
 
-    // VS Code 的 FoldingRangeProvider 基于缓存，只在文档变更时重新查询。
-    // 因此通过一次空编辑+撤销来触发 Provider 刷新，使 foldAll 能获取到最新区间。
-    const doc = editor.document;
-    const edit = new vscode.WorkspaceEdit();
-    edit.insert(doc.uri, new vscode.Position(0, 0), ' ');
-    const applied = await vscode.workspace.applyEdit(edit);
-    if (applied) {
+    // 插入空格触发文档变更，让 FoldingRangeProvider 重新计算
+    const edited = await editor.edit(builder => {
+      builder.insert(new vscode.Position(0, 0), ' ');
+    });
+    console.log(`[GrepLogViewer] edit result: ${edited}`);
+
+    if (edited) {
+      // 撤销恢复文档原样（撤销也是一次文档变更 → Provider 再次刷新）
       await vscode.commands.executeCommand('undo');
+      console.log('[GrepLogViewer] undo done, waiting 200ms');
+      // 等待 folding 计算完成
+      await new Promise(r => setTimeout(r, 200));
+      console.log('[GrepLogViewer] calling foldAll');
+      await vscode.commands.executeCommand('editor.foldAll');
+      console.log('[GrepLogViewer] foldAll done');
     }
-
-    // 等待 folding 重新计算完成后执行折叠
-    await new Promise(resolve => setTimeout(resolve, 150));
-    await vscode.commands.executeCommand('editor.foldAll');
   }
 
   /** Reset 按钮处理：清除配置和显示 */
