@@ -82,11 +82,32 @@ export class ViewController {
     // 应用颜色装饰
     this.decorations.apply(results, editor);
 
-    // 折叠未匹配行：先展开全部，再触发 Provider 重新提供区间
+    // 折叠未匹配行
+    await this.applyFolding(editor);
+  }
+
+  /** 折叠未匹配行：通过临时编辑触发 Provider 刷新，再 foldAll */
+  private async applyFolding(editor: vscode.TextEditor): Promise<void> {
+    const editorId = editor.document.uri.toString();
+    const ranges = this.filterResultModel.getUnmatchedRanges(editorId);
+    if (ranges.length === 0) { return; }
+
+    // 先展开全部折叠
     await vscode.commands.executeCommand('editor.unfoldAll');
-    setTimeout(() => {
-      vscode.commands.executeCommand('editor.foldAll');
-    }, 50);
+
+    // VS Code 的 FoldingRangeProvider 基于缓存，只在文档变更时重新查询。
+    // 因此通过一次空编辑+撤销来触发 Provider 刷新，使 foldAll 能获取到最新区间。
+    const doc = editor.document;
+    const edit = new vscode.WorkspaceEdit();
+    edit.insert(doc.uri, new vscode.Position(0, 0), ' ');
+    const applied = await vscode.workspace.applyEdit(edit);
+    if (applied) {
+      await vscode.commands.executeCommand('undo');
+    }
+
+    // 等待 folding 重新计算完成后执行折叠
+    await new Promise(resolve => setTimeout(resolve, 150));
+    await vscode.commands.executeCommand('editor.foldAll');
   }
 
   /** Reset 按钮处理：清除配置和显示 */
