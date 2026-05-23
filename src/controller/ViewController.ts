@@ -88,35 +88,31 @@ export class ViewController {
 
   /**
    * 折叠未匹配行。
-   * 通过 editor.edit 触发文档变更 → VS Code 重新查询 FoldingRangeProvider →
-   * foldAll 折叠。两次 edit（插入+撤销）确保 Provider 拿到最新 filterResult。
+   * 使用 VS Code 原生 createFoldingRangeFromSelection 命令：
+   * 选中未匹配连续区间 → 创建并折叠。不修改文档，不依赖 Provider 缓存。
    */
   private async applyFolding(editor: vscode.TextEditor): Promise<void> {
     const editorId = editor.document.uri.toString();
     const ranges = this.filterResultModel.getUnmatchedRanges(editorId);
-    console.log(`[GrepLogViewer] applyFolding: ${ranges.length} ranges to fold`);
     if (ranges.length === 0) { return; }
 
-    // 先展开所有折叠
     await vscode.commands.executeCommand('editor.unfoldAll');
-    console.log('[GrepLogViewer] unfoldAll done');
 
-    // 插入空格触发文档变更，让 FoldingRangeProvider 重新计算
-    const edited = await editor.edit(builder => {
-      builder.insert(new vscode.Position(0, 0), ' ');
-    });
-    console.log(`[GrepLogViewer] edit result: ${edited}`);
+    const savedSelection = editor.selection;
 
-    if (edited) {
-      // 撤销恢复文档原样（撤销也是一次文档变更 → Provider 再次刷新）
-      await vscode.commands.executeCommand('undo');
-      console.log('[GrepLogViewer] undo done, waiting 200ms');
-      // 等待 folding 计算完成
-      await new Promise(r => setTimeout(r, 200));
-      console.log('[GrepLogViewer] calling foldAll');
-      await vscode.commands.executeCommand('editor.foldAll');
-      console.log('[GrepLogViewer] foldAll done');
+    for (const range of ranges) {
+      if (range.start >= range.end) { continue; }
+
+      // 选中整个未匹配区间
+      const endLine = editor.document.lineAt(range.end);
+      editor.selection = new vscode.Selection(range.start, 0, range.end, endLine.text.length);
+
+      // createFoldingRangeFromSelection 会根据选区创建折叠区间并自动折叠
+      await vscode.commands.executeCommand('editor.createFoldingRangeFromSelection');
     }
+
+    // 恢复原始光标位置
+    editor.selection = savedSelection;
   }
 
   /** Reset 按钮处理：清除配置和显示 */
