@@ -15,14 +15,13 @@ export class ViewController {
   private currentEditor: vscode.TextEditor | undefined;
 
   constructor(
-    private context: vscode.ExtensionContext,
-    private configController: ConfigController,
+    configController: ConfigController,
     private filterController: FilterController,
     private editorStateModel: EditorStateModel,
     private filterResultModel: FilterResultModel,
     private regexGroupModel: RegexGroupModel
   ) {
-    this.configPanel = new ConfigPanel(context);
+    this.configPanel = new ConfigPanel();
     this.decorations = new EditorDecorations();
 
     // 绑定面板回调
@@ -30,19 +29,20 @@ export class ViewController {
     this.configPanel.onReset(() => this.handleReset());
   }
 
+  /** 返回 ConfigPanel 供 extension.ts 注册 WebviewViewProvider */
+  getPanelProvider(): ConfigPanel {
+    return this.configPanel;
+  }
+
   /** 切换到指定编辑器，加载其配置 */
   attach(editor: vscode.TextEditor): void {
-    // 先清理旧编辑器的装饰
     this.decorations.clear();
-
     this.currentEditor = editor;
 
     // 加载该文档的持久化配置
     const savedConfig = this.editorStateModel.loadConfig(editor.document.uri.toString());
     if (savedConfig) {
       this.regexGroupModel.setGroups(savedConfig);
-
-      // 如果之前已激活，重新应用过滤
       if (this.editorStateModel.isActive(editor.document.uri.toString())) {
         this.reapplyFilter();
       }
@@ -50,9 +50,7 @@ export class ViewController {
       this.regexGroupModel.setGroups([]);
     }
 
-    // 显示配置面板（首次创建时注入初始数据）
-    this.configPanel.show(this.regexGroupModel.getGroups());
-    // 面板已存在时发送更新消息
+    // 刷新侧边栏面板数据
     this.configPanel.render(this.regexGroupModel.getGroups());
   }
 
@@ -70,27 +68,17 @@ export class ViewController {
     const editor = this.currentEditor;
     const editorId = editor.document.uri.toString();
 
-    // 保存配置
     this.regexGroupModel.setGroups(groups);
     this.editorStateModel.saveConfig(editor.document.uri.toString(), groups);
     this.editorStateModel.setActive(editorId, true);
 
-    // 执行过滤
     const results = this.filterController.filter(this.readLines(editor), groups);
     this.filterResultModel.setResults(editorId, results);
-
-    // 应用颜色装饰
     this.decorations.apply(results, editor);
-
-    // 折叠未匹配行
     await this.applyFolding(editor);
   }
 
-  /**
-   * 折叠未匹配行。
-   * 使用 VS Code 原生 createFoldingRangeFromSelection 命令：
-   * 选中未匹配连续区间 → 创建并折叠。不修改文档，不依赖 Provider 缓存。
-   */
+  /** 触发自动折叠 */
   private async applyFolding(editor: vscode.TextEditor): Promise<void> {
     const editorId = editor.document.uri.toString();
     const ranges = this.filterResultModel.getUnmatchedRanges(editorId);
@@ -98,24 +86,16 @@ export class ViewController {
 
     await vscode.commands.executeCommand('editor.unfoldAll');
 
-    const savedSelection = editor.selection;
+    const currentLang = editor.document.languageId;
+    const altLang = currentLang === 'plaintext' ? 'log' : 'plaintext';
+    await vscode.languages.setTextDocumentLanguage(editor.document, altLang);
+    await vscode.languages.setTextDocumentLanguage(editor.document, currentLang);
 
-    for (const range of ranges) {
-      if (range.start >= range.end) { continue; }
-
-      // 选中整个未匹配区间
-      const endLine = editor.document.lineAt(range.end);
-      editor.selection = new vscode.Selection(range.start, 0, range.end, endLine.text.length);
-
-      // createFoldingRangeFromSelection 会根据选区创建折叠区间并自动折叠
-      await vscode.commands.executeCommand('editor.createFoldingRangeFromSelection');
-    }
-
-    // 恢复原始光标位置
-    editor.selection = savedSelection;
+    await new Promise(r => setTimeout(r, 500));
+    await vscode.commands.executeCommand('editor.foldAllMarkerRegions');
   }
 
-  /** Reset 按钮处理：清除配置和显示 */
+  /** Reset 按钮 */
   private handleReset(): void {
     if (!this.currentEditor) { return; }
 
@@ -126,10 +106,10 @@ export class ViewController {
     this.editorStateModel.clearEditor(editorId);
     this.filterResultModel.clearResults(editorId);
     this.decorations.clear();
-    this.unfoldAll();
+    vscode.commands.executeCommand('editor.unfoldAll');
   }
 
-  /** 文档变更时重新应用过滤（仅当前编辑器且已激活时） */
+  /** 文档变更时重新过滤 */
   onDocumentChange(document: vscode.TextDocument): void {
     if (!this.currentEditor) { return; }
     if (document !== this.currentEditor.document) { return; }
@@ -147,7 +127,6 @@ export class ViewController {
     this.decorations.apply(results, editor);
   }
 
-  /** 重新应用当前过滤（用于编辑器切换后恢复） */
   private reapplyFilter(): void {
     if (!this.currentEditor) { return; }
     const editor = this.currentEditor;
@@ -158,7 +137,6 @@ export class ViewController {
     this.decorations.apply(results, editor);
   }
 
-  /** 读取编辑器所有行文本 */
   private readLines(editor: vscode.TextEditor): string[] {
     const lines: string[] = [];
     for (let i = 0; i < editor.document.lineCount; i++) {
@@ -167,14 +145,7 @@ export class ViewController {
     return lines;
   }
 
-  /** 展开所有折叠 */
-  private unfoldAll(): void {
-    vscode.commands.executeCommand('editor.unfoldAll');
-  }
-
-  /** 释放资源 */
   dispose(): void {
-    this.configPanel.dispose();
     this.decorations.dispose();
   }
 }

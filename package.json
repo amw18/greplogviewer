@@ -10,25 +10,20 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:greplogviewer.showConfig"
+    "onView:greplogviewer.configView"
   ],
   "main": "./out/extension.js",
   "contributes": {
-    "commands": [
-      {
-        "command": "greplogviewer.showConfig",
-        "title": "GrepLogViewer: Show Config Panel"
-      }
-    ],
-    "menus": {
-      "editor/title": [
+    "views": {
+      "explorer": [
         {
-          "command": "greplogviewer.showConfig",
-          "group": "navigation",
-          "when": "resourceScheme == file"
+          "id": "greplogviewer.configView",
+          "name": "GrepLogViewer",
+          "type": "webview"
         }
       ]
-    }
+    },
+    "commands": []
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
