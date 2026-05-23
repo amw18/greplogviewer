@@ -1,7 +1,6 @@
 // 测试 — TimeMatchModel 时间匹配与解析
 import { strict as assert } from 'assert';
 import { TimeMatchModel } from '../src/model/TimeMatchModel';
-import { TimePatternConfig } from '../src/types';
 
 describe('TimeMatchModel', () => {
   let model: TimeMatchModel;
@@ -44,48 +43,9 @@ describe('TimeMatchModel', () => {
 
     it('解析带方括号的格式 [YYYY-MM-DD HH:mm:ss]', () => {
       const segs = model.parseFormat('[YYYY-MM-DD HH:mm:ss]');
-      // [ YYYY - MM - DD SP HH : mm : ss ] = 13 segments
       assert.strictEqual(segs.length, 13);
       assert.deepStrictEqual(segs[0], { type: 'literal', value: '[' });
       assert.deepStrictEqual(segs[segs.length - 1], { type: 'literal', value: ']' });
-    });
-  });
-
-  // ===== walkSegments 直接匹配（替代原 buildLineRegex） =====
-  describe('parseTimestamps — 行首匹配', () => {
-    it('纯格式匹配行首时间戳', () => {
-      model.setConfig({ format: 'YYYY-MM-DD HH:mm:ss' });
-      const lines = [
-        '2024-01-15 12:30:45 INFO',
-        '2024-01-15 12:30 incomplete',
-      ];
-      model.parseTimestamps(lines);
-      assert.ok(model.getTimestamp(0) instanceof Date);
-      assert.strictEqual(model.getTimestamp(1), undefined); // 不完整
-    });
-
-    it('带方括号匹配行首', () => {
-      model.setConfig({ format: '[YYYY-MM-DD HH:mm:ss]' });
-      const lines = [
-        '[2023-01-01 10:00:05] INFO',
-        ' [2023-01-01 10:00:05] INFO', // 行首有空格不匹配
-      ];
-      model.parseTimestamps(lines);
-      assert.ok(model.getTimestamp(0) instanceof Date);
-      assert.strictEqual(model.getTimestamp(1), undefined);
-    });
-
-    it('带可选毫秒匹配', () => {
-      model.setConfig({ format: 'YYYY-MM-DD HH:mm:ss{.SSS}' });
-      const lines = [
-        '2024-01-15 12:30:45.123 INFO',
-        '2024-01-15 12:30:45 INFO',
-      ];
-      model.parseTimestamps(lines);
-      assert.ok(model.getTimestamp(0) instanceof Date);
-      assert.strictEqual(model.getTimestamp(0)!.getMilliseconds(), 123);
-      assert.ok(model.getTimestamp(1) instanceof Date);
-      assert.strictEqual(model.getTimestamp(1)!.getMilliseconds(), 0);
     });
   });
 
@@ -169,86 +129,9 @@ describe('TimeMatchModel', () => {
     });
   });
 
-  // ===== 时间戳提取 =====
-  describe('parseTimestamps', () => {
-    it('从多行文本提取时间戳', () => {
-      model.setConfig({ format: 'YYYY-MM-DD HH:mm:ss' });
-      const lines = [
-        '2024-01-15 10:00:00 INFO Start',
-        '2024-01-15 10:00:01 DEBUG Processing',
-        '2024-01-15 10:00:05 ERROR Failed',
-      ];
-      model.parseTimestamps(lines);
-      assert.ok(model.getTimestamp(0) instanceof Date);
-      assert.strictEqual(model.getTimestamp(0)!.getSeconds(), 0);
-      assert.strictEqual(model.getTimestamp(1)!.getSeconds(), 1);
-      assert.strictEqual(model.getTimestamp(2)!.getSeconds(), 5);
-    });
-
-    it('匹配带方括号的时间戳 [YYYY-MM-DD HH:mm:ss]', () => {
-      model.setConfig({ format: '[YYYY-MM-DD HH:mm:ss]' });
-      const lines = [
-        '[2023-01-01 10:00:05] INFO Started',
-        '[2023-01-01 10:00:30] INFO Stopped',
-      ];
-      model.parseTimestamps(lines);
-      assert.ok(model.getTimestamp(0) instanceof Date);
-      assert.strictEqual(model.getTimestamp(0)!.getFullYear(), 2023);
-      assert.strictEqual(model.getTimestamp(0)!.getMonth(), 0);
-      assert.strictEqual(model.getTimestamp(0)!.getDate(), 1);
-      assert.strictEqual(model.getTimestamp(0)!.getHours(), 10);
-      assert.strictEqual(model.getTimestamp(0)!.getMinutes(), 0);
-      assert.strictEqual(model.getTimestamp(0)!.getSeconds(), 5);
-      assert.strictEqual(model.getTimestamp(1)!.getSeconds(), 30);
-    });
-
-    it('未配置时返回 undefined', () => {
-      const lines = ['2024-01-15 10:00:00 test'];
-      model.parseTimestamps(lines);
-      assert.strictEqual(model.getTimestamp(0), undefined);
-    });
-
-    it('时间模式不匹配时返回 undefined', () => {
-      model.setConfig({ format: 'YYYY-MM-DD' });
-      const lines = ['[2024-01-15] test']; // 方括号不匹配 ^YYYY-MM-DD 格式
-      model.parseTimestamps(lines);
-      assert.strictEqual(model.getTimestamp(0), undefined);
-    });
-
-    it('指定行范围扫描', () => {
-      model.setConfig({ format: 'HH:mm:ss' });
-      const lines = [
-        '00:00:00 line 0',
-        '00:00:01 line 1',
-        '00:00:02 line 2',
-        '00:00:03 line 3',
-        '00:00:04 line 4',
-      ];
-      model.parseTimestamps(lines, 2, 4);
-      assert.strictEqual(model.getTimestamp(0), undefined);
-      assert.ok(model.getTimestamp(1) instanceof Date);
-      assert.ok(model.getTimestamp(2) instanceof Date);
-      assert.ok(model.getTimestamp(3) instanceof Date);
-      assert.strictEqual(model.getTimestamp(4), undefined);
-    });
-
-    it('匹配带可选毫秒的完整时间', () => {
-      model.setConfig({ format: 'YYYY-MM-DD HH:mm:ss{.SSS}' });
-      const lines = [
-        '2024-01-15 12:30:45.123 INFO test',
-        '2024-01-15 12:30:46 INFO test',
-      ];
-      model.parseTimestamps(lines);
-      assert.ok(model.getTimestamp(0) instanceof Date);
-      assert.strictEqual(model.getTimestamp(0)!.getMilliseconds(), 123);
-      assert.ok(model.getTimestamp(1) instanceof Date);
-      assert.strictEqual(model.getTimestamp(1)!.getMilliseconds(), 0);
-    });
-  });
-
-  // ===== 折叠区间富化 =====
-  describe('enrichFoldRanges', () => {
-    it('为折叠区间计算时间元数据', () => {
+  // ===== computeFoldRanges — 仅解析边界行 =====
+  describe('computeFoldRanges', () => {
+    it('为折叠区间计算时间元数据（仅解析边界行）', () => {
       model.setConfig({ format: 'HH:mm:ss' });
       const lines = [
         '10:00:00 INFO Matched line 0',
@@ -260,13 +143,12 @@ describe('TimeMatchModel', () => {
         '10:00:08 DEBUG Unmatched 6',
         '10:00:10 INFO Matched line 7',
       ];
-      model.parseTimestamps(lines);
 
       const ranges = [
         { start: 1, end: 2 },
         { start: 4, end: 6 },
       ];
-      const result = model.enrichFoldRanges(ranges, lines.length);
+      const result = model.computeFoldRanges(ranges, lines, lines.length);
 
       assert.strictEqual(result.length, 2);
 
@@ -291,9 +173,9 @@ describe('TimeMatchModel', () => {
         'no time here',
         '10:00:01 first time',
       ];
-      model.parseTimestamps(lines);
-      const ranges = [{ start: 0, end: 0 }];
-      const result = model.enrichFoldRanges(ranges, lines.length);
+      const result = model.computeFoldRanges(
+        [{ start: 0, end: 0 }], lines, lines.length
+      );
       assert.strictEqual(result[0].timeFrom, undefined);
       assert.ok(result[0].timeTo instanceof Date);
     });
@@ -304,11 +186,44 @@ describe('TimeMatchModel', () => {
         '10:00:00 time here',
         'no time after',
       ];
-      model.parseTimestamps(lines);
-      const ranges = [{ start: 1, end: 1 }];
-      const result = model.enrichFoldRanges(ranges, lines.length);
+      const result = model.computeFoldRanges(
+        [{ start: 1, end: 1 }], lines, lines.length
+      );
       assert.ok(result[0].timeFrom instanceof Date);
       assert.strictEqual(result[0].timeTo, undefined);
+    });
+
+    it('跨越多行查找边界时间', () => {
+      model.setConfig({ format: 'HH:mm:ss' });
+      const lines = [
+        '10:00:00 first',
+        'no time',
+        'no time',
+        '10:00:10 second',
+      ];
+      // 折叠区间 [1,2]，边界应为 line 0 和 line 3
+      const result = model.computeFoldRanges(
+        [{ start: 1, end: 2 }], lines, lines.length
+      );
+      assert.strictEqual(result[0].timeFrom!.getSeconds(), 0);
+      assert.strictEqual(result[0].timeTo!.getSeconds(), 10);
+      assert.strictEqual(result[0].durationMs, 10000);
+    });
+
+    it('带方括号格式仅解析边界行', () => {
+      model.setConfig({ format: '[YYYY-MM-DD HH:mm:ss]' });
+      const lines = [
+        '[2023-01-01 10:00:00] start',
+        'no match',
+        '[2023-01-01 10:00:05] end',
+      ];
+      const result = model.computeFoldRanges(
+        [{ start: 1, end: 1 }], lines, lines.length
+      );
+      assert.ok(result[0].timeFrom instanceof Date);
+      assert.strictEqual(result[0].timeFrom!.getSeconds(), 0);
+      assert.ok(result[0].timeTo instanceof Date);
+      assert.strictEqual(result[0].timeTo!.getSeconds(), 5);
     });
   });
 

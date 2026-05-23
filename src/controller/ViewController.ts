@@ -67,9 +67,9 @@ export class ViewController {
 
         // 恢复时间标注
         if (this.timeMatchModel.isConfigured()) {
-          this.timeMatchModel.parseTimestamps(lines, savedConfig.startLine, savedConfig.endLine);
-          const foldRanges = this.filterResultModel.getFoldRanges(
-            editorId, this.timeMatchModel, editor.document.lineCount
+          const rawRanges = this.filterResultModel.getUnmatchedRanges(editorId);
+          const foldRanges = this.timeMatchModel.computeFoldRanges(
+            rawRanges, lines, editor.document.lineCount
           );
           this.decorations.applyTimeAnnotations(foldRanges, editor);
         }
@@ -117,11 +117,11 @@ export class ViewController {
     this.filterResultModel.setResults(editorId, results);
     this.decorations.apply(results, editor);
 
-    // 时间匹配：解析时间戳并计算折叠区间的元数据
+    // 时间匹配：按需解析折叠边界行
     if (this.timeMatchModel.isConfigured()) {
-      this.timeMatchModel.parseTimestamps(lines, startLine, endLine);
-      const foldRanges = this.filterResultModel.getFoldRanges(
-        editorId, this.timeMatchModel, editor.document.lineCount
+      const rawRanges = this.filterResultModel.getUnmatchedRanges(editorId);
+      const foldRanges = this.timeMatchModel.computeFoldRanges(
+        rawRanges, lines, editor.document.lineCount
       );
       this.decorations.applyTimeAnnotations(foldRanges, editor);
     }
@@ -202,9 +202,9 @@ export class ViewController {
 
     // 重新计算时间标注
     if (this.timeMatchModel.isConfigured()) {
-      this.timeMatchModel.parseTimestamps(lines, this.currentStartLine, this.currentEndLine);
-      const foldRanges = this.filterResultModel.getFoldRanges(
-        editorId, this.timeMatchModel, editor.document.lineCount
+      const rawRanges = this.filterResultModel.getUnmatchedRanges(editorId);
+      const foldRanges = this.timeMatchModel.computeFoldRanges(
+        rawRanges, lines, editor.document.lineCount
       );
       this.decorations.applyTimeAnnotations(foldRanges, editor);
     }
