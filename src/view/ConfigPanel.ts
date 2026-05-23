@@ -152,49 +152,47 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     html += '<button class="action-btn reset-btn" id="reset-btn">Reset</button>';
     html += '</div>';
     document.getElementById('app').innerHTML = html;
-    bindEvents();
   }
 
-  function bindEvents() {
-    document.getElementById('go-btn').onclick = function() {
+  // 事件委托：在 #app 上只绑定一次，不随 innerHTML 重建而累积
+  document.getElementById('app').addEventListener('click', function(e) {
+    var btn = e.target.closest('button'); if (!btn) return;
+    var action = btn.dataset.action;
+    var gi = parseInt(btn.dataset.gi), ei = parseInt(btn.dataset.ei);
+    if (btn.id === 'go-btn') {
       collectData(); saveState();
       vscode.postMessage({ type: 'go', groups: groups });
-    };
-    document.getElementById('reset-btn').onclick = function() {
+    } else if (btn.id === 'reset-btn') {
       groups = []; saveState();
       vscode.postMessage({ type: 'reset' });
       render();
-    };
-    document.getElementById('app').addEventListener('click', function(e) {
-      var btn = e.target.closest('button'); if (!btn) return;
-      var action = btn.dataset.action;
-      var gi = parseInt(btn.dataset.gi), ei = parseInt(btn.dataset.ei);
-      if (action === 'addGroup') {
-        groups.push({ id: uuid(), name: 'New Group', color: randomColor(), expressions: [] });
-        saveState(); render();
-      } else if (action === 'removeGroup') { groups.splice(gi, 1); saveState(); render(); }
-      else if (action === 'addExpr') {
-        groups[gi].expressions.push({ id: uuid(), pattern: '', flags: '', operator: 'and' });
-        saveState(); render();
-      } else if (action === 'removeExpr') { groups[gi].expressions.splice(ei, 1); saveState(); render(); }
-    });
-    document.getElementById('app').addEventListener('input', function(e) {
-      var el = e.target, gi = parseInt(el.dataset.gi), ei = parseInt(el.dataset.ei);
-      if (isNaN(gi)) return;
-      if (el.classList.contains('group-name')) groups[gi].name = el.value;
-      else if (el.classList.contains('group-color')) groups[gi].color = el.value;
-      else if (el.classList.contains('pattern') && !isNaN(ei)) groups[gi].expressions[ei].pattern = el.value;
-      else if (el.classList.contains('flags') && !isNaN(ei)) groups[gi].expressions[ei].flags = el.value;
-      saveState();
-    });
-    document.getElementById('app').addEventListener('change', function(e) {
-      var el = e.target;
-      if (el.classList.contains('expr-op')) {
-        var gi = parseInt(el.dataset.gi), ei = parseInt(el.dataset.ei);
-        groups[gi].expressions[ei].operator = el.value; saveState();
-      }
-    });
-  }
+    } else if (action === 'addGroup') {
+      groups.push({ id: uuid(), name: 'New Group', color: randomColor(), expressions: [] });
+      saveState(); render();
+    } else if (action === 'removeGroup') { groups.splice(gi, 1); saveState(); render(); }
+    else if (action === 'addExpr') {
+      groups[gi].expressions.push({ id: uuid(), pattern: '', flags: '', operator: 'and' });
+      saveState(); render();
+    } else if (action === 'removeExpr') { groups[gi].expressions.splice(ei, 1); saveState(); render(); }
+  });
+
+  document.getElementById('app').addEventListener('input', function(e) {
+    var el = e.target, gi = parseInt(el.dataset.gi), ei = parseInt(el.dataset.ei);
+    if (isNaN(gi)) return;
+    if (el.classList.contains('group-name')) groups[gi].name = el.value;
+    else if (el.classList.contains('group-color')) groups[gi].color = el.value;
+    else if (el.classList.contains('pattern') && !isNaN(ei)) groups[gi].expressions[ei].pattern = el.value;
+    else if (el.classList.contains('flags') && !isNaN(ei)) groups[gi].expressions[ei].flags = el.value;
+    saveState();
+  });
+
+  document.getElementById('app').addEventListener('change', function(e) {
+    var el = e.target;
+    if (el.classList.contains('expr-op')) {
+      var gi = parseInt(el.dataset.gi), ei = parseInt(el.dataset.ei);
+      groups[gi].expressions[ei].operator = el.value; saveState();
+    }
+  });
 
   function randomColor() {
     return '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6,'0');
