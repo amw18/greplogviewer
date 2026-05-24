@@ -34,7 +34,6 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       }
     });
 
-    // 如果之前已经有数据，发送过去
     if (this.pendingGroups.length > 0 || this.pendingTimePattern || this.pendingKeywords) {
       this.sendUpdate(this.pendingGroups, this.pendingStartLine, this.pendingEndLine, this.pendingTimePattern, this.pendingKeywords);
     }
@@ -42,7 +41,6 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
 
   private pendingTimePattern?: TimePatternConfig;
 
-  /** 发送最新配置到 webview */
   render(groups: RegexGroup[], startLine?: number, endLine?: number, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): void {
     this.pendingGroups = groups;
     this.pendingStartLine = startLine;
@@ -54,17 +52,14 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     }
   }
 
-  /** 设置 Go 回调 */
   onGo(callback: (groups: RegexGroup[], startLine?: number, endLine?: number, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void): void {
     this.goCallback = callback;
   }
 
-  /** 设置 Reset 回调 */
   onReset(callback: () => void): void {
     this.resetCallback = callback;
   }
 
-  /** 设置 Clear 回调 */
   onClear(callback: () => void): void {
     this.clearCallback = callback;
   }
@@ -99,7 +94,6 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   .group-header input[type="text"] { flex: 1; background: var(--vscode-input-background);
         color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border);
         padding: 1px 4px; border-radius: 2px; font-size: 12px; }
-  .group-header input[type="color"] { width: 22px; height: 18px; border: none; cursor: pointer; }
   .remove-btn { background: none; border: none; color: var(--vscode-errorForeground);
                 cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; }
   .move-btn { background: none; border: none; color: var(--vscode-descriptionForeground);
@@ -133,8 +127,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
                     margin-bottom: 4px; }
   .section-body { padding: 0 2px; }
 
-  .line-range { display: flex; align-items: center; gap: 4px;
-                padding: 4px; }
+  .line-range { display: flex; align-items: center; gap: 4px; padding: 4px; }
   .line-range label { font-size: 11px; color: var(--vscode-descriptionForeground); }
   .line-range input[type="number"] { width: 55px; background: var(--vscode-input-background);
         color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border);
@@ -148,13 +141,33 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
         padding: 1px 4px; border-radius: 2px; font-size: 11px; }
   .keyword-row input.pattern { min-width: 60px; }
   .keyword-row input.flags { width: 40px; }
-  .keyword-row input[type="color"] { width: 22px; height: 18px; border: none; cursor: pointer; }
 
-  .swatch-bar { display: flex; align-items: center; gap: 2px; margin-top: 3px; flex-wrap: wrap; }
-  .swatch-group { display: flex; align-items: center; gap: 2px; margin-right: 6px; }
-  .swatch-label { font-size: 9px; color: var(--vscode-descriptionForeground); line-height: 1; }
-  .swatch { width: 13px; height: 13px; border-radius: 50%; border: 1px solid var(--vscode-panel-border); cursor: pointer; flex-shrink: 0; transition: transform 0.1s; }
-  .swatch:hover { transform: scale(1.4); border-color: var(--vscode-focusBorder); z-index: 1; }
+  /* ── 颜色选择器（触发器 + 弹出面板）── */
+  .color-picker-wrap { position: relative; display: inline-flex; align-items: center; }
+  .color-trigger { width: 22px; height: 18px; border: 1px solid var(--vscode-input-border);
+                   border-radius: 2px; cursor: pointer; display: inline-block;
+                   flex-shrink: 0; vertical-align: middle; }
+  .color-trigger:hover { border-color: var(--vscode-focusBorder); }
+  .color-popover { display: none; position: fixed; z-index: 9999;
+                   background: var(--vscode-dropdown-background);
+                   border: 1px solid var(--vscode-dropdown-border);
+                   border-radius: 4px; padding: 8px; min-width: 220px;
+                   box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
+  .color-popover.show { display: block; }
+  .color-popover .native-color { width: 100%; height: 28px; border: 1px solid var(--vscode-input-border);
+                                 cursor: pointer; margin-bottom: 8px; padding: 2px;
+                                 border-radius: 2px; background: var(--vscode-input-background); }
+  .color-popover .native-label { font-size: 10px; color: var(--vscode-descriptionForeground);
+                                  margin-bottom: 2px; display: block; }
+  .swatch-grid { display: flex; flex-direction: column; gap: 5px; }
+  .swatch-row { display: flex; align-items: center; justify-content: space-between; }
+  .swatch-dots { display: flex; gap: 4px; flex: 1; justify-content: space-evenly; }
+  .swatch-label { font-size: 9px; color: var(--vscode-descriptionForeground);
+                  width: 28px; text-align: right; flex-shrink: 0; margin-right: 2px; }
+  .swatch { width: 16px; height: 16px; border-radius: 50%; cursor: pointer;
+            border: 1px solid var(--vscode-panel-border); flex-shrink: 0;
+            transition: transform 0.1s; }
+  .swatch:hover { transform: scale(1.3); border-color: var(--vscode-focusBorder); }
 </style>
 </head>
 <body>
@@ -181,25 +194,58 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
 
   function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
-  // 预设色板：冷色系 / 暖色系 / 高对比度系
+  // 预设色板：每组 5 色，全部唯一，水平拉伸均匀分布
   var COLOR_SWATCHES = [
-    { label: 'Cool', colors: ['#00BCD4','#4CAF50','#7C4DFF'] },
-    { label: 'Warm', colors: ['#FF9800','#F44336','#FFEB3B'] },
-    { label: 'HiCon', colors: ['#FF1744','#00E676','#2979FF'] }
+    { label: 'Cool', colors: [
+      { hex: '#00BCD4', name: 'Cyan' },
+      { hex: '#009688', name: 'Teal' },
+      { hex: '#4CAF50', name: 'Green' },
+      { hex: '#2196F3', name: 'Blue' },
+      { hex: '#7C4DFF', name: 'Deep Purple' }
+    ]},
+    { label: 'Warm', colors: [
+      { hex: '#FF9800', name: 'Orange' },
+      { hex: '#FF5722', name: 'Deep Orange' },
+      { hex: '#F44336', name: 'Red' },
+      { hex: '#E91E63', name: 'Pink' },
+      { hex: '#FFC107', name: 'Amber' }
+    ]},
+    { label: 'HiCon', colors: [
+      { hex: '#FF1744', name: 'Bright Red' },
+      { hex: '#00E676', name: 'Lime Green' },
+      { hex: '#2979FF', name: 'Royal Blue' },
+      { hex: '#FFEB3B', name: 'Yellow' },
+      { hex: '#D500F9', name: 'Magenta' }
+    ]}
   ];
 
-  function swatchHtml(targetAttr, targetVal) {
-    var h = '<div class="swatch-bar">';
+  function swatchPopoverHtml(targetKind, targetIdx) {
+    var h = '<div class="swatch-grid">';
     for (var s = 0; s < COLOR_SWATCHES.length; s++) {
-      var group = COLOR_SWATCHES[s];
-      h += '<span class="swatch-group">';
-      h += '<span class="swatch-label">' + group.label + '</span>';
-      for (var c = 0; c < group.colors.length; c++) {
-        h += '<span class="swatch" style="background:' + group.colors[c] + '" data-swatch-color="' + group.colors[c] + '" ' + targetAttr + '="' + targetVal + '"></span>';
+      var grp = COLOR_SWATCHES[s];
+      h += '<div class="swatch-row">';
+      h += '<span class="swatch-label">' + grp.label + '</span>';
+      h += '<span class="swatch-dots">';
+      for (var c = 0; c < grp.colors.length; c++) {
+        var sc = grp.colors[c];
+        h += '<span class="swatch" style="background:' + sc.hex + '" data-swatch-color="' + sc.hex + '" data-swatch-' + targetKind + '="' + targetIdx + '" title="' + sc.name + '"></span>';
       }
       h += '</span>';
+      h += '</div>';
     }
     h += '</div>';
+    return h;
+  }
+
+  function colorPickerHtml(kind, idx, currentColor) {
+    var h = '<span class="color-picker-wrap">';
+    h += '<span class="color-trigger" style="background:' + currentColor + '" data-color-' + kind + '="' + idx + '"></span>';
+    h += '<div class="color-popover" data-color-' + kind + '="' + idx + '">';
+    h += '<span class="native-label">Pick a color</span>';
+    h += '<input type="color" value="' + currentColor + '" class="native-color" data-color-' + kind + '="' + idx + '">';
+    h += swatchPopoverHtml(kind, idx);
+    h += '</div>';
+    h += '</span>';
     return h;
   }
 
@@ -241,12 +287,11 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       html += '<div class="group-header">';
       html += '<input type="checkbox" data-gi="' + gi + '" class="group-enabled"' + (g.enabled !== false ? ' checked' : '') + ' title="Enable/disable this group">';
       html += '<input type="text" value="' + esc(g.name) + '" data-gi="' + gi + '" class="group-name" placeholder="Group name">';
-      html += '<input type="color" value="' + g.color + '" data-gi="' + gi + '" class="group-color" title="Text color">';
+      html += colorPickerHtml('gi', gi, g.color);
       html += '<button class="move-btn" data-action="moveGroupUp" data-gi="' + gi + '" title="Move up"' + (gi === 0 ? ' disabled' : '') + '>▲</button>';
       html += '<button class="move-btn" data-action="moveGroupDown" data-gi="' + gi + '" title="Move down"' + (gi === groups.length - 1 ? ' disabled' : '') + '>▼</button>';
       html += '<button class="remove-btn" data-action="removeGroup" data-gi="' + gi + '">&times;</button>';
       html += '</div>';
-      html += swatchHtml('data-swatch-gi', gi);
       for (var ei = 0; ei < g.expressions.length; ei++) {
         var e = g.expressions[ei];
         html += '<div class="expr-row">';
@@ -283,12 +328,11 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       html += '<span style="width:36px;font-size:10px;color:var(--vscode-descriptionForeground);text-align:center">' + (ki + 1) + '</span>';
       html += '<input type="text" class="pattern" value="' + esc(kw.pattern) + '" data-ki="' + ki + '" placeholder="regex">';
       html += '<input type="text" class="flags" value="' + esc(kw.flags) + '" data-ki="' + ki + '" placeholder="i">';
-      html += '<input type="color" value="' + kw.color + '" data-ki="' + ki + '" class="keyword-color" title="Text color">';
+      html += colorPickerHtml('ki', ki, kw.color);
       html += '<button class="move-btn" data-action="moveKwUp" data-ki="' + ki + '" title="Move up"' + (ki === 0 ? ' disabled' : '') + '>▲</button>';
       html += '<button class="move-btn" data-action="moveKwDown" data-ki="' + ki + '" title="Move down"' + (ki === keywords.length - 1 ? ' disabled' : '') + '>▼</button>';
       html += '<button class="remove-btn" data-action="removeKeyword" data-ki="' + ki + '">&times;</button>';
       html += '</div>';
-      html += swatchHtml('data-swatch-ki', ki);
     }
     html += '<button class="add-btn" data-action="addKeyword" style="display:block;width:100%">+ Add Keyword</button>';
     html += '<span style="font-size:10px;color:var(--vscode-descriptionForeground)">Regex matches will be highlighted with a tinted background of the chosen color.</span>';
@@ -311,25 +355,69 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     };
   }
 
-  // 事件委托：在 #app 上只绑定一次，不随 innerHTML 重建而累积
+  // ── 关闭所有颜色弹出面板 ──
+  function closeAllPopovers() {
+    document.querySelectorAll('.color-popover.show').forEach(function(p) { p.classList.remove('show'); });
+  }
+
+  // ── 更新颜色数据 ──
+  function setColor(kind, idx, color) {
+    var trigger = document.querySelector('.color-trigger[data-color-' + kind + '="' + idx + '"]');
+    var native = document.querySelector('.native-color[data-color-' + kind + '="' + idx + '"]');
+    if (trigger) trigger.style.background = color;
+    if (native) native.value = color;
+    if (kind === 'gi') { groups[idx].color = color; }
+    else if (kind === 'ki') { keywords[idx].color = color; }
+    saveState();
+  }
+
+  // 事件委托
   document.getElementById('app').addEventListener('click', function(e) {
-    // 处理色板点击（在 button 检查之前，因为 swatch 是 span）
+    // ── 颜色触发器：切换弹出面板（fixed 定位 + 边界约束）──
+    var trigger = e.target.closest('.color-trigger');
+    if (trigger) {
+      var kind = trigger.dataset.colorGi !== undefined ? 'gi' : 'ki';
+      var idx = trigger.dataset.colorGi !== undefined ? trigger.dataset.colorGi : trigger.dataset.colorKi;
+      var popover = document.querySelector('.color-popover[data-color-' + kind + '="' + idx + '"]');
+      var wasOpen = popover && popover.classList.contains('show');
+      closeAllPopovers();
+      if (popover && !wasOpen) {
+        var rect = trigger.getBoundingClientRect();
+        // 水平：不超出 webview 右边界
+        var pw = 226;
+        var left = rect.left;
+        if (left + pw > window.innerWidth - 4) {
+          left = Math.max(2, window.innerWidth - pw - 4);
+        }
+        popover.style.left = left + 'px';
+        // 垂直：下方空间不足时翻到上方
+        var estH = 160;
+        if (rect.bottom + estH + 8 > window.innerHeight && rect.top > estH + 8) {
+          popover.style.top = (rect.top - estH - 4) + 'px';
+        } else {
+          popover.style.top = (rect.bottom + 4) + 'px';
+        }
+        popover.classList.add('show');
+      }
+      return;
+    }
+
+    // ── 色板点击：更新颜色并关闭面板 ──
     var swatch = e.target.closest('.swatch');
     if (swatch) {
       var color = swatch.dataset.swatchColor;
-      var sg = parseInt(swatch.dataset.swatchGi), sk = parseInt(swatch.dataset.swatchKi);
-      if (!isNaN(sg)) {
-        groups[sg].color = color;
-        var ci = document.querySelector('.group-color[data-gi="' + sg + '"]');
-        if (ci) ci.value = color;
-      } else if (!isNaN(sk)) {
-        keywords[sk].color = color;
-        var ci = document.querySelector('.keyword-color[data-ki="' + sk + '"]');
-        if (ci) ci.value = color;
-      }
-      saveState();
+      var sk = swatch.dataset.swatchGi !== undefined ? 'gi' : 'ki';
+      var sv = swatch.dataset.swatchGi !== undefined ? swatch.dataset.swatchGi : swatch.dataset.swatchKi;
+      setColor(sk, sv, color);
+      closeAllPopovers();
       return;
     }
+
+    // ── 点击弹出面板内部（非色板）不关闭 ──
+    if (e.target.closest('.color-popover')) { return; }
+
+    // ── 点击其他区域关闭所有面板 ──
+    closeAllPopovers();
 
     var btn = e.target.closest('button'); if (!btn) return;
     var action = btn.dataset.action;
@@ -344,8 +432,8 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     } else if (btn.id === 'clear-btn') {
       vscode.postMessage({ type: 'clear' });
     } else if (btn.id === 'reset-btn') {
-      groups = []; startLine = undefined; endLine = undefined;
-      keywords = [];
+      groups = []; keywords = [];
+      startLine = undefined; endLine = undefined;
       timePattern = { format: '' }; saveState();
       vscode.postMessage({ type: 'reset' });
       render();
@@ -398,12 +486,10 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     if (!isNaN(ki)) {
       if (el.classList.contains('pattern')) keywords[ki].pattern = el.value;
       else if (el.classList.contains('flags')) keywords[ki].flags = el.value;
-      else if (el.classList.contains('keyword-color')) keywords[ki].color = el.value;
       saveState(); return;
     }
     if (isNaN(gi)) return;
     if (el.classList.contains('group-name')) groups[gi].name = el.value;
-    else if (el.classList.contains('group-color')) groups[gi].color = el.value;
     else if (el.classList.contains('pattern') && !isNaN(ei)) groups[gi].expressions[ei].pattern = el.value;
     else if (el.classList.contains('flags') && !isNaN(ei)) groups[gi].expressions[ei].flags = el.value;
     saveState();
@@ -412,14 +498,19 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   document.getElementById('app').addEventListener('change', function(e) {
     var el = e.target, gi = parseInt(el.dataset.gi), ei = parseInt(el.dataset.ei);
     var ki = parseInt(el.dataset.ki);
+    // 原生颜色选择器变更
+    if (el.classList.contains('native-color')) {
+      var nk = el.dataset.colorGi !== undefined ? 'gi' : 'ki';
+      var nv = el.dataset.colorGi !== undefined ? el.dataset.colorGi : el.dataset.colorKi;
+      setColor(nk, nv, el.value);
+      return;
+    }
     if (el.classList.contains('expr-op')) {
       groups[gi].expressions[ei].operator = el.value; saveState();
     } else if (el.classList.contains('group-enabled')) {
       groups[gi].enabled = el.checked; saveState();
     } else if (el.classList.contains('expr-enabled')) {
       groups[gi].expressions[ei].enabled = el.checked; saveState();
-    } else if (!isNaN(ki) && el.classList.contains('keyword-color')) {
-      keywords[ki].color = el.value; saveState();
     }
   });
 
@@ -434,28 +525,39 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     document.querySelectorAll('.group-name').forEach(function(el) {
       groups[parseInt(el.dataset.gi)].name = el.value;
     });
-    document.querySelectorAll('.group-color').forEach(function(el) {
-      groups[parseInt(el.dataset.gi)].color = el.value;
-    });
     document.querySelectorAll('.expr-enabled').forEach(function(el) {
-      var gi = parseInt(el.dataset.gi), ei = parseInt(el.dataset.ei);
-      if (!isNaN(ei)) groups[gi].expressions[ei].enabled = el.checked;
+      var gii = parseInt(el.dataset.gi), eii = parseInt(el.dataset.ei);
+      if (!isNaN(eii)) groups[gii].expressions[eii].enabled = el.checked;
     });
     document.querySelectorAll('.pattern').forEach(function(el) {
-      var gi = parseInt(el.dataset.gi), ei = parseInt(el.dataset.ei);
-      var ki = parseInt(el.dataset.ki);
-      if (!isNaN(ei)) groups[gi].expressions[ei].pattern = el.value;
-      else if (!isNaN(ki)) keywords[ki].pattern = el.value;
+      var gii = parseInt(el.dataset.gi), eii = parseInt(el.dataset.ei);
+      var kii = parseInt(el.dataset.ki);
+      if (!isNaN(eii)) groups[gii].expressions[eii].pattern = el.value;
+      else if (!isNaN(kii)) keywords[kii].pattern = el.value;
     });
     document.querySelectorAll('.flags').forEach(function(el) {
-      var gi = parseInt(el.dataset.gi), ei = parseInt(el.dataset.ei);
-      var ki = parseInt(el.dataset.ki);
-      if (!isNaN(ei)) groups[gi].expressions[ei].flags = el.value;
-      else if (!isNaN(ki)) keywords[ki].flags = el.value;
+      var gii = parseInt(el.dataset.gi), eii = parseInt(el.dataset.ei);
+      var kii = parseInt(el.dataset.ki);
+      if (!isNaN(eii)) groups[gii].expressions[eii].flags = el.value;
+      else if (!isNaN(kii)) keywords[kii].flags = el.value;
     });
-    document.querySelectorAll('.keyword-color').forEach(function(el) {
-      keywords[parseInt(el.dataset.ki)].color = el.value;
+    // 颜色从 trigger 读取
+    document.querySelectorAll('.color-trigger[data-color-gi]').forEach(function(el) {
+      groups[parseInt(el.dataset.colorGi)].color = rgbToHex(el.style.background);
     });
+    document.querySelectorAll('.color-trigger[data-color-ki]').forEach(function(el) {
+      keywords[parseInt(el.dataset.colorKi)].color = rgbToHex(el.style.background);
+    });
+  }
+
+  function rgbToHex(rgb) {
+    if (!rgb || rgb === '') return '#000000';
+    if (rgb.startsWith('#')) return rgb;
+    var m = rgb.match(/\\d+/g);
+    if (!m) return '#000000';
+    return '#' + m.slice(0,3).map(function(x) {
+      return parseInt(x).toString(16).padStart(2,'0');
+    }).join('');
   }
 
   window.addEventListener('message', function(event) {
