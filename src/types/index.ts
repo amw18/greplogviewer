@@ -88,6 +88,17 @@ export interface EditorConfig {
   keywords?: KeywordConfig[];
 }
 
+// ===== Config Storage =====
+
+/** 持久化储存的命名配置 */
+export interface SavedConfigEntry {
+  name: string;
+  config: EditorConfig;
+}
+
+/** 储存范围 */
+export type ConfigScope = 'workspace' | 'user';
+
 // ===== Webview ↔ Extension 消息协议 =====
 
 export interface UpdateConfigMessage {
@@ -116,5 +127,73 @@ export interface ClearMessage {
   type: 'clear';
 }
 
-export type WebviewMessage = GoMessage | ResetMessage | ClearMessage;
-export type ExtensionMessage = UpdateConfigMessage;
+// ── Config Management Messages (Webview → Extension) ──
+
+export interface ExportConfigMessage {
+  type: 'exportConfig';
+  groups: RegexGroup[];
+  startLine?: number;
+  endLine?: number;
+  timePattern?: TimePatternConfig;
+  keywords?: KeywordConfig[];
+}
+
+export interface ImportConfigMessage {
+  type: 'importConfig';
+}
+
+export interface SaveConfigMessage {
+  type: 'saveConfig';
+  name: string;
+  scope: ConfigScope;
+  groups: RegexGroup[];
+  startLine?: number;
+  endLine?: number;
+  timePattern?: TimePatternConfig;
+  keywords?: KeywordConfig[];
+}
+
+export interface ListSavedConfigsMessage {
+  type: 'listSavedConfigs';
+}
+
+export interface ApplySavedConfigMessage {
+  type: 'applySavedConfig';
+  name: string;
+  scope: ConfigScope;
+}
+
+export interface DeleteSavedConfigMessage {
+  type: 'deleteSavedConfig';
+  name: string;
+  scope: ConfigScope;
+}
+
+// ── Config Management Messages (Extension → Webview) ──
+
+export interface ConfigImportedMessage {
+  type: 'configImported';
+  config?: EditorConfig;
+  error?: string;
+}
+
+export interface SavedConfigsListMessage {
+  type: 'savedConfigsList';
+  configs: { name: string; scope: ConfigScope }[];
+}
+
+export interface ConfigAppliedMessage {
+  type: 'configApplied';
+  groups: RegexGroup[];
+  startLine?: number;
+  endLine?: number;
+  timePattern?: TimePatternConfig;
+  keywords?: KeywordConfig[];
+}
+
+export type WebviewMessage = GoMessage | ResetMessage | ClearMessage
+  | ExportConfigMessage | ImportConfigMessage | SaveConfigMessage
+  | ListSavedConfigsMessage | ApplySavedConfigMessage | DeleteSavedConfigMessage;
+
+export type ExtensionMessage = UpdateConfigMessage
+  | ConfigImportedMessage | SavedConfigsListMessage | ConfigAppliedMessage;

@@ -4,6 +4,7 @@ import { RegexGroupModel } from './model/RegexGroupModel';
 import { EditorStateModel } from './model/EditorStateModel';
 import { FilterResultModel } from './model/FilterResultModel';
 import { TimeMatchModel } from './model/TimeMatchModel';
+import { ConfigStorageModel } from './model/ConfigStorageModel';
 import { ConfigController } from './controller/ConfigController';
 import { FilterController } from './controller/FilterController';
 import { ViewController } from './controller/ViewController';
@@ -19,10 +20,12 @@ export function activate(context: vscode.ExtensionContext) {
   const timeMatchModel = new TimeMatchModel();
   const configController = new ConfigController(regexGroupModel, editorStateModel);
   const filterController = new FilterController();
+  const configStorageModel = new ConfigStorageModel(context);
 
   viewController = new ViewController(
     configController, filterController,
-    editorStateModel, filterResultModel, regexGroupModel, timeMatchModel
+    editorStateModel, filterResultModel, regexGroupModel, timeMatchModel,
+    configStorageModel
   );
 
   grepController = new GrepController(viewController, regexGroupModel, filterResultModel, editorStateModel);

@@ -1,12 +1,14 @@
 // ViewController — 协调 View 和 Controller，管理编辑器生命周期
 import * as vscode from 'vscode';
-import { RegexGroup, TimePatternConfig, KeywordConfig } from '../types';
+import * as fs from 'fs';
+import { RegexGroup, TimePatternConfig, KeywordConfig, ConfigScope } from '../types';
 import { ConfigController } from './ConfigController';
 import { FilterController } from './FilterController';
 import { EditorStateModel } from '../model/EditorStateModel';
 import { FilterResultModel } from '../model/FilterResultModel';
 import { RegexGroupModel } from '../model/RegexGroupModel';
 import { TimeMatchModel } from '../model/TimeMatchModel';
+import { ConfigStorageModel } from '../model/ConfigStorageModel';
 import { ConfigPanel } from '../view/ConfigPanel';
 import { EditorDecorations } from '../view/EditorDecorations';
 
@@ -24,7 +26,8 @@ export class ViewController {
     private editorStateModel: EditorStateModel,
     private filterResultModel: FilterResultModel,
     private regexGroupModel: RegexGroupModel,
-    private timeMatchModel: TimeMatchModel
+    private timeMatchModel: TimeMatchModel,
+    private configStorageModel: ConfigStorageModel
   ) {
     this.configPanel = new ConfigPanel();
     this.decorations = new EditorDecorations();
@@ -32,6 +35,14 @@ export class ViewController {
     this.configPanel.onGo((g, s, e, tp, kw) => this.handleGo(g, s, e, tp, kw));
     this.configPanel.onReset(() => this.handleReset());
     this.configPanel.onClear(() => this.handleClear());
+
+    // Config management callbacks
+    this.configPanel.onExport((g, s, e, tp, kw) => this.handleExport(g, s, e, tp, kw));
+    this.configPanel.onImport(() => this.handleImport());
+    this.configPanel.onSave((n, sc, g, s, e, tp, kw) => this.handleSave(n, sc, g, s, e, tp, kw));
+    this.configPanel.onListSaved(() => this.handleListSaved());
+    this.configPanel.onApply((n, sc) => this.handleApply(n, sc));
+    this.configPanel.onDelete((n, sc) => this.handleDelete(n, sc));
   }
 
   getPanelProvider(): ConfigPanel {
@@ -231,6 +242,121 @@ export class ViewController {
       lines.push(editor.document.lineAt(i).text);
     }
     return lines;
+  }
+
+  // ── Config Management Handlers ──
+
+  /** Export: 将当前配置写入用户指定的本地 JSON 文件 */
+  private async handleExport(groups: RegexGroup[], startLine?: number, endLine?: number, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): Promise<void> {
+    const uri = await vscode.window.showSaveDialog({
+      defaultUri: vscode.Uri.file('greplogviewer-config.json'),
+      filters: { 'JSON Files': ['json'] },
+    });
+    if (!uri) { return; }
+
+    const content = JSON.stringify({ groups, startLine, endLine, timePattern, keywords }, null, 2);
+    try {
+      fs.writeFileSync(uri.fsPath, content, 'utf-8');
+      vscode.window.showInformationMessage(`Config exported to ${uri.fsPath}`);
+    } catch (err: any) {
+      vscode.window.showErrorMessage(`Export failed: ${err.message}`);
+    }
+  }
+
+  /** Import: 从用户指定的本地 JSON 文件加载配置到面板 */
+  private async handleImport(): Promise<void> {
+    const uris = await vscode.window.showOpenDialog({
+      canSelectMany: false,
+      filters: { 'JSON Files': ['json'] },
+    });
+    if (!uris || uris.length === 0) { return; }
+
+    try {
+      const raw = fs.readFileSync(uris[0].fsPath, 'utf-8');
+      const data = JSON.parse(raw);
+      // 兼容：允许仅有 groups，也允许包含完整 EditorConfig
+      const groups = Array.isArray(data.groups) ? data.groups : (Array.isArray(data) ? data : []);
+      if (!Array.isArray(groups) || groups.length === 0) {
+        vscode.window.showErrorMessage('Import failed: Invalid config format — expected an object with a "groups" array.');
+        return;
+      }
+      this.configPanel.sendConfigImported({
+        groups,
+        startLine: data.startLine,
+        endLine: data.endLine,
+        timePattern: data.timePattern,
+        keywords: data.keywords,
+      });
+      vscode.window.showInformationMessage(`Config imported from ${uris[0].fsPath}`);
+    } catch (err: any) {
+      vscode.window.showErrorMessage(`Import failed: ${err.message}`);
+      this.configPanel.sendConfigImported(undefined, err.message);
+    }
+  }
+
+  /** Save: 将当前配置保存到 workspaceState 或 globalState（命名） */
+  private async handleSave(name: string, scope: ConfigScope, groups: RegexGroup[], startLine?: number, endLine?: number, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): Promise<void> {
+    if (this.configStorageModel.exists(name, scope)) {
+      const answer = await vscode.window.showWarningMessage(
+        `Config "${name}" already exists in ${scope}. Overwrite?`,
+        { modal: true },
+        'Overwrite'
+      );
+      if (answer !== 'Overwrite') { return; }
+    }
+
+    await this.configStorageModel.save(name, {
+      groups, startLine, endLine, timePattern, keywords,
+    }, scope);
+
+    vscode.window.showInformationMessage(`Config "${name}" saved to ${scope}.`);
+    // Refresh the webview dropdown
+    this.handleListSaved();
+  }
+
+  /** 列出所有已保存配置并发送到 webview */
+  private handleListSaved(): void {
+    const configs = this.configStorageModel.listAll();
+    this.configPanel.sendSavedConfigsList(configs);
+  }
+
+  /** Apply: 加载指定命名配置到面板（不自动生效，用户仍需点 Go） */
+  private handleApply(name: string, scope: ConfigScope): void {
+    const entry = this.configStorageModel.get(name, scope);
+    if (!entry) {
+      vscode.window.showErrorMessage(`Config "${name}" not found in ${scope}.`);
+      return;
+    }
+
+    this.configPanel.sendConfigApplied(
+      entry.config.groups,
+      entry.config.startLine,
+      entry.config.endLine,
+      entry.config.timePattern,
+      entry.config.keywords,
+    );
+  }
+
+  /** Delete: 删除指定命名配置 */
+  private async handleDelete(name: string, scope: ConfigScope): Promise<void> {
+    const answer = await vscode.window.showWarningMessage(
+      `Delete saved config "${name}" (${scope})?`,
+      { modal: true },
+      'Delete'
+    );
+    if (answer !== 'Delete') { return; }
+
+    try {
+      const deleted = await this.configStorageModel.delete(name, scope);
+      if (!deleted) {
+        vscode.window.showErrorMessage(`Config "${name}" not found in ${scope}.`);
+        return;
+      }
+      vscode.window.showInformationMessage(`Config "${name}" deleted from ${scope}.`);
+      this.handleListSaved();
+    } catch (err: any) {
+      vscode.window.showErrorMessage(`Delete failed: ${err?.message || err}`);
+    }
   }
 
   dispose(): void {

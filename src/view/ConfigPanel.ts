@@ -1,12 +1,18 @@
 // ConfigPanel — 左侧边栏 WebviewView 配置面板
 import * as vscode from 'vscode';
-import { RegexGroup, RegexExpression, LogicOperator, TimePatternConfig, KeywordConfig, WebviewMessage, ExtensionMessage } from '../types';
+import { RegexGroup, RegexExpression, LogicOperator, TimePatternConfig, KeywordConfig, ConfigScope, WebviewMessage, ExtensionMessage } from '../types';
 
 export class ConfigPanel implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
   private goCallback: ((groups: RegexGroup[], startLine?: number, endLine?: number, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void) | undefined;
   private resetCallback: (() => void) | undefined;
   private clearCallback: (() => void) | undefined;
+  private exportCallback: ((groups: RegexGroup[], startLine?: number, endLine?: number, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void) | undefined;
+  private importCallback: (() => void) | undefined;
+  private saveCallback: ((name: string, scope: ConfigScope, groups: RegexGroup[], startLine?: number, endLine?: number, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void) | undefined;
+  private listSavedCallback: (() => void) | undefined;
+  private applyCallback: ((name: string, scope: ConfigScope) => void) | undefined;
+  private deleteCallback: ((name: string, scope: ConfigScope) => void) | undefined;
   /** 缓存最近一次 groups 和行范围用于 webview 尚未就绪时 */
   private pendingGroups: RegexGroup[] = [];
   private pendingStartLine?: number;
@@ -30,6 +36,24 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
           break;
         case 'clear':
           this.clearCallback?.();
+          break;
+        case 'exportConfig':
+          this.exportCallback?.(msg.groups, msg.startLine, msg.endLine, msg.timePattern, msg.keywords);
+          break;
+        case 'importConfig':
+          this.importCallback?.();
+          break;
+        case 'saveConfig':
+          this.saveCallback?.(msg.name, msg.scope, msg.groups, msg.startLine, msg.endLine, msg.timePattern, msg.keywords);
+          break;
+        case 'listSavedConfigs':
+          this.listSavedCallback?.();
+          break;
+        case 'applySavedConfig':
+          this.applyCallback?.(msg.name, msg.scope);
+          break;
+        case 'deleteSavedConfig':
+          this.deleteCallback?.(msg.name, msg.scope);
           break;
       }
     });
@@ -62,6 +86,59 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
 
   onClear(callback: () => void): void {
     this.clearCallback = callback;
+  }
+
+  onExport(callback: (groups: RegexGroup[], startLine?: number, endLine?: number, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void): void {
+    this.exportCallback = callback;
+  }
+
+  onImport(callback: () => void): void {
+    this.importCallback = callback;
+  }
+
+  onSave(callback: (name: string, scope: ConfigScope, groups: RegexGroup[], startLine?: number, endLine?: number, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void): void {
+    this.saveCallback = callback;
+  }
+
+  onListSaved(callback: () => void): void {
+    this.listSavedCallback = callback;
+  }
+
+  onApply(callback: (name: string, scope: ConfigScope) => void): void {
+    this.applyCallback = callback;
+  }
+
+  onDelete(callback: (name: string, scope: ConfigScope) => void): void {
+    this.deleteCallback = callback;
+  }
+
+  /** 向 webview 发送已保存配置列表 */
+  sendSavedConfigsList(configs: { name: string; scope: ConfigScope }[]): void {
+    this.view?.webview.postMessage({
+      type: 'savedConfigsList' as const,
+      configs,
+    } satisfies ExtensionMessage);
+  }
+
+  /** 向 webview 发送指定配置数据（apply/import 结果） */
+  sendConfigApplied(groups: RegexGroup[], startLine?: number, endLine?: number, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): void {
+    this.view?.webview.postMessage({
+      type: 'configApplied' as const,
+      groups,
+      startLine,
+      endLine,
+      timePattern,
+      keywords,
+    } satisfies ExtensionMessage);
+  }
+
+  /** 向 webview 发送导入结果（含错误信息） */
+  sendConfigImported(config?: { groups: RegexGroup[]; startLine?: number; endLine?: number; timePattern?: TimePatternConfig; keywords?: KeywordConfig[] }, error?: string): void {
+    this.view?.webview.postMessage({
+      type: 'configImported' as const,
+      config: config ? { groups: config.groups, startLine: config.startLine, endLine: config.endLine, timePattern: config.timePattern, keywords: config.keywords } : undefined,
+      error,
+    } satisfies ExtensionMessage);
   }
 
   private sendUpdate(groups: RegexGroup[], startLine?: number, endLine?: number, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): void {
@@ -176,6 +253,27 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   .dirs-input { flex: 1; background: transparent;
                 color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border);
                 padding: 1px 4px; border-radius: 2px; font-size: 11px; }
+
+  /* ── Config Management ── */
+  .cfg-mgmt-row { display: flex; align-items: center; gap: 3px; margin-bottom: 4px; }
+  .cfg-mgmt-row label { font-size: 10px; color: var(--vscode-descriptionForeground);
+                        white-space: nowrap; }
+  .cfg-mgmt-row input[type="text"] { flex: 1; min-width: 0;
+        background: var(--vscode-input-background);
+        color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border);
+        padding: 1px 4px; border-radius: 2px; font-size: 11px; }
+  .cfg-mgmt-row select { background: var(--vscode-dropdown-background);
+        color: var(--vscode-dropdown-foreground); border: 1px solid var(--vscode-dropdown-border);
+        padding: 1px 2px; border-radius: 2px; font-size: 10px; }
+  .cfg-mgmt-row .cfg-btn { background: var(--vscode-button-secondaryBackground);
+        color: var(--vscode-button-secondaryForeground); border: none;
+        padding: 2px 6px; border-radius: 2px; cursor: pointer; font-size: 10px;
+        white-space: nowrap; flex-shrink: 0; }
+  .cfg-mgmt-row .cfg-btn:hover { background: var(--vscode-button-secondaryHoverBackground); }
+  .cfg-mgmt-row .cfg-btn.danger { color: var(--vscode-errorForeground); }
+  .cfg-mgmt-row .cfg-btn.danger:hover { background: var(--vscode-inputValidation-errorBackground); }
+  .cfg-divider { border: none; border-top: 1px solid var(--vscode-panel-border);
+                 margin: 4px 0; }
 </style>
 </head>
 <body>
@@ -189,6 +287,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   let endLine = state.endLine;
   let keywords = state.keywords || [];
   let timePattern = state.timePattern || { format: '' };
+  var savedConfigsList = [];
 
   function saveState() { vscode.setState({ groups, startLine, endLine, keywords }); }
 
@@ -351,6 +450,34 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     html += '<span style="font-size:10px;color:var(--vscode-descriptionForeground)">Regex matches will be highlighted with a tinted background of the chosen color.</span>';
     html += '</div></div>';
 
+    // ── Section: Config Management ──
+    html += '<div class="section">';
+    html += '<div class="section-header">Config Management</div>';
+    html += '<div class="section-body">';
+
+    // Save row
+    html += '<div class="cfg-mgmt-row">';
+    html += '<input type="text" id="cfg-save-name" placeholder="Config name" style="width:90px">';
+    html += '<select id="cfg-save-scope"><option value="user">User</option><option value="workspace">Workspace</option></select>';
+    html += '<button class="cfg-btn" id="cfg-save-btn">Save</button>';
+    html += '</div>';
+
+    // Apply + Delete row
+    html += '<div class="cfg-mgmt-row">';
+    html += '<select id="cfg-apply-select" style="flex:1;min-width:0"><option value="">-- Select saved --</option></select>';
+    html += '<button class="cfg-btn" id="cfg-apply-btn">Apply</button>';
+    html += '<button class="cfg-btn danger" id="cfg-delete-btn">Delete</button>';
+    html += '</div>';
+
+    // Export / Import row
+    html += '<hr class="cfg-divider">';
+    html += '<div class="cfg-mgmt-row">';
+    html += '<button class="cfg-btn" id="cfg-export-btn" style="flex:1">Export to file</button>';
+    html += '<button class="cfg-btn" id="cfg-import-btn" style="flex:1">Import from file</button>';
+    html += '</div>';
+
+    html += '</div></div>';
+
     html += '<div class="action-bar">';
     html += '<button class="action-btn" id="go-btn">Go</button>';
     html += '<button class="action-btn reset-btn" id="clear-btn">Clear</button>';
@@ -450,6 +577,41 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       timePattern = { format: '' }; saveState();
       vscode.postMessage({ type: 'reset' });
       render();
+    } else if (btn.id === 'cfg-export-btn') {
+      collectData(); var se2 = collectStartEnd();
+      startLine = se2.startLine; endLine = se2.endLine;
+      var tf2 = document.getElementById('time-format');
+      timePattern = { format: tf2 ? tf2.value : '' };
+      saveState();
+      vscode.postMessage({ type: 'exportConfig', groups: groups, startLine: startLine, endLine: endLine, timePattern: timePattern, keywords: keywords });
+    } else if (btn.id === 'cfg-import-btn') {
+      vscode.postMessage({ type: 'importConfig' });
+    } else if (btn.id === 'cfg-save-btn') {
+      collectData(); var se3 = collectStartEnd();
+      startLine = se3.startLine; endLine = se3.endLine;
+      var tf3 = document.getElementById('time-format');
+      timePattern = { format: tf3 ? tf3.value : '' };
+      saveState();
+      var saveName = document.getElementById('cfg-save-name').value.trim();
+      var saveScope = document.getElementById('cfg-save-scope').value;
+      if (!saveName) { alert('Please enter a config name.'); return; }
+      vscode.postMessage({ type: 'saveConfig', name: saveName, scope: saveScope, groups: groups, startLine: startLine, endLine: endLine, timePattern: timePattern, keywords: keywords });
+    } else if (btn.id === 'cfg-apply-btn') {
+      var applySel = document.getElementById('cfg-apply-select');
+      var applyVal = applySel ? applySel.value : '';
+      if (applyVal === '') { alert('Please select a saved config.'); return; }
+      var idx = parseInt(applyVal, 10);
+      var item = savedConfigsList[idx];
+      if (!item) { return; }
+      vscode.postMessage({ type: 'applySavedConfig', name: item.name, scope: item.scope });
+    } else if (btn.id === 'cfg-delete-btn') {
+      var delSel = document.getElementById('cfg-apply-select');
+      var delVal = delSel ? delSel.value : '';
+      if (delVal === '') { alert('Please select a saved config to delete.'); return; }
+      var didx = parseInt(delVal, 10);
+      var ditem = savedConfigsList[didx];
+      if (!ditem) { return; }
+      vscode.postMessage({ type: 'deleteSavedConfig', name: ditem.name, scope: ditem.scope });
     } else if (action === 'addGroup') {
       groups.push({ id: uuid(), name: 'New Group', color: randomColor(), expressions: [], enabled: true });
       saveState(); render();
@@ -587,10 +749,53 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       timePattern = msg.timePattern || { format: '' };
       saveState();
       render();
+      vscode.postMessage({ type: 'listSavedConfigs' });
+    } else if (msg.type === 'configApplied') {
+      // Apply: load the saved config into the panel (user still needs to click Go)
+      groups = msg.groups || [];
+      startLine = msg.startLine;
+      endLine = msg.endLine;
+      keywords = msg.keywords || [];
+      timePattern = msg.timePattern || { format: '' };
+      saveState();
+      render();
+      vscode.postMessage({ type: 'listSavedConfigs' });
+    } else if (msg.type === 'configImported') {
+      if (msg.error) {
+        alert('Import failed: ' + msg.error);
+      } else if (msg.config) {
+        groups = msg.config.groups || [];
+        startLine = msg.config.startLine;
+        endLine = msg.config.endLine;
+        keywords = msg.config.keywords || [];
+        timePattern = msg.config.timePattern || { format: '' };
+        saveState();
+        render();
+        vscode.postMessage({ type: 'listSavedConfigs' });
+      }
+    } else if (msg.type === 'savedConfigsList') {
+      // Update the saved configs dropdown
+      savedConfigsList = msg.configs || [];
+      var sel = document.getElementById('cfg-apply-select');
+      if (sel) {
+        var curIdx = sel.value;
+        sel.innerHTML = '<option value="">-- Select saved --</option>';
+        savedConfigsList.forEach(function(c, i) {
+          var opt = document.createElement('option');
+          opt.value = String(i);
+          opt.textContent = '[' + c.scope + '] ' + c.name;
+          sel.appendChild(opt);
+        });
+        // Restore previous selection if still valid
+        if (curIdx !== '' && parseInt(curIdx, 10) < savedConfigsList.length) {
+          sel.value = curIdx;
+        }
+      }
     }
   });
 
   render();
+  vscode.postMessage({ type: 'listSavedConfigs' });
 })();
 </script>
 </body>
