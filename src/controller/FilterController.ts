@@ -25,6 +25,9 @@ export class FilterController {
 
     // 仅在 [scanStart, scanEnd) 范围内匹配
     for (const group of groups) {
+      // 跳过禁用的组
+      if (group.enabled === false) { continue; }
+
       for (let i = scanStart; i < scanEnd; i++) {
         if (matchedLines.has(i)) { continue; }
 
@@ -45,7 +48,11 @@ export class FilterController {
   matchGroup(line: string, group: RegexGroup): boolean {
     if (group.expressions.length === 0) { return false; }
 
-    const exprs = group.expressions;
+    // 过滤出启用的表达式（enabled !== false）
+    const enabledExprs = group.expressions.filter(e => e.enabled !== false);
+    if (enabledExprs.length === 0) { return false; }
+
+    const exprs = enabledExprs;
     let result = this.matchExpression(line, exprs[0]);
 
     for (let i = 1; i < exprs.length; i++) {

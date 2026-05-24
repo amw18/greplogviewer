@@ -44,6 +44,16 @@ export class ConfigController {
     this.regexGroupModel.updateExpression(groupId, expressionId, updates);
   }
 
+  /** 移动正则组到指定索引 */
+  moveGroup(fromIndex: number, toIndex: number): void {
+    this.regexGroupModel.moveGroup(fromIndex, toIndex);
+  }
+
+  /** 移动组内表达式到指定索引 */
+  moveExpression(groupId: string, fromIndex: number, toIndex: number): void {
+    this.regexGroupModel.moveExpression(groupId, fromIndex, toIndex);
+  }
+
   /** 校验正则表达式合法性 */
   validatePattern(pattern: string, flags: string): { valid: boolean; error?: string } {
     return this.regexGroupModel.validatePattern(pattern, flags);

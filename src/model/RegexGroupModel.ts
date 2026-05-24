@@ -22,6 +22,7 @@ export class RegexGroupModel {
       name,
       color,
       expressions: [],
+      enabled: true,
     };
     this.groups.push(group);
     return group;
@@ -50,6 +51,7 @@ export class RegexGroupModel {
       pattern,
       flags,
       operator,
+      enabled: true,
     };
     group.expressions.push(expr);
     return expr;
@@ -72,6 +74,26 @@ export class RegexGroupModel {
         Object.assign(expr, updates);
       }
     }
+  }
+
+  /** 移动正则组到指定索引 */
+  moveGroup(fromIndex: number, toIndex: number): void {
+    if (fromIndex < 0 || fromIndex >= this.groups.length) { return; }
+    if (toIndex < 0 || toIndex >= this.groups.length) { return; }
+    if (fromIndex === toIndex) { return; }
+    const [item] = this.groups.splice(fromIndex, 1);
+    this.groups.splice(toIndex, 0, item);
+  }
+
+  /** 移动组内表达式到指定索引 */
+  moveExpression(groupId: string, fromIndex: number, toIndex: number): void {
+    const group = this.groups.find(g => g.id === groupId);
+    if (!group) { return; }
+    if (fromIndex < 0 || fromIndex >= group.expressions.length) { return; }
+    if (toIndex < 0 || toIndex >= group.expressions.length) { return; }
+    if (fromIndex === toIndex) { return; }
+    const [item] = group.expressions.splice(fromIndex, 1);
+    group.expressions.splice(toIndex, 0, item);
   }
 
   /** 校验正则表达式合法性 */

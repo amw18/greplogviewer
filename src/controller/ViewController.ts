@@ -1,6 +1,6 @@
 // ViewController — 协调 View 和 Controller，管理编辑器生命周期
 import * as vscode from 'vscode';
-import { RegexGroup, TimePatternConfig } from '../types';
+import { RegexGroup, TimePatternConfig, KeywordConfig } from '../types';
 import { ConfigController } from './ConfigController';
 import { FilterController } from './FilterController';
 import { EditorStateModel } from '../model/EditorStateModel';
@@ -16,6 +16,7 @@ export class ViewController {
   private currentEditor: vscode.TextEditor | undefined;
   private currentStartLine?: number;
   private currentEndLine?: number;
+  private currentKeywords?: KeywordConfig[];
 
   constructor(
     configController: ConfigController,
@@ -28,7 +29,7 @@ export class ViewController {
     this.configPanel = new ConfigPanel();
     this.decorations = new EditorDecorations();
 
-    this.configPanel.onGo((g, s, e, tp) => this.handleGo(g, s, e, tp));
+    this.configPanel.onGo((g, s, e, tp, kw) => this.handleGo(g, s, e, tp, kw));
     this.configPanel.onReset(() => this.handleReset());
     this.configPanel.onClear(() => this.handleClear());
   }
@@ -55,15 +56,18 @@ export class ViewController {
         this.timeMatchModel.setConfig(savedConfig.timePattern);
       }
 
+      // 恢复关键字配置
+      this.currentKeywords = savedConfig.keywords;
+
       if (this.editorStateModel.isActive(editorId)) {
-        // 已激活：恢复颜色装饰 + 时间标注（折叠由 VS Code 自动保持）
+        // 已激活：恢复颜色装饰 + 关键字高亮 + 时间标注（折叠由 VS Code 自动保持）
         const lines = this.readLines(editor);
         const results = this.filterController.filter(
           lines, savedConfig.groups,
           savedConfig.startLine, savedConfig.endLine
         );
         this.filterResultModel.setResults(editorId, results);
-        this.decorations.apply(results, editor);
+        this.decorations.apply(results, editor, this.currentKeywords);
 
         // 恢复时间标注
         if (this.timeMatchModel.isConfigured()) {
@@ -87,12 +91,13 @@ export class ViewController {
     this.configPanel.render(
       this.regexGroupModel.getGroups(),
       this.currentStartLine, this.currentEndLine,
-      tp.format ? tp : undefined
+      tp.format ? tp : undefined,
+      this.currentKeywords
     );
   }
 
   /** Go: 应用过滤 + 颜色高亮 + 创建折叠 + 时间标注 */
-  private async handleGo(groups: RegexGroup[], startLine?: number, endLine?: number, timePattern?: TimePatternConfig): Promise<void> {
+  private async handleGo(groups: RegexGroup[], startLine?: number, endLine?: number, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): Promise<void> {
     if (!this.currentEditor) { return; }
     const editor = this.currentEditor;
     const editorId = editor.document.uri.toString();
@@ -106,16 +111,20 @@ export class ViewController {
       this.timeMatchModel.setConfig(timePattern);
     }
 
+    // 关键字配置
+    this.currentKeywords = keywords;
+
     this.editorStateModel.saveConfig(editorId, {
       groups, startLine, endLine,
       timePattern: this.timeMatchModel.isConfigured() ? this.timeMatchModel.getConfig() : undefined,
+      keywords,
     });
     this.editorStateModel.setActive(editorId, true);
 
     const lines = this.readLines(editor);
     const results = this.filterController.filter(lines, groups, startLine, endLine);
     this.filterResultModel.setResults(editorId, results);
-    this.decorations.apply(results, editor);
+    this.decorations.apply(results, editor, keywords);
 
     // 时间匹配：按需解析折叠边界行
     if (this.timeMatchModel.isConfigured()) {
@@ -167,6 +176,7 @@ export class ViewController {
     this.regexGroupModel.setGroups([]);
     this.currentStartLine = undefined;
     this.currentEndLine = undefined;
+    this.currentKeywords = undefined;
     this.timeMatchModel.setConfig({ format: '' });
     this.editorStateModel.clearEditor(editorId);
     this.filterResultModel.clearResults(editorId);
@@ -198,7 +208,7 @@ export class ViewController {
     const lines = this.readLines(editor);
     const results = this.filterController.filter(lines, groups, this.currentStartLine, this.currentEndLine);
     this.filterResultModel.setResults(editorId, results);
-    this.decorations.apply(results, editor);
+    this.decorations.apply(results, editor, this.currentKeywords);
 
     // 重新计算时间标注
     if (this.timeMatchModel.isConfigured()) {

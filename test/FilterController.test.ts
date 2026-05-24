@@ -270,4 +270,85 @@ describe('FilterController', () => {
       assert.strictEqual(results[3].groupId, null);
     });
   });
+
+  describe('enabled — 启用/禁用', () => {
+    const lines = ['ERROR timeout', 'INFO started', 'WARN memory'];
+
+    it('enabled 未设置时默认为启用', () => {
+      const group: RegexGroup = {
+        id: 'g1', name: 'test', color: '#ff0',
+        expressions: [{ id: 'e1', pattern: 'ERROR', flags: '', operator: LogicOperator.AND }],
+      };
+      assert.strictEqual(fc.matchGroup('ERROR timeout', group), true);
+    });
+
+    it('group.enabled=false 时整组被跳过，所有行未匹配', () => {
+      const group: RegexGroup = {
+        id: 'g1', name: 'test', color: '#ff0', enabled: false,
+        expressions: [{ id: 'e1', pattern: 'ERROR', flags: '', operator: LogicOperator.AND }],
+      };
+      const results = fc.filter(lines, [group]);
+      results.forEach(r => assert.strictEqual(r.groupId, null));
+    });
+
+    it('group.enabled=true 时正常匹配', () => {
+      const group: RegexGroup = {
+        id: 'g1', name: 'test', color: '#ff0', enabled: true,
+        expressions: [{ id: 'e1', pattern: 'ERROR', flags: '', operator: LogicOperator.AND }],
+      };
+      const results = fc.filter(lines, [group]);
+      assert.strictEqual(results[0].groupId, 'g1');
+      assert.strictEqual(results[1].groupId, null);
+    });
+
+    it('多组中禁用某组后，后续组仍可匹配该组原本匹配的行', () => {
+      const g1: RegexGroup = {
+        id: 'g1', name: 'first', color: '#f00', enabled: false,
+        expressions: [{ id: 'e1', pattern: 'ERROR', flags: '', operator: LogicOperator.AND }],
+      };
+      const g2: RegexGroup = {
+        id: 'g2', name: 'second', color: '#0f0',
+        expressions: [{ id: 'e1', pattern: 'ERROR', flags: '', operator: LogicOperator.AND }],
+      };
+      const results = fc.filter(lines, [g1, g2]);
+      // g1 被跳过，g2 匹配到 ERROR
+      assert.strictEqual(results[0].groupId, 'g2');
+      assert.strictEqual(results[0].color, '#0f0');
+    });
+
+    it('expression.enabled=false 时该表达式在 matchGroup 中被跳过', () => {
+      const group: RegexGroup = {
+        id: 'g1', name: 'test', color: '#ff0',
+        expressions: [
+          { id: 'e1', pattern: 'ERROR', flags: '', operator: LogicOperator.AND },
+          { id: 'e2', pattern: 'timeout', flags: '', operator: LogicOperator.AND, enabled: false },
+        ],
+      };
+      // e2 被跳过，仅 e1 生效 → 匹配
+      assert.strictEqual(fc.matchGroup('ERROR timeout', group), true);
+      assert.strictEqual(fc.matchGroup('ERROR crash', group), true);
+    });
+
+    it('所有 expression 都被禁用时 matchGroup 返回 false', () => {
+      const group: RegexGroup = {
+        id: 'g1', name: 'test', color: '#ff0',
+        expressions: [
+          { id: 'e1', pattern: 'ERROR', flags: '', operator: LogicOperator.AND, enabled: false },
+        ],
+      };
+      assert.strictEqual(fc.matchGroup('ERROR timeout', group), false);
+    });
+
+    it('expression.enabled=true 时正常参与逻辑运算', () => {
+      const group: RegexGroup = {
+        id: 'g1', name: 'test', color: '#ff0',
+        expressions: [
+          { id: 'e1', pattern: 'ERROR', flags: '', operator: LogicOperator.AND },
+          { id: 'e2', pattern: 'timeout', flags: '', operator: LogicOperator.AND, enabled: true },
+        ],
+      };
+      assert.strictEqual(fc.matchGroup('ERROR timeout', group), true);
+      assert.strictEqual(fc.matchGroup('ERROR crash', group), false);
+    });
+  });
 });

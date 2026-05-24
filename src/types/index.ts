@@ -15,6 +15,8 @@ export interface RegexExpression {
   flags: string;
   /** 与前一表达式的逻辑关系（组内首表达式忽略此字段） */
   operator: LogicOperator;
+  /** 是否启用，默认 true。false 时该表达式在匹配时被跳过 */
+  enabled?: boolean;
 }
 
 /** 正则组：一组正则表达式 + 显示颜色 */
@@ -23,6 +25,8 @@ export interface RegexGroup {
   name: string;
   color: string;
   expressions: RegexExpression[];
+  /** 是否启用，默认 true。false 时整组在过滤时被跳过 */
+  enabled?: boolean;
 }
 
 /** 过滤结果：每行的匹配信息 */
@@ -61,7 +65,15 @@ export interface FoldRange {
   durationMs?: number;
 }
 
-/** 编辑器级别的配置（正则组 + 行范围 + 时间模式） */
+/** 关键字匹配配置：文本中匹配的子串高亮为指定颜色 */
+export interface KeywordConfig {
+  id: string;
+  pattern: string;
+  flags: string;
+  color: string;
+}
+
+/** 编辑器级别的配置（正则组 + 行范围 + 时间模式 + 关键字） */
 export interface EditorConfig {
   groups: RegexGroup[];
   /** 开始匹配的行号（1-based），用户可见行号。未配置时为 undefined */
@@ -70,6 +82,8 @@ export interface EditorConfig {
   endLine?: number;
   /** 时间匹配模式，未配置时不提取时间信息 */
   timePattern?: TimePatternConfig;
+  /** 关键字高亮配置，未配置时不启用 */
+  keywords?: KeywordConfig[];
 }
 
 // ===== Webview ↔ Extension 消息协议 =====
@@ -80,6 +94,7 @@ export interface UpdateConfigMessage {
   startLine?: number;
   endLine?: number;
   timePattern?: TimePatternConfig;
+  keywords?: KeywordConfig[];
 }
 
 export interface GoMessage {
@@ -88,6 +103,7 @@ export interface GoMessage {
   startLine?: number;
   endLine?: number;
   timePattern?: TimePatternConfig;
+  keywords?: KeywordConfig[];
 }
 
 export interface ResetMessage {
