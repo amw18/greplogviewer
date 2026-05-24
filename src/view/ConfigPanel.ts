@@ -168,6 +168,14 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
             border: 1px solid var(--vscode-panel-border); flex-shrink: 0;
             transition: transform 0.1s; }
   .swatch:hover { transform: scale(1.3); border-color: var(--vscode-focusBorder); }
+
+  .dirs-row { display: flex; align-items: center; gap: 3px; margin-bottom: 3px;
+              padding: 3px; background: var(--vscode-input-background); border-radius: 2px; }
+  .dirs-label { font-size: 10px; color: var(--vscode-descriptionForeground);
+                width: 36px; text-align: center; flex-shrink: 0; }
+  .dirs-input { flex: 1; background: transparent;
+                color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border);
+                padding: 1px 4px; border-radius: 2px; font-size: 11px; }
 </style>
 </head>
 <body>
@@ -291,6 +299,11 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       html += '<button class="move-btn" data-action="moveGroupUp" data-gi="' + gi + '" title="Move up"' + (gi === 0 ? ' disabled' : '') + '>▲</button>';
       html += '<button class="move-btn" data-action="moveGroupDown" data-gi="' + gi + '" title="Move down"' + (gi === groups.length - 1 ? ' disabled' : '') + '>▼</button>';
       html += '<button class="remove-btn" data-action="removeGroup" data-gi="' + gi + '">&times;</button>';
+      html += '</div>';
+      // 关联代码目录
+      html += '<div class="dirs-row">';
+      html += '<span class="dirs-label">Dirs</span>';
+      html += '<input type="text" class="dirs-input" value="' + esc(g.associatedDirs || '') + '" data-gi="' + gi + '" placeholder="src/server; src/utils; !src/test (env: \$VAR or \${VAR})">';
       html += '</div>';
       for (var ei = 0; ei < g.expressions.length; ei++) {
         var e = g.expressions[ei];
@@ -490,6 +503,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     }
     if (isNaN(gi)) return;
     if (el.classList.contains('group-name')) groups[gi].name = el.value;
+    else if (el.classList.contains('dirs-input')) groups[gi].associatedDirs = el.value;
     else if (el.classList.contains('pattern') && !isNaN(ei)) groups[gi].expressions[ei].pattern = el.value;
     else if (el.classList.contains('flags') && !isNaN(ei)) groups[gi].expressions[ei].flags = el.value;
     saveState();
@@ -524,6 +538,9 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     });
     document.querySelectorAll('.group-name').forEach(function(el) {
       groups[parseInt(el.dataset.gi)].name = el.value;
+    });
+    document.querySelectorAll('.dirs-input').forEach(function(el) {
+      groups[parseInt(el.dataset.gi)].associatedDirs = el.value;
     });
     document.querySelectorAll('.expr-enabled').forEach(function(el) {
       var gii = parseInt(el.dataset.gi), eii = parseInt(el.dataset.ei);

@@ -38,6 +38,11 @@ export class ViewController {
     return this.configPanel;
   }
 
+  /** 获取当前编辑器（供 GrepController 使用） */
+  getCurrentEditor(): vscode.TextEditor | undefined {
+    return this.currentEditor;
+  }
+
   /** 切换编辑器，激活状态则恢复效果，否则只加载配置 */
   async attach(editor: vscode.TextEditor): Promise<void> {
     this.decorations.clear();

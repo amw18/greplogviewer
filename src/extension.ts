@@ -7,8 +7,10 @@ import { TimeMatchModel } from './model/TimeMatchModel';
 import { ConfigController } from './controller/ConfigController';
 import { FilterController } from './controller/FilterController';
 import { ViewController } from './controller/ViewController';
+import { GrepController } from './controller/GrepController';
 
 let viewController: ViewController | undefined;
+let grepController: GrepController | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
   const regexGroupModel = new RegexGroupModel();
@@ -23,12 +25,22 @@ export function activate(context: vscode.ExtensionContext) {
     editorStateModel, filterResultModel, regexGroupModel, timeMatchModel
   );
 
+  grepController = new GrepController(viewController, regexGroupModel, filterResultModel, editorStateModel);
+
   const panelProvider = viewController.getPanelProvider();
   const sidebarView = vscode.window.registerWebviewViewProvider(
     'greplogviewer.configView',
     panelProvider,
     { webviewOptions: { retainContextWhenHidden: true } }
   );
+
+  // 右键菜单命令
+  const grepKeywordCmd = vscode.commands.registerCommand('greplogviewer.grepKeyword', () => {
+    grepController?.grepKeyword();
+  });
+  const grepFunctionCmd = vscode.commands.registerCommand('greplogviewer.grepFunction', () => {
+    grepController?.grepFunction();
+  });
 
   const editorChangeListener = vscode.window.onDidChangeActiveTextEditor(editor => {
     if (editor) { viewController!.attach(editor); }
@@ -44,6 +56,8 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     sidebarView,
+    grepKeywordCmd,
+    grepFunctionCmd,
     editorChangeListener,
     docChangeListener,
     { dispose: () => viewController?.dispose() }

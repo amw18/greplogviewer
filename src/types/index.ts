@@ -27,6 +27,8 @@ export interface RegexGroup {
   expressions: RegexExpression[];
   /** 是否启用，默认 true。false 时整组在过滤时被跳过 */
   enabled?: boolean;
+  /** 关联代码目录，分号分隔的相对路径，用于右键 grep 跳转。如 "src/server; src/utils" */
+  associatedDirs?: string;
 }
 
 /** 过滤结果：每行的匹配信息 */

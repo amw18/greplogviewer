@@ -10,7 +10,9 @@
     "Other"
   ],
   "activationEvents": [
-    "onView:greplogviewer.configView"
+    "onView:greplogviewer.configView",
+    "onCommand:greplogviewer.grepKeyword",
+    "onCommand:greplogviewer.grepFunction"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -23,7 +25,30 @@
         }
       ]
     },
-    "commands": []
+    "commands": [
+      {
+        "command": "greplogviewer.grepKeyword",
+        "title": "Grep Keyword"
+      },
+      {
+        "command": "greplogviewer.grepFunction",
+        "title": "Grep Function"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "greplogviewer.grepKeyword",
+          "when": "editorHasSelection",
+          "group": "greplogviewer@1"
+        },
+        {
+          "command": "greplogviewer.grepFunction",
+          "when": "editorHasSelection",
+          "group": "greplogviewer@2"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
