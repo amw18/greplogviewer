@@ -149,6 +149,12 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   .keyword-row input.pattern { min-width: 60px; }
   .keyword-row input.flags { width: 40px; }
   .keyword-row input[type="color"] { width: 22px; height: 18px; border: none; cursor: pointer; }
+
+  .swatch-bar { display: flex; align-items: center; gap: 2px; margin-top: 3px; flex-wrap: wrap; }
+  .swatch-group { display: flex; align-items: center; gap: 2px; margin-right: 6px; }
+  .swatch-label { font-size: 9px; color: var(--vscode-descriptionForeground); line-height: 1; }
+  .swatch { width: 13px; height: 13px; border-radius: 50%; border: 1px solid var(--vscode-panel-border); cursor: pointer; flex-shrink: 0; transition: transform 0.1s; }
+  .swatch:hover { transform: scale(1.4); border-color: var(--vscode-focusBorder); z-index: 1; }
 </style>
 </head>
 <body>
@@ -174,6 +180,28 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   }
 
   function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  // 预设色板：冷色系 / 暖色系 / 高对比度系
+  var COLOR_SWATCHES = [
+    { label: 'Cool', colors: ['#00BCD4','#4CAF50','#7C4DFF'] },
+    { label: 'Warm', colors: ['#FF9800','#F44336','#FFEB3B'] },
+    { label: 'HiCon', colors: ['#FF1744','#00E676','#2979FF'] }
+  ];
+
+  function swatchHtml(targetAttr, targetVal) {
+    var h = '<div class="swatch-bar">';
+    for (var s = 0; s < COLOR_SWATCHES.length; s++) {
+      var group = COLOR_SWATCHES[s];
+      h += '<span class="swatch-group">';
+      h += '<span class="swatch-label">' + group.label + '</span>';
+      for (var c = 0; c < group.colors.length; c++) {
+        h += '<span class="swatch" style="background:' + group.colors[c] + '" data-swatch-color="' + group.colors[c] + '" ' + targetAttr + '="' + targetVal + '"></span>';
+      }
+      h += '</span>';
+    }
+    h += '</div>';
+    return h;
+  }
 
   function toNum(v) { var n = parseInt(v, 10); return isNaN(n) || n <= 0 ? undefined : n; }
 
@@ -218,6 +246,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       html += '<button class="move-btn" data-action="moveGroupDown" data-gi="' + gi + '" title="Move down"' + (gi === groups.length - 1 ? ' disabled' : '') + '>▼</button>';
       html += '<button class="remove-btn" data-action="removeGroup" data-gi="' + gi + '">&times;</button>';
       html += '</div>';
+      html += swatchHtml('data-swatch-gi', gi);
       for (var ei = 0; ei < g.expressions.length; ei++) {
         var e = g.expressions[ei];
         html += '<div class="expr-row">';
@@ -259,6 +288,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       html += '<button class="move-btn" data-action="moveKwDown" data-ki="' + ki + '" title="Move down"' + (ki === keywords.length - 1 ? ' disabled' : '') + '>▼</button>';
       html += '<button class="remove-btn" data-action="removeKeyword" data-ki="' + ki + '">&times;</button>';
       html += '</div>';
+      html += swatchHtml('data-swatch-ki', ki);
     }
     html += '<button class="add-btn" data-action="addKeyword" style="display:block;width:100%">+ Add Keyword</button>';
     html += '<span style="font-size:10px;color:var(--vscode-descriptionForeground)">Regex matches will be highlighted with a tinted background of the chosen color.</span>';
@@ -283,6 +313,24 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
 
   // 事件委托：在 #app 上只绑定一次，不随 innerHTML 重建而累积
   document.getElementById('app').addEventListener('click', function(e) {
+    // 处理色板点击（在 button 检查之前，因为 swatch 是 span）
+    var swatch = e.target.closest('.swatch');
+    if (swatch) {
+      var color = swatch.dataset.swatchColor;
+      var sg = parseInt(swatch.dataset.swatchGi), sk = parseInt(swatch.dataset.swatchKi);
+      if (!isNaN(sg)) {
+        groups[sg].color = color;
+        var ci = document.querySelector('.group-color[data-gi="' + sg + '"]');
+        if (ci) ci.value = color;
+      } else if (!isNaN(sk)) {
+        keywords[sk].color = color;
+        var ci = document.querySelector('.keyword-color[data-ki="' + sk + '"]');
+        if (ci) ci.value = color;
+      }
+      saveState();
+      return;
+    }
+
     var btn = e.target.closest('button'); if (!btn) return;
     var action = btn.dataset.action;
     var gi = parseInt(btn.dataset.gi), ei = parseInt(btn.dataset.ei);
