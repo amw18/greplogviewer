@@ -34,8 +34,12 @@ export class EditorDecorations {
     this.clear();
     this.editor = editor;
 
-    // ── 1. 预计算所有关键字匹配（按行号索引）──
-    const kwByLine = this.computeKeywordMatches(keywords, editor);
+    // ── 1. 收集匹配行号，预计算关键字匹配（仅扫描被组匹配到的行）──
+    const matchedLineNums = new Set<number>();
+    for (const r of results) {
+      if (r.groupId) { matchedLineNums.add(r.lineNumber); }
+    }
+    const kwByLine = this.computeKeywordMatches(keywords, editor, matchedLineNums);
 
     // ── 2. 按 groupId 分组匹配行，同时从行范围内挖掉关键字子串 ──
     const groupLines = new Map<string, vscode.Range[]>();
@@ -58,16 +62,7 @@ export class EditorDecorations {
           groupLines.get(r.groupId)!.push(fullRange);
         }
       } else {
-        // 未匹配行：同样需要挖掉关键字范围（关键字在全文中生效）
-        const kwMatches = kwByLine.get(r.lineNumber);
-        if (kwMatches && kwMatches.length > 0) {
-          const subtracted = this.subtractRanges(fullRange, kwMatches.map(m => m.range));
-          for (const seg of subtracted) {
-            unmatchedLines.push(seg);
-          }
-        } else {
-          unmatchedLines.push(fullRange);
-        }
+        unmatchedLines.push(fullRange);
       }
     }
 
@@ -118,38 +113,6 @@ export class EditorDecorations {
     }
   }
 
-  /**
-   * 兼容旧接口：仅关键字高亮（无行级匹配时使用）
-   */
-  applyKeywordHighlights(keywords: KeywordConfig[], editor: vscode.TextEditor): void {
-    this.clear();
-    this.editor = editor;
-
-    const kwByLine = this.computeKeywordMatches(keywords, editor);
-
-    // 浅色背景用于无行级颜色的情况
-    const kwByColor = new Map<string, vscode.Range[]>();
-    for (const matches of kwByLine.values()) {
-      for (const m of matches) {
-        if (!kwByColor.has(m.color)) {
-          kwByColor.set(m.color, []);
-        }
-        kwByColor.get(m.color)!.push(m.range);
-      }
-    }
-
-    for (const [color, ranges] of kwByColor) {
-      if (ranges.length === 0) { continue; }
-      const decoType = vscode.window.createTextEditorDecorationType({
-        backgroundColor: color + '40',
-        overviewRulerColor: color,
-        overviewRulerLane: vscode.OverviewRulerLane.Right,
-      });
-      this.keywordDecoTypes.push(decoType);
-      editor.setDecorations(decoType, ranges);
-    }
-  }
-
   /** 清除所有装饰（含关键字） */
   clear(): void {
     if (this.editor) {
@@ -175,15 +138,16 @@ export class EditorDecorations {
   // ── 内部辅助 ──
 
   /**
-   * 计算所有关键字的匹配位置，按行号索引返回。
-   * 若 keywords 为空则返回空 Map。
+   * 计算关键字的匹配位置，仅扫描 matchedLineNums 中指定的行（按行号索引返回）。
+   * 若 keywords 为空或 matchedLineNums 为空则返回空 Map。
    */
   private computeKeywordMatches(
     keywords: KeywordConfig[] | undefined,
-    editor: vscode.TextEditor
+    editor: vscode.TextEditor,
+    matchedLineNums: Set<number>
   ): Map<number, KeywordMatch[]> {
     const map = new Map<number, KeywordMatch[]>();
-    if (!keywords || keywords.length === 0) { return map; }
+    if (!keywords || keywords.length === 0 || matchedLineNums.size === 0) { return map; }
 
     for (const kw of keywords) {
       let regex: RegExp;
@@ -193,7 +157,7 @@ export class EditorDecorations {
         continue;
       }
 
-      for (let i = 0; i < editor.document.lineCount; i++) {
+      for (const i of matchedLineNums) {
         const line = editor.document.lineAt(i).text;
         regex.lastIndex = 0;
         let match: RegExpExecArray | null;
