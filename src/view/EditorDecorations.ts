@@ -150,6 +150,7 @@ export class EditorDecorations {
     if (!keywords || keywords.length === 0 || matchedLineNums.size === 0) { return map; }
 
     for (const kw of keywords) {
+      if (kw.enabled === false) { continue; }
       let regex: RegExp;
       try {
         regex = new RegExp(kw.pattern, kw.flags.includes('g') ? kw.flags : kw.flags + 'g');

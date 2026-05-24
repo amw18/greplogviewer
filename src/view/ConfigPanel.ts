@@ -437,7 +437,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     for (var ki = 0; ki < keywords.length; ki++) {
       var kw = keywords[ki];
       html += '<div class="keyword-row">';
-      html += '<span style="width:36px;font-size:10px;color:var(--vscode-descriptionForeground);text-align:center">' + (ki + 1) + '</span>';
+      html += '<input type="checkbox" data-ki="' + ki + '" class="keyword-enabled"' + (kw.enabled !== false ? ' checked' : '') + ' title="Enable/disable this keyword">';
       html += '<input type="text" class="pattern" value="' + esc(kw.pattern) + '" data-ki="' + ki + '" placeholder="regex">';
       html += '<input type="text" class="flags" value="' + esc(kw.flags) + '" data-ki="' + ki + '" placeholder="i">';
       html += colorPickerHtml('ki', ki, kw.color);
@@ -637,7 +637,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       saveState(); render();
     }
     else if (action === 'addKeyword') {
-      keywords.push({ id: uuid(), pattern: '', flags: '', color: randomColor() });
+      keywords.push({ id: uuid(), pattern: '', flags: '', color: randomColor(), enabled: true });
       saveState(); render();
     } else if (action === 'removeKeyword') {
       var ki = parseInt(btn.dataset.ki);
@@ -687,6 +687,8 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       groups[gi].enabled = el.checked; saveState();
     } else if (el.classList.contains('expr-enabled')) {
       groups[gi].expressions[ei].enabled = el.checked; saveState();
+    } else if (el.classList.contains('keyword-enabled')) {
+      keywords[ki].enabled = el.checked; saveState();
     }
   });
 
@@ -726,6 +728,9 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     });
     document.querySelectorAll('.color-trigger[data-color-ki]').forEach(function(el) {
       keywords[parseInt(el.dataset.colorKi)].color = rgbToHex(el.style.background);
+    });
+    document.querySelectorAll('.keyword-enabled').forEach(function(el) {
+      keywords[parseInt(el.dataset.ki)].enabled = el.checked;
     });
   }
 

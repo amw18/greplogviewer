@@ -73,6 +73,8 @@ export interface KeywordConfig {
   pattern: string;
   flags: string;
   color: string;
+  /** 是否启用，默认 true。false 时该关键字在过滤时被跳过 */
+  enabled?: boolean;
 }
 
 /** 编辑器级别的配置（正则组 + 行范围 + 时间模式 + 关键字） */
