@@ -58,6 +58,9 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
         case 'deleteSavedConfig':
           this.deleteCallback?.(msg.name, msg.scope);
           break;
+        case 'gotoKeywordMatch':
+          this.gotoKeywordMatchCallback?.(msg.direction);
+          break;
       }
     });
 
@@ -117,6 +120,13 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   onDelete(callback: (name: string, scope: ConfigScope) => void): void {
     this.deleteCallback = callback;
   }
+
+  onGotoKeywordMatch(callback: (direction: 'next' | 'prev') => void): void {
+    this.gotoKeywordMatchCallback = callback;
+  }
+
+  /** gotoKeywordMatch 回调：通知扩展跳转匹配行 */
+  private gotoKeywordMatchCallback: ((direction: 'next' | 'prev') => void) | undefined;
 
   /** 向 webview 发送已保存配置列表 */
   sendSavedConfigsList(configs: { name: string; scope: ConfigScope }[]): void {
@@ -273,6 +283,11 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   .range-card-body .line-range { padding: 2px 0; }
   .range-card-body .line-range label { width: 28px; flex-shrink: 0; }
 
+  .keyword-nav { display: flex; gap: 4px; padding: 2px 4px 4px 4px; }
+  .keyword-nav .nav-btn { background: var(--vscode-button-secondaryBackground);
+        color: var(--vscode-button-secondaryForeground); border: none;
+        padding: 1px 6px; border-radius: 2px; cursor: pointer; font-size: 11px; }
+  .keyword-nav .nav-btn:hover { background: var(--vscode-button-secondaryHoverBackground); }
   .keyword-row { display: flex; align-items: center; gap: 3px; margin-bottom: 3px;
                  padding: 3px; background: var(--vscode-input-background); border-radius: 2px; }
   .keyword-row input[type="text"] { flex: 1; background: transparent;
@@ -280,6 +295,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
         padding: 1px 4px; border-radius: 2px; font-size: 11px; }
   .keyword-row input.pattern { min-width: 60px; }
   .keyword-row input.flags { width: 40px; }
+  .keyword-row input.hint { min-width: 60px; }
 
   /* ── 颜色选择器（触发器 + 弹出面板）── */
   .color-picker-wrap { position: relative; display: inline-flex; align-items: center; }
@@ -541,6 +557,10 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     html += '<div class="section">';
     html += '<div class="section-header">Keyword Highlight</div>';
     html += '<div class="section-body">';
+    html += '<div class="keyword-nav">';
+    html += '<button class="nav-btn" data-action="gotoPrevKeyword" title="Jump to previous keyword match">▲ Prev</button>';
+    html += '<button class="nav-btn" data-action="gotoNextKeyword" title="Jump to next keyword match">▼ Next</button>';
+    html += '</div>';
     for (var ki = 0; ki < keywords.length; ki++) {
       var kw = keywords[ki];
       html += '<div class="keyword-row">';
@@ -548,13 +568,14 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       html += '<input type="text" class="pattern" value="' + esc(kw.pattern) + '" data-ki="' + ki + '" placeholder="regex">';
       html += '<input type="text" class="flags" value="' + esc(kw.flags) + '" data-ki="' + ki + '" placeholder="i">';
       html += colorPickerHtml('ki', ki, kw.color);
+      html += '<input type="text" class="hint" value="' + esc(kw.hint || '') + '" data-ki="' + ki + '" placeholder="hint">';
       html += '<button class="move-btn" data-action="moveKwUp" data-ki="' + ki + '" title="Move up"' + (ki === 0 ? ' disabled' : '') + '>▲</button>';
       html += '<button class="move-btn" data-action="moveKwDown" data-ki="' + ki + '" title="Move down"' + (ki === keywords.length - 1 ? ' disabled' : '') + '>▼</button>';
       html += '<button class="remove-btn" data-action="removeKeyword" data-ki="' + ki + '">&times;</button>';
       html += '</div>';
     }
     html += '<button class="add-btn" data-action="addKeyword" style="display:block;width:100%">+ Add Keyword</button>';
-    html += '<span style="font-size:10px;color:var(--vscode-descriptionForeground)">Regex matches will be highlighted with a tinted background of the chosen color.</span>';
+    html += '<span style="font-size:10px;color:var(--vscode-descriptionForeground)">Regex matches are highlighted with the chosen color. Add a "hint" to show a note next to matching lines.</span>';
     html += '</div></div>';
 
     // ── Section: Config Management ──
@@ -809,6 +830,11 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       var ri = parseInt(btn.dataset.ri);
       if (namedRanges[ri]) { activeRangeId = namedRanges[ri].id; saveState(); render(); }
     }
+    else if (action === 'gotoNextKeyword') {
+      vscode.postMessage({ type: 'gotoKeywordMatch', direction: 'next' });
+    } else if (action === 'gotoPrevKeyword') {
+      vscode.postMessage({ type: 'gotoKeywordMatch', direction: 'prev' });
+    }
   });
 
   document.getElementById('app').addEventListener('input', function(e) {
@@ -830,6 +856,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     if (!isNaN(ki)) {
       if (el.classList.contains('pattern')) keywords[ki].pattern = el.value;
       else if (el.classList.contains('flags')) keywords[ki].flags = el.value;
+      else if (el.classList.contains('hint')) keywords[ki].hint = el.value || undefined;
       saveState(); return;
     }
     if (isNaN(gi)) return;
@@ -900,6 +927,10 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     });
     document.querySelectorAll('.keyword-enabled').forEach(function(el) {
       keywords[parseInt(el.dataset.ki)].enabled = el.checked;
+    });
+    document.querySelectorAll('.hint').forEach(function(el) {
+      var kii = parseInt(el.dataset.ki);
+      if (!isNaN(kii)) keywords[kii].hint = el.value || undefined;
     });
   }
 

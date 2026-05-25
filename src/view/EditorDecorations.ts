@@ -90,7 +90,10 @@ export class EditorDecorations {
       editor.setDecorations(this.dimDecoration, unmatchedLines);
     }
 
-    // ── 4. 应用关键字颜色装饰 ──
+    // ── 4. 应用关键字提示装饰（after text，按行聚合）──
+    this.applyKeywordHints(kwByLine, keywords || [], editor);
+
+    // ── 5. 应用关键字颜色装饰 ──
     // 按颜色分组合并关键字范围
     const kwByColor = new Map<string, vscode.Range[]>();
     for (const matches of kwByLine.values()) {
@@ -133,6 +136,70 @@ export class EditorDecorations {
       }
     }
     this.keywordDecoTypes = [];
+    this.clearKeywordHints();
+  }
+
+  /** 清除关键字提示装饰 */
+  clearKeywordHints(): void {
+    if (this.editor) {
+      for (const dt of this.keywordHintTypes) {
+        this.editor.setDecorations(dt, []);
+        dt.dispose();
+      }
+    }
+    this.keywordHintTypes = [];
+  }
+
+  /** 应用关键字提示 after 装饰 */
+  private applyKeywordHints(
+    kwByLine: Map<number, KeywordMatch[]>,
+    keywords: KeywordConfig[],
+    editor: vscode.TextEditor
+  ): void {
+    this.clearKeywordHints();
+
+    // 构建 keyword id → hint 的映射
+    const hintMap = new Map<string, string>();
+    for (const kw of keywords) {
+      if (kw.hint) {
+        hintMap.set(kw.color, kw.hint);
+      }
+    }
+    if (hintMap.size === 0) { return; }
+
+    // 按行聚合：每行的匹配关键字颜色去重后拼接 hints
+    const lineHints = new Map<number, string>();
+    for (const [lineNum, matches] of kwByLine) {
+      const seenHints = new Set<string>();
+      const hints: string[] = [];
+      for (const m of matches) {
+        const hint = hintMap.get(m.color);
+        if (hint && !seenHints.has(hint)) {
+          seenHints.add(hint);
+          hints.push(hint);
+        }
+      }
+      if (hints.length > 0) {
+        lineHints.set(lineNum, hints.join(' | '));
+      }
+    }
+
+    if (lineHints.size === 0) { return; }
+
+    // 为每行创建 after 装饰
+    for (const [lineNum, hintText] of lineHints) {
+      const decoType = vscode.window.createTextEditorDecorationType({
+        after: {
+          contentText: hintText,
+          color: new vscode.ThemeColor('descriptionForeground'),
+          fontStyle: 'italic',
+          margin: '0 0 0 12px',
+        },
+        isWholeLine: false,
+      });
+      this.keywordHintTypes.push(decoType);
+      editor.setDecorations(decoType, [editor.document.lineAt(lineNum).range]);
+    }
   }
 
   // ── 内部辅助 ──
@@ -211,6 +278,7 @@ export class EditorDecorations {
 
   // ── 时间标注 ──
 
+  private keywordHintTypes: vscode.TextEditorDecorationType[] = [];
   private timeAnnotationTypes: vscode.TextEditorDecorationType[] = [];
 
   /**

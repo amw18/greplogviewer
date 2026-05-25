@@ -77,6 +77,8 @@ export interface KeywordConfig {
   color: string;
   /** 是否启用，默认 true。false 时该关键字在过滤时被跳过 */
   enabled?: boolean;
+  /** 匹配行末尾显示的提示文本（after 装饰） */
+  hint?: string;
 }
 
 /** 命名的行范围 */
@@ -241,9 +243,15 @@ export interface RangeTimeInfoMessage {
   duration?: string;
 }
 
+export interface GotoKeywordMatchMessage {
+  type: 'gotoKeywordMatch';
+  direction: 'next' | 'prev';
+}
+
 export type WebviewMessage = GoMessage | ResetMessage | ClearMessage
   | ExportConfigMessage | ImportConfigMessage | SaveConfigMessage
-  | ListSavedConfigsMessage | ApplySavedConfigMessage | DeleteSavedConfigMessage;
+  | ListSavedConfigsMessage | ApplySavedConfigMessage | DeleteSavedConfigMessage
+  | GotoKeywordMatchMessage;
 
 export type ExtensionMessage = UpdateConfigMessage
   | ConfigImportedMessage | SavedConfigsListMessage | ConfigAppliedMessage

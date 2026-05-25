@@ -46,6 +46,7 @@ export class ViewController {
     this.configPanel.onListSaved(() => this.handleListSaved());
     this.configPanel.onApply((n, sc) => this.handleApply(n, sc));
     this.configPanel.onDelete((n, sc) => this.handleDelete(n, sc));
+    this.configPanel.onGotoKeywordMatch((dir) => this.handleGotoKeywordMatch(dir));
   }
 
   getPanelProvider(): ConfigPanel {
@@ -399,6 +400,71 @@ export class ViewController {
     } catch (err: any) {
       vscode.window.showErrorMessage(`Delete failed: ${err?.message || err}`);
     }
+  }
+
+  /** 跳转到当前光标位置的下一个/上一个关键字匹配行 */
+  private handleGotoKeywordMatch(direction: 'next' | 'prev'): void {
+    const editor = this.currentEditor;
+    if (!editor) { return; }
+    const editorId = editor.document.uri.toString();
+    if (!this.editorStateModel.isActive(editorId)) { return; }
+
+    const keywords = this.currentKeywords;
+    if (!keywords || keywords.length === 0) { return; }
+
+    const allLines = this.readLines(editor);
+    const matchedLineSet = this.computeKeywordMatchedLines(allLines, keywords);
+    if (matchedLineSet.size === 0) { return; }
+
+    const currentLine = editor.selection.active.line;
+    const sortedLines = Array.from(matchedLineSet).sort((a, b) => a - b);
+
+    let targetLine: number | undefined;
+    if (direction === 'next') {
+      // 找 > currentLine 的最小行号
+      for (const l of sortedLines) {
+        if (l > currentLine) { targetLine = l; break; }
+      }
+      // 没找到则循环到开头
+      if (targetLine === undefined && sortedLines.length > 0) {
+        targetLine = sortedLines[0];
+      }
+    } else {
+      // 找 < currentLine 的最大行号
+      for (let i = sortedLines.length - 1; i >= 0; i--) {
+        if (sortedLines[i] < currentLine) { targetLine = sortedLines[i]; break; }
+      }
+      // 没找到则循环到末尾
+      if (targetLine === undefined && sortedLines.length > 0) {
+        targetLine = sortedLines[sortedLines.length - 1];
+      }
+    }
+
+    if (targetLine !== undefined) {
+      const pos = new vscode.Position(targetLine, 0);
+      editor.selection = new vscode.Selection(pos, pos);
+      editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+    }
+  }
+
+  /** 计算所有包含关键字匹配的行号集合 */
+  private computeKeywordMatchedLines(lines: string[], keywords: import('../types').KeywordConfig[]): Set<number> {
+    const matchedLines = new Set<number>();
+    for (const kw of keywords) {
+      if (kw.enabled === false) { continue; }
+      let regex: RegExp;
+      try {
+        regex = new RegExp(kw.pattern, kw.flags);
+      } catch {
+        continue;
+      }
+      for (let i = 0; i < lines.length; i++) {
+        if (regex.test(lines[i])) {
+          matchedLines.add(i);
+        }
+      }
+    }
+    return matchedLines;
   }
 
   dispose(): void {
