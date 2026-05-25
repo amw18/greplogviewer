@@ -67,6 +67,8 @@ export interface FoldRange {
   durationMs?: number;
   /** 整个文件中第一个匹配行的时间 */
   firstMatchTime?: Date;
+  /** 折叠区间内各关键字的匹配行数统计（无 Time Pattern 时也展示） */
+  keywordHits?: Array<{ hint: string; count: number }>;
 }
 
 /** 关键字匹配配置：文本中匹配的子串高亮为指定颜色 */

@@ -1,7 +1,7 @@
 // ViewController — 协调 View 和 Controller，管理编辑器生命周期
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import { RegexGroup, TimePatternConfig, KeywordConfig, ConfigScope } from '../types';
+import { RegexGroup, TimePatternConfig, KeywordConfig, ConfigScope, FoldRange } from '../types';
 import { ConfigController } from './ConfigController';
 import { FilterController } from './FilterController';
 import { EditorStateModel } from '../model/EditorStateModel';
@@ -93,13 +93,7 @@ export class ViewController {
         this.decorations.apply(results, editor, this.currentKeywords);
 
         // 恢复时间标注
-        if (this.timeMatchModel.isConfigured()) {
-          const rawRanges = this.filterResultModel.getUnmatchedRanges(editorId);
-          const foldRanges = this.timeMatchModel.computeFoldRanges(
-            rawRanges, lines, editor.document.lineCount
-          );
-          this.decorations.applyTimeAnnotations(foldRanges, editor);
-        }
+        this.applyFoldAnnotations(editor, editorId, lines, this.currentKeywords);
       } else {
         // 未激活但有旧配置：清除持久化的手动折叠残留
         await this.removeAllManualFolds(editor);
@@ -159,14 +153,8 @@ export class ViewController {
     this.filterResultModel.setResults(editorId, results);
     this.decorations.apply(results, editor, keywords);
 
-    // 时间匹配：按需解析折叠边界行
-    if (this.timeMatchModel.isConfigured()) {
-      const rawRanges = this.filterResultModel.getUnmatchedRanges(editorId);
-      const foldRanges = this.timeMatchModel.computeFoldRanges(
-        rawRanges, lines, editor.document.lineCount
-      );
-      this.decorations.applyTimeAnnotations(foldRanges, editor);
-    }
+    // 折叠标注（含时间 + keyword 命中统计）
+    this.applyFoldAnnotations(editor, editorId, lines, keywords);
 
     await this.applyFolding(editor);
 
@@ -182,6 +170,76 @@ export class ViewController {
 
     const info = this.timeMatchModel.computeRangeTimeInfo(matchedLines, lines);
     this.configPanel.sendRangeTimeInfo(info);
+  }
+
+  /**
+   * 计算并应用折叠行标注（始终显示行数 + 可选 keyword 命中 + 可选时间信息）。
+   * 无 Time Pattern 时也显示 ▼ N lines 和 keyword 命中统计。
+   */
+  private applyFoldAnnotations(
+    editor: vscode.TextEditor,
+    editorId: string,
+    lines: string[],
+    keywords?: KeywordConfig[]
+  ): void {
+    const rawRanges = this.filterResultModel.getUnmatchedRanges(editorId);
+    if (rawRanges.length === 0) {
+      this.decorations.clearTimeAnnotations();
+      return;
+    }
+
+    // 构建 FoldRange（含可选的时间元数据）
+    let foldRanges: FoldRange[];
+    if (this.timeMatchModel.isConfigured()) {
+      foldRanges = this.timeMatchModel.computeFoldRanges(
+        rawRanges, lines, editor.document.lineCount
+      );
+    } else {
+      foldRanges = rawRanges.map(r => ({
+        start: r.start,
+        end: r.end,
+        lineCount: r.end - r.start + 1,
+      }));
+    }
+
+    // 丰富 keyword 命中统计
+    if (keywords && keywords.length > 0) {
+      foldRanges = this.enrichWithKeywordHits(foldRanges, lines, keywords);
+    }
+
+    this.decorations.applyTimeAnnotations(foldRanges, editor);
+  }
+
+  /** 为每个折叠区间计算 keyword 匹配行数 */
+  private enrichWithKeywordHits(
+    foldRanges: FoldRange[],
+    lines: string[],
+    keywords: KeywordConfig[]
+  ): FoldRange[] {
+    return foldRanges.map(fr => {
+      const hitMap = new Map<string, { hint: string; count: number }>();
+      for (const kw of keywords) {
+        if (kw.enabled === false) { continue; }
+        let regex: RegExp;
+        try {
+          regex = new RegExp(kw.pattern, kw.flags);
+        } catch {
+          continue;
+        }
+        let count = 0;
+        for (let i = fr.start; i <= fr.end; i++) {
+          if (regex.test(lines[i])) { count++; }
+        }
+        if (count > 0) {
+          const hint = kw.hint || kw.pattern;
+          hitMap.set(kw.id, { hint, count });
+        }
+      }
+      return {
+        ...fr,
+        keywordHits: hitMap.size > 0 ? Array.from(hitMap.values()) : undefined,
+      };
+    });
   }
 
   /**
@@ -332,14 +390,8 @@ export class ViewController {
     this.filterResultModel.setResults(editorId, results);
     this.decorations.apply(results, editor, this.currentKeywords);
 
-    // 重新计算时间标注
-    if (this.timeMatchModel.isConfigured()) {
-      const rawRanges = this.filterResultModel.getUnmatchedRanges(editorId);
-      const foldRanges = this.timeMatchModel.computeFoldRanges(
-        rawRanges, lines, editor.document.lineCount
-      );
-      this.decorations.applyTimeAnnotations(foldRanges, editor);
-    }
+    // 重新计算折叠标注
+    this.applyFoldAnnotations(editor, editorId, lines, this.currentKeywords);
   }
 
   private readLines(editor: vscode.TextEditor): string[] {

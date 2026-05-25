@@ -328,6 +328,19 @@ export class EditorDecorations {
     const parts: string[] = [];
     parts.push(`▼ ${range.lineCount} ${range.lineCount === 1 ? 'line' : 'lines'}`);
 
+    // 折叠区间内 keyword 命中统计
+    if (range.keywordHits && range.keywordHits.length > 0) {
+      const hitText = range.keywordHits
+        .map(h => `${h.hint}(${h.count})`)
+        .join(', ');
+      parts.push(hitText);
+    }
+
+    // 折叠文本自身的时间跨度
+    if (range.durationMs !== undefined) {
+      parts.push(`~${this.formatDuration(range.durationMs)}`);
+    }
+
     if (range.firstMatchTime && range.timeFrom) {
       const elapsedMs = range.timeFrom.getTime() - range.firstMatchTime.getTime();
       parts.push(`+${this.formatDuration(elapsedMs)}`);
