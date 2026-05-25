@@ -160,6 +160,8 @@ export class ViewController {
     const ranges = this.filterResultModel.getUnmatchedRanges(editorId);
     if (ranges.length === 0) { return; }
 
+    const savedSelection = editor.selection;
+
     await vscode.commands.executeCommand('editor.unfoldAll');
 
     for (const range of ranges) {
@@ -168,6 +170,8 @@ export class ViewController {
       editor.selection = new vscode.Selection(range.start, 0, range.end, endLen);
       await vscode.commands.executeCommand('editor.createFoldingRangeFromSelection');
     }
+
+    editor.selection = savedSelection;
   }
 
   /** Clear: 清除所有显示效果（高亮+折叠+时间标注），保留配置 */
@@ -203,10 +207,12 @@ export class ViewController {
 
   /** 使用 VS Code 原生 API 清除指定编辑器的所有手动折叠 */
   private async removeAllManualFolds(editor: vscode.TextEditor): Promise<void> {
+    const savedSelection = editor.selection;
     await vscode.commands.executeCommand('editor.unfoldAll');
     const lastLine = editor.document.lineCount - 1;
     editor.selection = new vscode.Selection(0, 0, lastLine, editor.document.lineAt(lastLine).text.length);
     await vscode.commands.executeCommand('editor.removeManualFoldingRanges');
+    editor.selection = savedSelection;
   }
 
   /** 文档变更时重新过滤（仅已激活编辑器） */
