@@ -18,6 +18,7 @@ export class ViewController {
   private currentEditor: vscode.TextEditor | undefined;
   private currentStartLine?: number;
   private currentEndLine?: number;
+  private currentRangeDescription?: string;
   private currentKeywords?: KeywordConfig[];
 
   constructor(
@@ -32,14 +33,14 @@ export class ViewController {
     this.configPanel = new ConfigPanel();
     this.decorations = new EditorDecorations();
 
-    this.configPanel.onGo((g, s, e, tp, kw) => this.handleGo(g, s, e, tp, kw));
+    this.configPanel.onGo((g, s, e, rd, tp, kw) => this.handleGo(g, s, e, rd, tp, kw));
     this.configPanel.onReset(() => this.handleReset());
     this.configPanel.onClear(() => this.handleClear());
 
     // Config management callbacks
-    this.configPanel.onExport((g, s, e, tp, kw) => this.handleExport(g, s, e, tp, kw));
+    this.configPanel.onExport((g, s, e, rd, tp, kw) => this.handleExport(g, s, e, rd, tp, kw));
     this.configPanel.onImport(() => this.handleImport());
-    this.configPanel.onSave((n, sc, g, s, e, tp, kw) => this.handleSave(n, sc, g, s, e, tp, kw));
+    this.configPanel.onSave((n, sc, g, s, e, rd, tp, kw) => this.handleSave(n, sc, g, s, e, rd, tp, kw));
     this.configPanel.onListSaved(() => this.handleListSaved());
     this.configPanel.onApply((n, sc) => this.handleApply(n, sc));
     this.configPanel.onDelete((n, sc) => this.handleDelete(n, sc));
@@ -66,6 +67,7 @@ export class ViewController {
       this.regexGroupModel.setGroups(savedConfig.groups);
       this.currentStartLine = savedConfig.startLine;
       this.currentEndLine = savedConfig.endLine;
+      this.currentRangeDescription = savedConfig.rangeDescription;
 
       // 恢复时间匹配配置
       if (savedConfig.timePattern) {
@@ -101,19 +103,21 @@ export class ViewController {
       this.regexGroupModel.setGroups([]);
       this.currentStartLine = undefined;
       this.currentEndLine = undefined;
+      this.currentRangeDescription = undefined;
     }
 
     const tp = this.timeMatchModel.getConfig();
     this.configPanel.render(
       this.regexGroupModel.getGroups(),
       this.currentStartLine, this.currentEndLine,
+      this.currentRangeDescription,
       tp.format ? tp : undefined,
       this.currentKeywords
     );
   }
 
   /** Go: 应用过滤 + 颜色高亮 + 创建折叠 + 时间标注 */
-  private async handleGo(groups: RegexGroup[], startLine?: number, endLine?: number, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): Promise<void> {
+  private async handleGo(groups: RegexGroup[], startLine?: number, endLine?: number, rangeDescription?: string, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): Promise<void> {
     if (!this.currentEditor) { return; }
     const editor = this.currentEditor;
     const editorId = editor.document.uri.toString();
@@ -121,6 +125,7 @@ export class ViewController {
     this.regexGroupModel.setGroups(groups);
     this.currentStartLine = startLine;
     this.currentEndLine = endLine;
+    this.currentRangeDescription = rangeDescription;
 
     // 时间匹配配置
     if (timePattern && timePattern.format) {
@@ -131,7 +136,7 @@ export class ViewController {
     this.currentKeywords = keywords;
 
     this.editorStateModel.saveConfig(editorId, {
-      groups, startLine, endLine,
+      groups, startLine, endLine, rangeDescription,
       timePattern: this.timeMatchModel.isConfigured() ? this.timeMatchModel.getConfig() : undefined,
       keywords,
     });
@@ -152,6 +157,19 @@ export class ViewController {
     }
 
     await this.applyFolding(editor);
+
+    // 发送范围时间信息到 webview
+    this.sendRangeTimeInfo(editorId, lines);
+  }
+
+  /** 计算范围时间信息并发送到 webview */
+  private sendRangeTimeInfo(editorId: string, lines: string[]): void {
+    if (!this.timeMatchModel.isConfigured()) { return; }
+    const matchedLines = this.filterResultModel.getMatchedLines(editorId);
+    if (matchedLines.length === 0) { return; }
+
+    const info = this.timeMatchModel.computeRangeTimeInfo(matchedLines, lines);
+    this.configPanel.sendRangeTimeInfo(info);
   }
 
   /** 使用 createFoldingRangeFromSelection 折叠未匹配行 */
@@ -196,6 +214,7 @@ export class ViewController {
     this.regexGroupModel.setGroups([]);
     this.currentStartLine = undefined;
     this.currentEndLine = undefined;
+    this.currentRangeDescription = undefined;
     this.currentKeywords = undefined;
     this.timeMatchModel.setConfig({ format: '' });
     this.editorStateModel.clearEditor(editorId);
@@ -253,14 +272,14 @@ export class ViewController {
   // ── Config Management Handlers ──
 
   /** Export: 将当前配置写入用户指定的本地 JSON 文件 */
-  private async handleExport(groups: RegexGroup[], startLine?: number, endLine?: number, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): Promise<void> {
+  private async handleExport(groups: RegexGroup[], startLine?: number, endLine?: number, rangeDescription?: string, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): Promise<void> {
     const uri = await vscode.window.showSaveDialog({
       defaultUri: vscode.Uri.file('greplogviewer-config.json'),
       filters: { 'JSON Files': ['json'] },
     });
     if (!uri) { return; }
 
-    const content = JSON.stringify({ groups, startLine, endLine, timePattern, keywords }, null, 2);
+    const content = JSON.stringify({ groups, startLine, endLine, rangeDescription, timePattern, keywords }, null, 2);
     try {
       fs.writeFileSync(uri.fsPath, content, 'utf-8');
       vscode.window.showInformationMessage(`Config exported to ${uri.fsPath}`);
@@ -290,6 +309,7 @@ export class ViewController {
         groups,
         startLine: data.startLine,
         endLine: data.endLine,
+        rangeDescription: data.rangeDescription,
         timePattern: data.timePattern,
         keywords: data.keywords,
       });
@@ -301,7 +321,7 @@ export class ViewController {
   }
 
   /** Save: 将当前配置保存到 workspaceState 或 globalState（命名） */
-  private async handleSave(name: string, scope: ConfigScope, groups: RegexGroup[], startLine?: number, endLine?: number, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): Promise<void> {
+  private async handleSave(name: string, scope: ConfigScope, groups: RegexGroup[], startLine?: number, endLine?: number, rangeDescription?: string, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): Promise<void> {
     if (this.configStorageModel.exists(name, scope)) {
       const answer = await vscode.window.showWarningMessage(
         `Config "${name}" already exists in ${scope}. Overwrite?`,
@@ -312,7 +332,7 @@ export class ViewController {
     }
 
     await this.configStorageModel.save(name, {
-      groups, startLine, endLine, timePattern, keywords,
+      groups, startLine, endLine, rangeDescription, timePattern, keywords,
     }, scope);
 
     vscode.window.showInformationMessage(`Config "${name}" saved to ${scope}.`);
@@ -338,6 +358,7 @@ export class ViewController {
       entry.config.groups,
       entry.config.startLine,
       entry.config.endLine,
+      entry.config.rangeDescription,
       entry.config.timePattern,
       entry.config.keywords,
     );

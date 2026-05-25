@@ -70,6 +70,36 @@ export class TimeMatchModel {
     });
   }
 
+  /**
+   * 计算指定行范围内的时间信息
+   * @returns {{ startTime, endTime, durationMs }} 范围内首个和最后一个匹配行的时间及跨度
+   */
+  computeRangeTimeInfo(
+    matchedLines: number[],
+    lines: string[]
+  ): { startTime?: Date; endTime?: Date; durationMs?: number } | undefined {
+    if (matchedLines.length === 0) { return undefined; }
+
+    const firstLine = matchedLines[0];
+    const lastLine = matchedLines[matchedLines.length - 1];
+
+    const startTime = this.parseLineTimestamp(lines[firstLine]);
+    if (!startTime) { return undefined; }
+
+    if (firstLine === lastLine) {
+      return { startTime, endTime: startTime, durationMs: 0 };
+    }
+
+    const endTime = this.parseLineTimestamp(lines[lastLine]);
+    if (!endTime) { return { startTime, durationMs: undefined } as any; }
+
+    return {
+      startTime,
+      endTime,
+      durationMs: endTime.getTime() - startTime.getTime(),
+    };
+  }
+
   /** 从第 0 行开始查找第一个匹配行的时间 */
   private findFirstMatchTime(lines: string[]): Date | undefined {
     for (let i = 0; i < lines.length; i++) {

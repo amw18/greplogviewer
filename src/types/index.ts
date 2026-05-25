@@ -86,6 +86,8 @@ export interface EditorConfig {
   startLine?: number;
   /** 结束匹配的行号（1-based），用户可见行号。未配置时为 undefined */
   endLine?: number;
+  /** 用户对当前行范围的备注描述 */
+  rangeDescription?: string;
   /** 时间匹配模式，未配置时不提取时间信息 */
   timePattern?: TimePatternConfig;
   /** 关键字高亮配置，未配置时不启用 */
@@ -110,6 +112,7 @@ export interface UpdateConfigMessage {
   groups: RegexGroup[];
   startLine?: number;
   endLine?: number;
+  rangeDescription?: string;
   timePattern?: TimePatternConfig;
   keywords?: KeywordConfig[];
 }
@@ -119,6 +122,7 @@ export interface GoMessage {
   groups: RegexGroup[];
   startLine?: number;
   endLine?: number;
+  rangeDescription?: string;
   timePattern?: TimePatternConfig;
   keywords?: KeywordConfig[];
 }
@@ -138,6 +142,7 @@ export interface ExportConfigMessage {
   groups: RegexGroup[];
   startLine?: number;
   endLine?: number;
+  rangeDescription?: string;
   timePattern?: TimePatternConfig;
   keywords?: KeywordConfig[];
 }
@@ -153,6 +158,7 @@ export interface SaveConfigMessage {
   groups: RegexGroup[];
   startLine?: number;
   endLine?: number;
+  rangeDescription?: string;
   timePattern?: TimePatternConfig;
   keywords?: KeywordConfig[];
 }
@@ -177,7 +183,7 @@ export interface DeleteSavedConfigMessage {
 
 export interface ConfigImportedMessage {
   type: 'configImported';
-  config?: EditorConfig;
+  config?: { groups: RegexGroup[]; startLine?: number; endLine?: number; rangeDescription?: string; timePattern?: TimePatternConfig; keywords?: KeywordConfig[] };
   error?: string;
 }
 
@@ -191,8 +197,20 @@ export interface ConfigAppliedMessage {
   groups: RegexGroup[];
   startLine?: number;
   endLine?: number;
+  rangeDescription?: string;
   timePattern?: TimePatternConfig;
   keywords?: KeywordConfig[];
+}
+
+/** 范围时间信息（Extension → Webview，Go 后发回） */
+export interface RangeTimeInfoMessage {
+  type: 'rangeTimeInfo';
+  /** 范围内首个匹配行的时间（格式化字符串） */
+  startTime?: string;
+  /** 范围内最后一个匹配行的时间（格式化字符串） */
+  endTime?: string;
+  /** 范围时间跨度（格式化字符串，如 "5m 30s"） */
+  duration?: string;
 }
 
 export type WebviewMessage = GoMessage | ResetMessage | ClearMessage
@@ -200,4 +218,5 @@ export type WebviewMessage = GoMessage | ResetMessage | ClearMessage
   | ListSavedConfigsMessage | ApplySavedConfigMessage | DeleteSavedConfigMessage;
 
 export type ExtensionMessage = UpdateConfigMessage
-  | ConfigImportedMessage | SavedConfigsListMessage | ConfigAppliedMessage;
+  | ConfigImportedMessage | SavedConfigsListMessage | ConfigAppliedMessage
+  | RangeTimeInfoMessage;
