@@ -79,15 +79,33 @@ export interface KeywordConfig {
   enabled?: boolean;
 }
 
+/** 命名的行范围 */
+export interface NamedRange {
+  id: string;
+  name: string;
+  description?: string;
+  /** 开始匹配的行号（1-based），用户可见行号 */
+  startLine: number;
+  /** 结束匹配的行号（1-based），用户可见行号 */
+  endLine: number;
+}
+
 /** 编辑器级别的配置（正则组 + 行范围 + 时间模式 + 关键字） */
 export interface EditorConfig {
   groups: RegexGroup[];
-  /** 开始匹配的行号（1-based），用户可见行号。未配置时为 undefined */
+  /** 开始匹配的行号（1-based），用户可见行号。未配置时为 undefined。
+   * @deprecated 推荐使用 namedRanges + activeRangeId */
   startLine?: number;
-  /** 结束匹配的行号（1-based），用户可见行号。未配置时为 undefined */
+  /** 结束匹配的行号（1-based），用户可见行号。未配置时为 undefined。
+   * @deprecated 推荐使用 namedRanges + activeRangeId */
   endLine?: number;
-  /** 用户对当前行范围的备注描述 */
+  /** 用户对当前行范围的备注描述。
+   * @deprecated 推荐使用 namedRanges */
   rangeDescription?: string;
+  /** 多个命名的行范围配置（新格式） */
+  namedRanges?: NamedRange[];
+  /** 当前激活的行范围 ID（单选），为空时回退到 startLine/endLine */
+  activeRangeId?: string;
   /** 时间匹配模式，未配置时不提取时间信息 */
   timePattern?: TimePatternConfig;
   /** 关键字高亮配置，未配置时不启用 */
@@ -113,6 +131,8 @@ export interface UpdateConfigMessage {
   startLine?: number;
   endLine?: number;
   rangeDescription?: string;
+  namedRanges?: NamedRange[];
+  activeRangeId?: string;
   timePattern?: TimePatternConfig;
   keywords?: KeywordConfig[];
 }
@@ -123,6 +143,8 @@ export interface GoMessage {
   startLine?: number;
   endLine?: number;
   rangeDescription?: string;
+  namedRanges?: NamedRange[];
+  activeRangeId?: string;
   timePattern?: TimePatternConfig;
   keywords?: KeywordConfig[];
 }
@@ -143,6 +165,8 @@ export interface ExportConfigMessage {
   startLine?: number;
   endLine?: number;
   rangeDescription?: string;
+  namedRanges?: NamedRange[];
+  activeRangeId?: string;
   timePattern?: TimePatternConfig;
   keywords?: KeywordConfig[];
 }
@@ -159,6 +183,8 @@ export interface SaveConfigMessage {
   startLine?: number;
   endLine?: number;
   rangeDescription?: string;
+  namedRanges?: NamedRange[];
+  activeRangeId?: string;
   timePattern?: TimePatternConfig;
   keywords?: KeywordConfig[];
 }
@@ -183,7 +209,7 @@ export interface DeleteSavedConfigMessage {
 
 export interface ConfigImportedMessage {
   type: 'configImported';
-  config?: { groups: RegexGroup[]; startLine?: number; endLine?: number; rangeDescription?: string; timePattern?: TimePatternConfig; keywords?: KeywordConfig[] };
+  config?: { groups: RegexGroup[]; startLine?: number; endLine?: number; rangeDescription?: string; namedRanges?: NamedRange[]; activeRangeId?: string; timePattern?: TimePatternConfig; keywords?: KeywordConfig[] };
   error?: string;
 }
 
@@ -198,6 +224,8 @@ export interface ConfigAppliedMessage {
   startLine?: number;
   endLine?: number;
   rangeDescription?: string;
+  namedRanges?: NamedRange[];
+  activeRangeId?: string;
   timePattern?: TimePatternConfig;
   keywords?: KeywordConfig[];
 }
