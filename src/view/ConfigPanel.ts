@@ -272,16 +272,18 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   .range-time-info { font-size: 10px; color: var(--vscode-descriptionForeground);
                      padding: 2px 4px 4px 4px; font-style: italic; }
   .range-card { border: 1px solid var(--vscode-panel-border); border-radius: 3px;
-                margin-bottom: 4px; padding: 4px; }
+                margin-bottom: 4px; padding: 3px 4px; }
   .range-card.active { border-color: var(--vscode-focusBorder); }
-  .range-card-header { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; }
-  .range-card-header input[type="radio"] { margin: 0; cursor: pointer; accent-color: var(--vscode-focusBorder); }
-  .range-card-header input[type="text"] { flex: 1; background: var(--vscode-input-background);
+  .range-card-row { display: flex; align-items: center; gap: 3px; }
+  .range-card-row input[type="radio"] { margin: 0; cursor: pointer; accent-color: var(--vscode-focusBorder); flex-shrink: 0; }
+  .range-card-row .range-name { flex: 1; min-width: 50px; background: var(--vscode-input-background);
         color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border);
-        padding: 1px 4px; border-radius: 2px; font-size: 11px; min-width: 60px; }
-  .range-card-body { padding-left: 18px; }
-  .range-card-body .line-range { padding: 2px 0; }
-  .range-card-body .line-range label { width: 28px; flex-shrink: 0; }
+        padding: 1px 3px; border-radius: 2px; font-size: 10px; }
+  .range-card-row .range-from,
+  .range-card-row .range-to { width: 42px; min-width: 0; background: var(--vscode-input-background);
+        color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border);
+        padding: 1px 2px; border-radius: 2px; font-size: 10px; text-align: right; }
+  .range-card-row .range-lbl { font-size: 10px; color: var(--vscode-descriptionForeground); flex-shrink: 0; }
 
   .keyword-nav { display: flex; gap: 4px; padding: 2px 4px 4px 4px; }
   .keyword-nav .nav-btn { background: var(--vscode-button-secondaryBackground);
@@ -377,7 +379,6 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       var r = {
         id: uuid(),
         name: rangeDescription || 'Range 1',
-        description: rangeDescription || '',
         startLine: startLine,
         endLine: endLine
       };
@@ -389,6 +390,14 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     }
   }
   migrateOldRanges();
+
+  function ensureDefaultRange() {
+    if (namedRanges.length === 0) {
+      var r = { id: uuid(), name: 'All lines', startLine: undefined, endLine: undefined };
+      namedRanges = [r];
+      activeRangeId = r.id;
+    }
+  }
 
   function saveState() { vscode.setState({ groups, startLine, endLine, rangeDescription, namedRanges, activeRangeId, keywords }); }
 
@@ -460,6 +469,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   function toNum(v) { var n = parseInt(v, 10); return isNaN(n) || n <= 0 ? undefined : n; }
 
   function render() {
+    ensureDefaultRange();
     var html = '';
 
     // ── Section: Line Ranges ──
@@ -470,27 +480,16 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       var rng = namedRanges[ri];
       var isActive = rng.id === activeRangeId;
       html += '<div class="range-card' + (isActive ? ' active' : '') + '">';
-      html += '<div class="range-card-header">';
+      html += '<div class="range-card-row">';
       html += '<input type="radio" name="active-range" value="' + rng.id + '"' + (isActive ? ' checked' : '') + ' data-action="activateRange" data-ri="' + ri + '" title="Select this range">';
       html += '<input type="text" class="range-name" value="' + esc(rng.name) + '" data-ri="' + ri + '" placeholder="Range name">';
+      html += '<span class="range-lbl">From</span>';
+      html += '<input type="number" class="range-from" value="' + (rng.startLine || '') + '" data-ri="' + ri + '" placeholder="1" min="1">';
+      html += '<span class="range-lbl">To</span>';
+      html += '<input type="number" class="range-to" value="' + (rng.endLine || '') + '" data-ri="' + ri + '" placeholder="end" min="1">';
       html += '<button class="remove-btn" data-action="removeRange" data-ri="' + ri + '">&times;</button>';
       html += '</div>';
-      html += '<div class="range-card-body">';
-      html += '<div class="line-range">';
-      html += '<label>Note:</label>';
-      html += '<input type="text" class="range-desc" value="' + esc(rng.description || '') + '" data-ri="' + ri + '" placeholder="e.g. Login flow">';
       html += '</div>';
-      html += '<div class="line-range">';
-      html += '<label>From:</label>';
-      html += '<input type="number" class="range-from" value="' + (rng.startLine || '') + '" data-ri="' + ri + '" placeholder="1" min="1">';
-      html += '<label>To:</label>';
-      html += '<input type="number" class="range-to" value="' + (rng.endLine || '') + '" data-ri="' + ri + '" placeholder="end" min="1">';
-      html += '</div>';
-      html += '</div>';
-      html += '</div>';
-    }
-    if (namedRanges.length === 0) {
-      html += '<div class="hint" style="padding:4px;font-size:10px;color:var(--vscode-descriptionForeground)">No ranges defined. Add a range to filter specific lines.</div>';
     }
     html += '<button class="add-btn" data-action="addRange" style="display:block;width:100%">+ Add Range</button>';
     html += '<div id="range-time-info" class="range-time-info">' + (rangeTimeInfoHtml || '') + '</div>';
@@ -624,7 +623,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     return {
       startLine: active ? active.startLine : undefined,
       endLine: active ? active.endLine : undefined,
-      rangeDescription: active ? (active.description || active.name) : undefined,
+      rangeDescription: active ? active.name : undefined,
       namedRanges: namedRanges,
       activeRangeId: activeRangeId
     };
@@ -634,10 +633,6 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     document.querySelectorAll('.range-name').forEach(function(el) {
       var ri = parseInt(el.dataset.ri);
       if (!isNaN(ri) && namedRanges[ri]) namedRanges[ri].name = el.value;
-    });
-    document.querySelectorAll('.range-desc').forEach(function(el) {
-      var ri = parseInt(el.dataset.ri);
-      if (!isNaN(ri) && namedRanges[ri]) namedRanges[ri].description = el.value;
     });
     document.querySelectorAll('.range-from').forEach(function(el) {
       var ri = parseInt(el.dataset.ri);
@@ -713,7 +708,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     // ── 点击其他区域关闭所有面板 ──
     closeAllPopovers();
 
-    var btn = e.target.closest('button'); if (!btn) return;
+    var btn = e.target.closest('button, input[data-action]'); if (!btn) return;
     var action = btn.dataset.action;
     var gi = parseInt(btn.dataset.gi), ei = parseInt(btn.dataset.ei);
     if (btn.id === 'go-btn') {
@@ -814,7 +809,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     }
     else if (action === 'addRange') {
       collectRangeData();
-      var nr = { id: uuid(), name: 'Range ' + (namedRanges.length + 1), description: '', startLine: undefined, endLine: undefined };
+      var nr = { id: uuid(), name: 'Range ' + (namedRanges.length + 1), startLine: undefined, endLine: undefined };
       namedRanges.push(nr);
       if (!activeRangeId) { activeRangeId = nr.id; }
       saveState(); render();
@@ -842,11 +837,10 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     var ki = parseInt(el.dataset.ki);
     if (el.id === 'time-format') { timePattern.format = el.value; saveState(); return; }
     // Range inputs
-    if (el.classList.contains('range-name') || el.classList.contains('range-desc') || el.classList.contains('range-from') || el.classList.contains('range-to')) {
+    if (el.classList.contains('range-name') || el.classList.contains('range-from') || el.classList.contains('range-to')) {
       var ri = parseInt(el.dataset.ri);
       if (!isNaN(ri) && namedRanges[ri]) {
         if (el.classList.contains('range-name')) namedRanges[ri].name = el.value;
-        else if (el.classList.contains('range-desc')) namedRanges[ri].description = el.value;
         else if (el.classList.contains('range-from')) namedRanges[ri].startLine = toNum(el.value);
         else if (el.classList.contains('range-to')) namedRanges[ri].endLine = toNum(el.value);
         saveState(); return;

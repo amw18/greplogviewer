@@ -135,6 +135,8 @@ export class ViewController {
     this.currentStartLine = startLine;
     this.currentEndLine = endLine;
     this.currentRangeDescription = rangeDescription;
+    this.currentNamedRanges = namedRanges;
+    this.currentActiveRangeId = activeRangeId;
 
     // 时间匹配配置
     if (timePattern && timePattern.format) {
@@ -182,24 +184,91 @@ export class ViewController {
     this.configPanel.sendRangeTimeInfo(info);
   }
 
-  /** 使用 createFoldingRangeFromSelection 折叠未匹配行 */
+  /**
+   * 折叠所有未匹配行区间。
+   *
+   * 关键：先聚焦编辑器再执行 fold 命令（侧边栏点击 Go 后编辑器可能失焦），
+   * 然后移除所有旧手动折叠并从底向上创建新区间，避免上层折叠导致视口偏移
+   * 干扰后续 createFoldingRangeFromSelection 调用。
+   */
   private async applyFolding(editor: vscode.TextEditor): Promise<void> {
     const editorId = editor.document.uri.toString();
     const ranges = this.filterResultModel.getUnmatchedRanges(editorId);
-    if (ranges.length === 0) { return; }
 
     const savedSelection = editor.selection;
 
-    await vscode.commands.executeCommand('editor.unfoldAll');
+    // 确保编辑器有焦点（侧边栏点击可能使编辑器失焦，导致 fold 命令失效）
+    await vscode.window.showTextDocument(editor.document, {
+      viewColumn: editor.viewColumn,
+      preserveFocus: false,
+    });
 
-    for (const range of ranges) {
+    // 移除所有旧的手动折叠（unfoldAll 仅展开而不移除，残留会影响新折叠）
+    await vscode.commands.executeCommand('editor.unfoldAll');
+    const lastLine = editor.document.lineCount - 1;
+    editor.selection = new vscode.Selection(0, 0, lastLine, editor.document.lineAt(lastLine).text.length);
+    await vscode.commands.executeCommand('editor.removeManualFoldingRanges');
+
+    if (ranges.length === 0) {
+      editor.selection = savedSelection;
+      return;
+    }
+
+    // 从底向上创建折叠区间：底部的折叠不会影响上方行号，避免视口偏移干扰
+    for (let i = ranges.length - 1; i >= 0; i--) {
+      const range = ranges[i];
       if (range.start >= range.end) { continue; }
       const endLen = editor.document.lineAt(range.end).text.length;
       editor.selection = new vscode.Selection(range.start, 0, range.end, endLen);
       await vscode.commands.executeCommand('editor.createFoldingRangeFromSelection');
     }
 
-    editor.selection = savedSelection;
+    // 如果光标落在折叠区域内，将其移到折叠区前最后一个匹配行
+    editor.selection = this.adjustCursorOutOfFolds(savedSelection, ranges, editorId);
+  }
+
+  /**
+   * 若光标落在折叠区间内，则将其移到该区间前最后一个匹配行；
+   * 若前面无匹配行则移到区间后第一个匹配行；若仍无匹配行则保持原位。
+   */
+  private adjustCursorOutOfFolds(
+    savedSelection: vscode.Selection,
+    ranges: Array<{ start: number; end: number }>,
+    editorId: string
+  ): vscode.Selection {
+    const cursorLine = savedSelection.active.line;
+    const matchedLines = this.filterResultModel.getMatchedLines(editorId);
+    if (matchedLines.length === 0) { return savedSelection; }
+    matchedLines.sort((a, b) => a - b);
+
+    // 找到包含光标的折叠区间
+    for (const range of ranges) {
+      if (cursorLine >= range.start && cursorLine <= range.end) {
+        // 向前查找该区间前最后一个匹配行
+        let targetLine: number | undefined;
+        for (let i = matchedLines.length - 1; i >= 0; i--) {
+          if (matchedLines[i] < range.start) {
+            targetLine = matchedLines[i];
+            break;
+          }
+        }
+        // 向前没找到，向后找第一个匹配行
+        if (targetLine === undefined) {
+          for (const ml of matchedLines) {
+            if (ml > range.end) {
+              targetLine = ml;
+              break;
+            }
+          }
+        }
+        if (targetLine !== undefined) {
+          const pos = new vscode.Position(targetLine, 0);
+          return new vscode.Selection(pos, pos);
+        }
+        break;
+      }
+    }
+    return savedSelection;
   }
 
   /** Clear: 清除所有显示效果（高亮+折叠+时间标注），保留配置 */
