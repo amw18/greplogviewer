@@ -611,6 +611,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     html += '<button class="action-btn reset-btn" id="reset-btn">Reset</button>';
     html += '</div>';
     document.getElementById('app').innerHTML = html;
+    vscode.postMessage({ type: 'listSavedConfigs' });
   }
 
   function collectStartEnd() {
@@ -953,7 +954,6 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       migrateOldRanges();
       saveState();
       render();
-      vscode.postMessage({ type: 'listSavedConfigs' });
     } else if (msg.type === 'configApplied') {
       // Apply: load the saved config into the panel (user still needs to click Go)
       groups = msg.groups || [];
@@ -968,7 +968,6 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       migrateOldRanges();
       saveState();
       render();
-      vscode.postMessage({ type: 'listSavedConfigs' });
     } else if (msg.type === 'configImported') {
       if (msg.error) {
         alert('Import failed: ' + msg.error);
@@ -985,7 +984,6 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
         migrateOldRanges();
         saveState();
         render();
-        vscode.postMessage({ type: 'listSavedConfigs' });
       }
     } else if (msg.type === 'rangeTimeInfo') {
       var info = msg;
@@ -1023,7 +1021,6 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   });
 
   render();
-  vscode.postMessage({ type: 'listSavedConfigs' });
 })();
 </script>
 </body>
