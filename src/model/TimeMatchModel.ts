@@ -54,6 +54,7 @@ export class TimeMatchModel {
     lines: string[],
     totalLines: number
   ): FoldRange[] {
+    const firstMatchTime = this.findFirstMatchTime(lines);
     return ranges.map(r => {
       const timeFrom = this.findTimeBefore(r.start, lines);
       const timeTo = this.findTimeAfter(r.end, lines, totalLines);
@@ -64,8 +65,18 @@ export class TimeMatchModel {
         timeFrom,
         timeTo,
         durationMs: timeFrom && timeTo ? timeTo.getTime() - timeFrom.getTime() : undefined,
+        firstMatchTime,
       };
     });
+  }
+
+  /** 从第 0 行开始查找第一个匹配行的时间 */
+  private findFirstMatchTime(lines: string[]): Date | undefined {
+    for (let i = 0; i < lines.length; i++) {
+      const date = this.parseLineTimestamp(lines[i]);
+      if (date) { return date; }
+    }
+    return undefined;
   }
 
   /** 从指定行向前查找最近的时间戳（按需解析） */

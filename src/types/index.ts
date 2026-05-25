@@ -65,6 +65,8 @@ export interface FoldRange {
   timeTo?: Date;
   /** 时间跨度（毫秒），仅 timeFrom 和 timeTo 都存在时有值 */
   durationMs?: number;
+  /** 整个文件中第一个匹配行的时间 */
+  firstMatchTime?: Date;
 }
 
 /** 关键字匹配配置：文本中匹配的子串高亮为指定颜色 */

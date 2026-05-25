@@ -215,7 +215,7 @@ export class EditorDecorations {
 
   /**
    * 在折叠区域上方的可见行末尾显示时间标注
-   * 格式：▼ N lines | timeFrom → timeTo | duration
+   * 格式：▼ N lines | +elapsed from first match
    */
   applyTimeAnnotations(foldRanges: FoldRange[], editor: vscode.TextEditor): void {
     this.clearTimeAnnotations();
@@ -260,14 +260,9 @@ export class EditorDecorations {
     const parts: string[] = [];
     parts.push(`▼ ${range.lineCount} ${range.lineCount === 1 ? 'line' : 'lines'}`);
 
-    if (range.timeFrom || range.timeTo) {
-      const from = range.timeFrom ? this.formatTimestamp(range.timeFrom) : '?';
-      const to = range.timeTo ? this.formatTimestamp(range.timeTo) : '?';
-      parts.push(`${from} → ${to}`);
-    }
-
-    if (range.durationMs !== undefined) {
-      parts.push(this.formatDuration(range.durationMs));
+    if (range.firstMatchTime && range.timeFrom) {
+      const elapsedMs = range.timeFrom.getTime() - range.firstMatchTime.getTime();
+      parts.push(`+${this.formatDuration(elapsedMs)}`);
     }
 
     return '  ' + parts.join('  │  ');
