@@ -19,19 +19,19 @@ export class GrepController {
     private editorStateModel: EditorStateModel
   ) {}
 
-  /** Grep Keyword: grep -rn "keyword" dirs */
+  /** Grep Keyword: grep -Rn "keyword" dirs */
   async grepKeyword(): Promise<void> {
     const keyword = this.getSelectedText();
     if (!keyword) { return; }
     await this.runGrep(keyword);
   }
 
-  /** Grep Function: grep -rn "keyword([^)]*)$" dirs（BRE 中 ( ) 直接匹配字面括号） */
+  /** Grep Function: grep -Rn -A 20 "keyword\s*\(" dirs（-A 捕获跨行定义） */
   async grepFunction(): Promise<void> {
     const keyword = this.getSelectedText();
     if (!keyword) { return; }
-    const escaped = this.escapeRegex(keyword);
-    await this.runGrep(`${escaped}([^)]*)$`);
+    // 匹配函数定义：keyword 后紧跟可选的空白和左括号，-A 20 显示后续 20 行以捕获跨行参数
+    await this.runGrep(`${this.escapeRegex(keyword)}\\s*\\(`, 20);
   }
 
   /** 获取关联目录配置（拆分 include/exclude，环境变量由 shell 展开） */
@@ -127,7 +127,7 @@ export class GrepController {
   }
 
   /** 执行 grep 并在 terminal 中显示结果 */
-  private async runGrep(pattern: string): Promise<void> {
+  private async runGrep(pattern: string, contextAfter?: number): Promise<void> {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
     if (!workspaceFolder) {
       vscode.window.showWarningMessage('GrepLogViewer: No workspace folder open.');
@@ -137,10 +137,10 @@ export class GrepController {
     const rootPath = workspaceFolder.uri.fsPath;
     const { includes, excludes } = this.getParsedDirs();
 
-    // 搜索目录：双引号允许 shell 展开 ${VAR}
+    // 搜索目录使用相对路径（terminal cwd = rootPath）
     const searchPaths = includes.length > 0
-      ? includes.map(d => `"${rootPath}/${d}"`)
-      : [`"${rootPath}"`];
+      ? includes.map(d => `"${d}"`)
+      : [`"."`];
 
     // 排除目录：shell 脚本先展开变量再取 basename 传给 --exclude-dir
     let prefix = '';
@@ -154,7 +154,8 @@ export class GrepController {
 
     const safePattern = pattern.replace(/'/g, "'\\''");
     const sep = '>>>';
-    const command = `${prefix}echo "${sep}" && grep -rn --color=always ${excludeFlags} '${safePattern}' ${searchPaths.join(' ')} && echo "${sep}"`;
+    const contextFlag = contextAfter ? `-A ${contextAfter} ` : '';
+    const command = `${prefix}echo "${sep}" && grep -Rn --color=always ${contextFlag}${excludeFlags} '${safePattern}' ${searchPaths.join(' ')} && echo "${sep}"`;
 
     let terminal = vscode.window.activeTerminal;
     if (!terminal) {
