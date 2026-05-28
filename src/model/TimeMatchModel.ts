@@ -6,12 +6,14 @@ import { TimePatternConfig, FoldRange } from '../types';
 type FormatSegment =
   | { type: 'token'; value: string }
   | { type: 'literal'; value: string }
-  | { type: 'optional'; segments: FormatSegment[] };
+  | { type: 'optional'; segments: FormatSegment[] }
+  | { type: 'whitespace' };
 
-/** 支持的格式 token → 数字位数 */
+/** 支持的格式 token → 数字位数（0 = 可变宽度） */
 const TOKEN_DIGITS: Record<string, number> = {
-  YYYY: 4, YY: 2, MM: 2, DD: 2,
+  SSSSSS: 6, YYYY: 4, YY: 2, MM: 2, DD: 2,
   HH: 2, mm: 2, ss: 2, SSS: 3,
+  s: 0,
 };
 
 /** walk 返回值 */
@@ -54,10 +56,12 @@ export class TimeMatchModel {
     lines: string[],
     totalLines: number
   ): FoldRange[] {
-    const firstMatchTime = this.findFirstMatchTime(lines);
+    // 构建匹配行（非折叠行）的行号集合
+    const matchedSet = buildMatchedLineSet(ranges, totalLines);
+    const firstMatchTime = this.findFirstMatchTime(lines, matchedSet);
     return ranges.map(r => {
-      const timeFrom = this.findTimeBefore(r.start, lines);
-      const timeTo = this.findTimeAfter(r.end, lines, totalLines);
+      const timeFrom = this.findTimeBefore(r.start, lines, matchedSet);
+      const timeTo = this.findTimeAfter(r.end, lines, totalLines, matchedSet);
       return {
         start: r.start,
         end: r.end,
@@ -100,27 +104,30 @@ export class TimeMatchModel {
     };
   }
 
-  /** 从第 0 行开始查找第一个匹配行的时间 */
-  private findFirstMatchTime(lines: string[]): Date | undefined {
+  /** 从第一个匹配（非折叠）行开始查找时间戳 */
+  private findFirstMatchTime(lines: string[], matchedSet: Set<number>): Date | undefined {
     for (let i = 0; i < lines.length; i++) {
+      if (!matchedSet.has(i)) { continue; }
       const date = this.parseLineTimestamp(lines[i]);
       if (date) { return date; }
     }
     return undefined;
   }
 
-  /** 从指定行向前查找最近的时间戳（按需解析） */
-  private findTimeBefore(line: number, lines: string[]): Date | undefined {
+  /** 从指定行向前查找最近的匹配行时间戳 */
+  private findTimeBefore(line: number, lines: string[], matchedSet: Set<number>): Date | undefined {
     for (let i = line - 1; i >= 0; i--) {
+      if (!matchedSet.has(i)) { continue; }
       const date = this.parseLineTimestamp(lines[i]);
       if (date) { return date; }
     }
     return undefined;
   }
 
-  /** 从指定行向后查找最近的时间戳（按需解析） */
-  private findTimeAfter(line: number, lines: string[], totalLines: number): Date | undefined {
+  /** 从指定行向后查找最近的匹配行时间戳 */
+  private findTimeAfter(line: number, lines: string[], totalLines: number, matchedSet: Set<number>): Date | undefined {
     for (let i = line + 1; i < totalLines; i++) {
+      if (!matchedSet.has(i)) { continue; }
       const date = this.parseLineTimestamp(lines[i]);
       if (date) { return date; }
     }
@@ -152,6 +159,21 @@ export class TimeMatchModel {
           segments.push({ type: 'optional', segments: this.parseFormat(inner) });
           i = end + 1;
         }
+        continue;
+      }
+
+      // 合并连续空格为灵活空白段（处理 linux kernel 等可变宽度填充）
+      if (format[i] === ' ') {
+        let j = i + 1;
+        while (j < format.length && format[j] === ' ') { j++; }
+        if (j - i >= 2) {
+          segments.push({ type: 'whitespace' });
+          i = j;
+          continue;
+        }
+        // 单个空格保留为字面量
+        segments.push({ type: 'literal', value: ' ' });
+        i++;
         continue;
       }
 
@@ -208,6 +230,7 @@ function matchToken(format: string, pos: number): string | null {
 /**
  * 从字符串指定位置开始，按 segment 树逐字符匹配。
  * 字面量直接比对；token 读取指定位数数字；可选组尝试匹配，失败则跳过。
+ * 连续空格段（whitespace）跳过任意数量空格；token 前自动跳过空格以兼容可变填充。
  */
 function walkSegments(str: string, segments: FormatSegment[], startPos: number): WalkResult | null {
   let pos = startPos;
@@ -216,18 +239,34 @@ function walkSegments(str: string, segments: FormatSegment[], startPos: number):
   for (const seg of segments) {
     if (str.length < pos) { return null; }
 
-    if (seg.type === 'literal') {
+    if (seg.type === 'whitespace') {
+      // 灵活空白：跳过任意数量的空格
+      while (pos < str.length && str[pos] === ' ') { pos++; }
+    } else if (seg.type === 'literal') {
       if (str.substring(pos, pos + seg.value.length) !== seg.value) {
         return null;
       }
       pos += seg.value.length;
     } else if (seg.type === 'token') {
-      const digits = TOKEN_DIGITS[seg.value];
-      if (pos + digits > str.length) { return null; }
-      const val = parseInt(str.substring(pos, pos + digits), 10);
-      if (isNaN(val)) { return null; }
-      values[seg.value] = val;
-      pos += digits;
+      // token 前跳过空白（处理无固定空白的格式，如 linux kernel [ 123.456]）
+      while (pos < str.length && str[pos] === ' ') { pos++; }
+      if (seg.value === 's') {
+        // 可变宽度秒数：贪婪读取连续数字
+        let end = pos;
+        while (end < str.length && /\d/.test(str[end])) { end++; }
+        if (end === pos) { return null; }
+        const val = parseInt(str.substring(pos, end), 10);
+        if (isNaN(val)) { return null; }
+        values['s'] = val;
+        pos = end;
+      } else {
+        const digits = TOKEN_DIGITS[seg.value];
+        if (pos + digits > str.length) { return null; }
+        const val = parseInt(str.substring(pos, pos + digits), 10);
+        if (isNaN(val)) { return null; }
+        values[seg.value] = val;
+        pos += digits;
+      }
     } else if (seg.type === 'optional') {
       const optResult = walkSegments(str, seg.segments, pos);
       if (optResult) {
@@ -247,12 +286,26 @@ function buildDate(values: Record<string, number>): Date | null {
   const day = values['DD'] ?? 1;
   const hour = values['HH'] ?? 0;
   const minute = values['mm'] ?? 0;
-  const second = values['ss'] ?? 0;
-  const ms = values['SSS'] ?? 0;
+  const second = values['s'] ?? values['ss'] ?? 0;
+  const micros = values['SSSSSS'];
+  const ms = micros !== undefined ? Math.floor(micros / 1000) : (values['SSS'] ?? 0);
 
   const date = new Date(year, month - 1, day, hour, minute, second, ms);
   if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
     return null;
   }
   return date;
+}
+
+/** 从折叠区间集合构建匹配行号 Set（所有不在任何折叠区间内的行） */
+function buildMatchedLineSet(
+  ranges: Array<{ start: number; end: number }>,
+  totalLines: number
+): Set<number> {
+  const set = new Set<number>();
+  for (let i = 0; i < totalLines; i++) { set.add(i); }
+  for (const r of ranges) {
+    for (let i = r.start; i <= r.end; i++) { set.delete(i); }
+  }
+  return set;
 }

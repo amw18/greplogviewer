@@ -227,6 +227,253 @@ describe('TimeMatchModel', () => {
     });
   });
 
+  // ===== Bug Fix #1: 6-digit microsecond (SSSSSS) =====
+  describe('SSSSSS — 6位微秒', () => {
+    it('解析 SSSSSS 格式', () => {
+      const segs = model.parseFormat('HH:mm:ss.SSSSSS');
+      assert.strictEqual(segs.length, 7);
+      assert.deepStrictEqual(segs[0], { type: 'token', value: 'HH' });
+      assert.deepStrictEqual(segs[4], { type: 'token', value: 'ss' });
+      assert.deepStrictEqual(segs[5], { type: 'literal', value: '.' });
+      assert.deepStrictEqual(segs[6], { type: 'token', value: 'SSSSSS' });
+    });
+
+    it('解析 6 位微秒时间戳', () => {
+      const segs = model.parseFormat('HH:mm:ss.SSSSSS');
+      const result = model.parseDate('08:15:30.456789', segs);
+      assert.ok(result instanceof Date);
+      assert.strictEqual(result!.getSeconds(), 30);
+      assert.strictEqual(result!.getMilliseconds(), 456);
+    });
+
+    it('6 位微秒与 3 位毫秒并存时优先匹配长的', () => {
+      const segs = model.parseFormat('HH:mm:ss.SSSSSS');
+      // parseFormat 应优先匹配 SSSSSS 而非两次 SSS
+      const tokenSegs = segs.filter(s => s.type === 'token');
+      assert.strictEqual(tokenSegs[tokenSegs.length - 1].value, 'SSSSSS');
+    });
+  });
+
+  // ===== Bug Fix #1: 可变宽度秒数 (s) =====
+  describe('s token — 可变宽度秒数', () => {
+    it('解析格式 s.SSSSSS', () => {
+      const segs = model.parseFormat('s.SSSSSS');
+      assert.strictEqual(segs.length, 3);
+      assert.deepStrictEqual(segs[0], { type: 'token', value: 's' });
+      assert.deepStrictEqual(segs[1], { type: 'literal', value: '.' });
+    });
+
+    it('s 读取多位秒数 (3 digits)', () => {
+      const segs = model.parseFormat('[s.SSSSSS]');
+      const result = model.parseDate('[123.456789]', segs);
+      assert.ok(result instanceof Date);
+      // 123 seconds → 2m 3s after Date normalization
+      assert.strictEqual(result!.getMinutes(), 2);
+      assert.strictEqual(result!.getSeconds(), 3);
+      assert.strictEqual(result!.getMilliseconds(), 456);
+    });
+
+    it('s 读取单位秒数 (1 digit)', () => {
+      const segs = model.parseFormat('[s.SSSSSS]');
+      const result = model.parseDate('[0.000000]', segs);
+      assert.ok(result instanceof Date);
+      assert.strictEqual(result!.getSeconds(), 0);
+      assert.strictEqual(result!.getMilliseconds(), 0);
+    });
+
+    it('s 读取多位秒数 (5 digits)', () => {
+      const segs = model.parseFormat('[s.SSSSSS]');
+      const result = model.parseDate('[12345.678901]', segs);
+      assert.ok(result instanceof Date);
+      // 12345 seconds → 3h 25m 45s
+      assert.strictEqual(result!.getHours(), 3);
+      assert.strictEqual(result!.getMinutes(), 25);
+      assert.strictEqual(result!.getSeconds(), 45);
+      assert.strictEqual(result!.getMilliseconds(), 678);
+    });
+
+    it('s 后无数字时返回 null', () => {
+      const segs = model.parseFormat('s');
+      const result = model.parseDate('', segs);
+      assert.strictEqual(result, null);
+    });
+
+    it('ss 仍然保持 2 位固定宽度', () => {
+      const segs = model.parseFormat('HH:mm:ss');
+      const result = model.parseDate('10:30:05', segs);
+      assert.ok(result instanceof Date);
+      assert.strictEqual(result!.getSeconds(), 5);
+    });
+  });
+
+  // ===== Bug Fix #1: 连续空格合并 + token 前空白跳过 =====
+  describe('空白处理 — Linux Kernel 格式', () => {
+    it('parseFormat 合并连续空格为 whitespace 段', () => {
+      const segs = model.parseFormat('[    s.SSSSSS]');
+      assert.strictEqual(segs.length, 6);
+      assert.deepStrictEqual(segs[0], { type: 'literal', value: '[' });
+      assert.deepStrictEqual(segs[1], { type: 'whitespace' });
+      assert.deepStrictEqual(segs[2], { type: 'token', value: 's' });
+      assert.deepStrictEqual(segs[3], { type: 'literal', value: '.' });
+      assert.deepStrictEqual(segs[4], { type: 'token', value: 'SSSSSS' });
+      assert.deepStrictEqual(segs[5], { type: 'literal', value: ']' });
+    });
+
+    it('单个空格保留为字面量', () => {
+      const segs = model.parseFormat('HH:mm:ss');
+      // 无空格，所有段都不是 whitespace
+      assert.strictEqual(segs.every(s => s.type !== 'whitespace'), true);
+    });
+
+    it('Linux kernel 格式 [    s.SSSSSS] 匹配 [    0.000000]', () => {
+      model.setConfig({ format: '[    s.SSSSSS]' });
+      const lines = [
+        '[    0.000000] Matched line 0',
+        'no match',
+        '[    1.500000] Matched line 2',
+      ];
+      const result = model.computeFoldRanges(
+        [{ start: 1, end: 1 }], lines, lines.length
+      );
+      assert.ok(result[0].timeFrom instanceof Date);
+      assert.strictEqual(result[0].timeFrom!.getSeconds(), 0);
+      assert.ok(result[0].timeTo instanceof Date);
+      assert.strictEqual(result[0].timeTo!.getSeconds(), 1);
+      assert.strictEqual(result[0].durationMs, 1500);
+    });
+
+    it('Linux kernel 格式 [    s.SSSSSS] 匹配 [  123.456789]（较少空格）', () => {
+      model.setConfig({ format: '[    s.SSSSSS]' });
+      const lines = [
+        '[    0.000000] Matched line 0',
+        'no match',
+        '[  123.456789] Matched line 2',
+      ];
+      const result = model.computeFoldRanges(
+        [{ start: 1, end: 1 }], lines, lines.length
+      );
+      assert.ok(result[0].timeFrom instanceof Date);
+      assert.strictEqual(result[0].timeFrom!.getSeconds(), 0);
+      assert.ok(result[0].timeTo instanceof Date);
+      // 123 seconds → 2m 3s and 123000ms span
+      assert.strictEqual(result[0].timeTo!.getMinutes(), 2);
+      assert.strictEqual(result[0].timeTo!.getSeconds(), 3);
+      assert.strictEqual(result[0].timeTo!.getMilliseconds(), 456);
+    });
+
+    it('token 前自动跳过空白（格式无空格，日志有空格也能匹配）', () => {
+      model.setConfig({ format: '[s.SSSSSS]' });
+      const lines = [
+        '[    0.000000] Matched line 0',
+        'no match',
+        '[    1.500000] Matched line 2',
+      ];
+      const result = model.computeFoldRanges(
+        [{ start: 1, end: 1 }], lines, lines.length
+      );
+      assert.ok(result[0].timeFrom instanceof Date);
+      assert.ok(result[0].timeTo instanceof Date);
+      assert.strictEqual(result[0].durationMs, 1500);
+    });
+
+    it('Linux kernel 格式 computeFoldRanges 完整流程', () => {
+      model.setConfig({ format: '[    s.SSSSSS]' });
+      const lines = [
+        '[    0.000000] Kernel boot',
+        'some unmatched log',
+        'another unmatched',
+        '[    2.500000] Another event',
+        'unmatched again',
+        '[    5.000000] Final event',
+      ];
+      const ranges = [
+        { start: 1, end: 2 },
+        { start: 4, end: 4 },
+      ];
+      const result = model.computeFoldRanges(ranges, lines, lines.length);
+
+      assert.strictEqual(result.length, 2);
+      // fold [1,2]: between [0.000] matched and [2.500] matched
+      assert.strictEqual(result[0].lineCount, 2);
+      assert.strictEqual(result[0].timeFrom!.getSeconds(), 0);
+      assert.strictEqual(result[0].timeTo!.getSeconds(), 2);
+      assert.strictEqual(result[0].durationMs, 2500);
+      // fold [4,4]: between [2.500] matched and [5.000] matched
+      assert.strictEqual(result[1].lineCount, 1);
+      assert.strictEqual(result[1].timeFrom!.getSeconds(), 2);
+      assert.strictEqual(result[1].timeTo!.getSeconds(), 5);
+      assert.strictEqual(result[1].durationMs, 2500);
+    });
+  });
+
+  // ===== Bug Fix #2 & #3: 仅搜索匹配行的时间 =====
+  describe('匹配行限定 — firstMatchTime/timeBefore/timeAfter 仅搜索匹配行', () => {
+    it('firstMatchTime 跳过折叠行，从第一个匹配行开始', () => {
+      model.setConfig({ format: 'HH:mm:ss' });
+      const lines = [
+        '10:00:00 Folded line 0',   // 折叠（未匹配）但有时间戳
+        '10:00:00 Folded line 1',   // 折叠
+        '10:00:05 Matched line 2',  // 第一个匹配行
+      ];
+      const ranges = [{ start: 0, end: 1 }]; // lines 0,1 折叠
+      const result = model.computeFoldRanges(ranges, lines, lines.length);
+      // firstMatchTime 应为匹配行 (line 2) 的时间，不是折叠行 (line 0) 的
+      assert.ok(result[0].firstMatchTime instanceof Date);
+      assert.strictEqual(result[0].firstMatchTime!.getSeconds(), 5);
+    });
+
+    it('findTimeBefore 跳过折叠行查找前一个匹配行', () => {
+      model.setConfig({ format: 'HH:mm:ss' });
+      const lines = [
+        '10:00:00 Folded line 0',   // 折叠（有 timestamp）
+        '10:00:03 Matched line 1',  // 匹配
+        '10:00:05 Folded line 2',   // 折叠
+        '10:00:10 Matched line 3',  // 匹配
+      ];
+      const ranges = [
+        { start: 0, end: 0 },   // line 0 折叠
+        { start: 2, end: 2 },   // line 2 折叠
+      ];
+      const result = model.computeFoldRanges(ranges, lines, lines.length);
+      // fold [2,2] 的 timeFrom 应为 line 1 (匹配行) 的 10:00:03，而非 line 0 (折叠行) 的 10:00:00
+      assert.strictEqual(result.length, 2);
+      assert.ok(result[1].timeFrom instanceof Date);
+      // line 0 是折叠行，应被跳过；line 1 是匹配行
+      assert.strictEqual(result[1].timeFrom!.getSeconds(), 3);
+    });
+
+    it('findTimeAfter 跳过折叠行查找后一个匹配行', () => {
+      model.setConfig({ format: 'HH:mm:ss' });
+      const lines = [
+        '10:00:00 Matched line 0',
+        '10:00:05 Folded line 1',   // 折叠（有 timestamp）
+        '10:00:07 Folded line 2',   // 折叠（有 timestamp）
+        'no time Matched line 3',   // 匹配但无时间戳
+        '10:00:15 Matched line 4',
+      ];
+      const ranges = [{ start: 1, end: 2 }];
+      const result = model.computeFoldRanges(ranges, lines, lines.length);
+      // fold [1,2] 的 timeTo 应跳过折叠行 (line 1,2) 和 line 3（无时间戳），到 line 4
+      assert.ok(result[0].timeTo instanceof Date);
+      assert.strictEqual(result[0].timeTo!.getSeconds(), 15);
+    });
+
+    it('折叠行的时间戳不会影响 elapsed time 计算', () => {
+      model.setConfig({ format: 'HH:mm:ss' });
+      const lines = [
+        '10:00:00 Folded line 0',  // 折叠（有 timestamp）→ 应该被跳过
+        '10:00:05 Matched line 1',
+      ];
+      const ranges = [{ start: 0, end: 0 }];
+      const result = model.computeFoldRanges(ranges, lines, lines.length);
+      // fold [0,0] 的 timeFrom 为 undefined（前面无匹配行）
+      assert.strictEqual(result[0].timeFrom, undefined);
+      // firstMatchTime 应为匹配行 line 1 的时间
+      assert.ok(result[0].firstMatchTime instanceof Date);
+      assert.strictEqual(result[0].firstMatchTime!.getSeconds(), 5);
+    });
+  });
+
   // ===== 边界情况 =====
   describe('边界情况', () => {
     it('空格式字符串 isConfigured 为 false', () => {
