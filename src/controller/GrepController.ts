@@ -26,12 +26,11 @@ export class GrepController {
     await this.runGrep(keyword);
   }
 
-  /** Grep Function: grep -Rn -A 20 "keyword\s*\(" dirs（-A 捕获跨行定义） */
+  /** Grep Function: perl 多行匹配，从 keyword( 到 ) */
   async grepFunction(): Promise<void> {
     const keyword = this.getSelectedText();
     if (!keyword) { return; }
-    // 匹配函数定义：keyword 后紧跟可选的空白和左括号，-A 20 显示后续 20 行以捕获跨行参数
-    await this.runGrep(`${this.escapeRegex(keyword)}\\s*\\(`, 20);
+    await this.runGrepFunction(keyword);
   }
 
   /** 获取关联目录配置（拆分 include/exclude，环境变量由 shell 展开） */
@@ -126,8 +125,51 @@ export class GrepController {
     return editor.document.getText(selection).trim();
   }
 
+  /** 执行 perl 多行 grep，使用 flip-flop 从 keyword( 匹配到 ) */
+  private async runGrepFunction(keyword: string): Promise<void> {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (!workspaceFolder) {
+      vscode.window.showWarningMessage('GrepLogViewer: No workspace folder open.');
+      return;
+    }
+
+    const rootPath = workspaceFolder.uri.fsPath;
+    const { includes, excludes } = this.getParsedDirs();
+
+    const searchPaths = includes.length > 0
+      ? includes.map(d => `"${d}"`)
+      : [`"."`];
+
+    // find 排除目录（取 basename 匹配）
+    let excludeScript = '';
+    if (excludes.length > 0) {
+      const varDefs = excludes.map((d, i) => `_ex${i}=${d}`).join('; ');
+      const excludeFlags = excludes.map((_, i) =>
+        ` -not -path "*/\${_ex${i}##*/}/*"`
+      ).join('');
+      excludeScript = `${varDefs}; `;
+      excludeScript += `find ${searchPaths.join(' ')} -type f ${excludeFlags} | sort |`;
+    } else {
+      excludeScript = `find ${searchPaths.join(' ')} -type f | sort |`;
+    }
+
+    const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const sep = '>>>';
+
+    // perl flip-flop (..): 从 \bkeyword\s*\( 匹配到下一个 )
+    // 同一行同时满足首尾时也能正确输出单行定义
+    const command = `echo "${sep}" && ${excludeScript} xargs perl -ne 'if (/\\b${escaped}\\s*\\(/ .. /\\)/) { print "\$ARGV:\$.:\$_" }' && echo "${sep}"`;
+
+    let terminal = vscode.window.activeTerminal;
+    if (!terminal) {
+      terminal = vscode.window.createTerminal({ name: 'GrepLogViewer', cwd: rootPath });
+    }
+    terminal.show();
+    terminal.sendText(command);
+  }
+
   /** 执行 grep 并在 terminal 中显示结果 */
-  private async runGrep(pattern: string, contextAfter?: number): Promise<void> {
+  private async runGrep(pattern: string): Promise<void> {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
     if (!workspaceFolder) {
       vscode.window.showWarningMessage('GrepLogViewer: No workspace folder open.');
@@ -154,8 +196,7 @@ export class GrepController {
 
     const safePattern = pattern.replace(/'/g, "'\\''");
     const sep = '>>>';
-    const contextFlag = contextAfter ? `-A ${contextAfter} ` : '';
-    const command = `${prefix}echo "${sep}" && grep -Rn --color=always ${contextFlag}${excludeFlags} '${safePattern}' ${searchPaths.join(' ')} && echo "${sep}"`;
+    const command = `${prefix}echo "${sep}" && grep -Rn --color=always ${excludeFlags} '${safePattern}' ${searchPaths.join(' ')} && echo "${sep}"`;
 
     let terminal = vscode.window.activeTerminal;
     if (!terminal) {
