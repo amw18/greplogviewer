@@ -45,6 +45,24 @@ export function activate(context: vscode.ExtensionContext) {
     grepController?.grepFunction();
   });
 
+  // ── Test-only commands for autotest automation ──
+  const testGoCmd = vscode.commands.registerCommand('greplogviewer._testGo', async (config: any) => {
+    await viewController?.testGo(config || {});
+  });
+  const testClearCmd = vscode.commands.registerCommand('greplogviewer._testClear', async () => {
+    await viewController?.testClear();
+  });
+  const testResetCmd = vscode.commands.registerCommand('greplogviewer._testReset', async () => {
+    await viewController?.testReset();
+  });
+  const testGetStateCmd = vscode.commands.registerCommand('greplogviewer._testGetState', (): any => {
+    return {
+      foldSummaries: viewController?.testGetFoldSummaries() || [],
+      foldRanges: viewController?.testGetFoldRanges() || [],
+      timeInfo: viewController?.testGetTimeInfo() || {},
+    };
+  });
+
   const editorChangeListener = vscode.window.onDidChangeActiveTextEditor(editor => {
     if (editor) { viewController!.attach(editor); }
   });
@@ -61,6 +79,10 @@ export function activate(context: vscode.ExtensionContext) {
     sidebarView,
     grepKeywordCmd,
     grepFunctionCmd,
+    testGoCmd,
+    testClearCmd,
+    testResetCmd,
+    testGetStateCmd,
     editorChangeListener,
     docChangeListener,
     { dispose: () => viewController?.dispose() }

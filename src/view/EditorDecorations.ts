@@ -29,17 +29,21 @@ export class EditorDecorations {
    * @param results 行级过滤结果
    * @param editor 目标编辑器
    * @param keywords 可选关键字配置，每个提供 pattern + color
+   * @param scanStart 行范围起始（0-based），仅在此范围内扫描关键字
+   * @param scanEnd 行范围结束（0-based, exclusive）
    */
-  apply(results: FilterResult[], editor: vscode.TextEditor, keywords?: KeywordConfig[]): void {
+  apply(results: FilterResult[], editor: vscode.TextEditor, keywords?: KeywordConfig[], scanStart?: number, scanEnd?: number): void {
     this.clear();
     this.editor = editor;
 
-    // ── 1. 收集匹配行号，预计算关键字匹配（仅扫描被组匹配到的行）──
+    // ── 1. 收集匹配行号，预计算关键字匹配 ──
+    // 关键字在 [scanStart, scanEnd) 范围内扫描所有行（不限于组匹配行），
+    // 这样范围内的关键字匹配行不会被折叠。
     const matchedLineNums = new Set<number>();
     for (const r of results) {
       if (r.groupId) { matchedLineNums.add(r.lineNumber); }
     }
-    const kwByLine = this.computeKeywordMatches(keywords, editor, matchedLineNums);
+    const kwByLine = this.computeKeywordMatches(keywords, editor, scanStart, scanEnd);
 
     // ── 2. 按 groupId 分组匹配行，同时从行范围内挖掉关键字子串 ──
     const groupLines = new Map<string, vscode.Range[]>();
@@ -61,6 +65,9 @@ export class EditorDecorations {
         } else {
           groupLines.get(r.groupId)!.push(fullRange);
         }
+      } else if (r.groupId === '__kw_visible__') {
+        // 范围内被 keyword 匹配到的行：不 dim，关键字高亮由下方统一处理
+        // （kwByLine 中已有该行的匹配信息）
       } else {
         unmatchedLines.push(fullRange);
       }
@@ -205,16 +212,18 @@ export class EditorDecorations {
   // ── 内部辅助 ──
 
   /**
-   * 计算关键字的匹配位置，仅扫描 matchedLineNums 中指定的行（按行号索引返回）。
-   * 若 keywords 为空或 matchedLineNums 为空则返回空 Map。
+   * 计算关键字的匹配位置，扫描 [scanStart, scanEnd) 范围内所有行。
+   * 若 keywords 为空或范围无效则返回空 Map。
    */
   private computeKeywordMatches(
     keywords: KeywordConfig[] | undefined,
     editor: vscode.TextEditor,
-    matchedLineNums: Set<number>
+    scanStart?: number,
+    scanEnd?: number
   ): Map<number, KeywordMatch[]> {
     const map = new Map<number, KeywordMatch[]>();
-    if (!keywords || keywords.length === 0 || matchedLineNums.size === 0) { return map; }
+    if (!keywords || keywords.length === 0) { return map; }
+    if (scanStart === undefined || scanEnd === undefined || scanStart >= scanEnd) { return map; }
 
     for (const kw of keywords) {
       if (kw.enabled === false) { continue; }
@@ -225,7 +234,7 @@ export class EditorDecorations {
         continue;
       }
 
-      for (const i of matchedLineNums) {
+      for (let i = scanStart; i < scanEnd; i++) {
         const line = editor.document.lineAt(i).text;
         regex.lastIndex = 0;
         let match: RegExpExecArray | null;
@@ -327,6 +336,14 @@ export class EditorDecorations {
   formatFoldSummary(range: FoldRange): string {
     const parts: string[] = [];
     parts.push(`▼ ${range.lineCount} ${range.lineCount === 1 ? 'line' : 'lines'}`);
+
+    // 折叠区间内 keyword 命中统计
+    if (range.keywordHits && range.keywordHits.length > 0) {
+      const hitText = range.keywordHits
+        .map(h => `${h.hint}(${h.count})`)
+        .join(', ');
+      parts.push(hitText);
+    }
 
     // 折叠文本自身的时间跨度
     if (range.durationMs !== undefined) {

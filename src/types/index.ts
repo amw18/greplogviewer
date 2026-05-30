@@ -88,27 +88,27 @@ export interface NamedRange {
   id: string;
   name: string;
   description?: string;
-  /** 开始匹配的行号（1-based），用户可见行号 */
-  startLine: number;
-  /** 结束匹配的行号（1-based），用户可见行号 */
-  endLine: number;
+  /** 开始行匹配的正则表达式，第一个匹配行作为范围起始 */
+  startPattern: string;
+  /** 结束行匹配的正则表达式，第一个匹配行作为范围结束 */
+  endPattern: string;
 }
 
 /** 编辑器级别的配置（正则组 + 行范围 + 时间模式 + 关键字） */
 export interface EditorConfig {
   groups: RegexGroup[];
-  /** 开始匹配的行号（1-based），用户可见行号。未配置时为 undefined。
+  /** 开始行正则匹配模式，第一个匹配行作为范围起始。
    * @deprecated 推荐使用 namedRanges + activeRangeId */
-  startLine?: number;
-  /** 结束匹配的行号（1-based），用户可见行号。未配置时为 undefined。
+  startPattern?: string;
+  /** 结束行正则匹配模式，第一个匹配行作为范围结束。
    * @deprecated 推荐使用 namedRanges + activeRangeId */
-  endLine?: number;
+  endPattern?: string;
   /** 用户对当前行范围的备注描述。
    * @deprecated 推荐使用 namedRanges */
   rangeDescription?: string;
   /** 多个命名的行范围配置（新格式） */
   namedRanges?: NamedRange[];
-  /** 当前激活的行范围 ID（单选），为空时回退到 startLine/endLine */
+  /** 当前激活的行范围 ID（单选），为空时回退到 startPattern/endPattern */
   activeRangeId?: string;
   /** 时间匹配模式，未配置时不提取时间信息 */
   timePattern?: TimePatternConfig;
@@ -132,8 +132,8 @@ export type ConfigScope = 'workspace' | 'user';
 export interface UpdateConfigMessage {
   type: 'updateConfig';
   groups: RegexGroup[];
-  startLine?: number;
-  endLine?: number;
+  startPattern?: string;
+  endPattern?: string;
   rangeDescription?: string;
   namedRanges?: NamedRange[];
   activeRangeId?: string;
@@ -144,8 +144,8 @@ export interface UpdateConfigMessage {
 export interface GoMessage {
   type: 'go';
   groups: RegexGroup[];
-  startLine?: number;
-  endLine?: number;
+  startPattern?: string;
+  endPattern?: string;
   rangeDescription?: string;
   namedRanges?: NamedRange[];
   activeRangeId?: string;
@@ -166,8 +166,8 @@ export interface ClearMessage {
 export interface ExportConfigMessage {
   type: 'exportConfig';
   groups: RegexGroup[];
-  startLine?: number;
-  endLine?: number;
+  startPattern?: string;
+  endPattern?: string;
   rangeDescription?: string;
   namedRanges?: NamedRange[];
   activeRangeId?: string;
@@ -184,8 +184,8 @@ export interface SaveConfigMessage {
   name: string;
   scope: ConfigScope;
   groups: RegexGroup[];
-  startLine?: number;
-  endLine?: number;
+  startPattern?: string;
+  endPattern?: string;
   rangeDescription?: string;
   namedRanges?: NamedRange[];
   activeRangeId?: string;
@@ -213,7 +213,7 @@ export interface DeleteSavedConfigMessage {
 
 export interface ConfigImportedMessage {
   type: 'configImported';
-  config?: { groups: RegexGroup[]; startLine?: number; endLine?: number; rangeDescription?: string; namedRanges?: NamedRange[]; activeRangeId?: string; timePattern?: TimePatternConfig; keywords?: KeywordConfig[] };
+  config?: { groups: RegexGroup[]; startPattern?: string; endPattern?: string; rangeDescription?: string; namedRanges?: NamedRange[]; activeRangeId?: string; timePattern?: TimePatternConfig; keywords?: KeywordConfig[] };
   error?: string;
 }
 
@@ -225,8 +225,8 @@ export interface SavedConfigsListMessage {
 export interface ConfigAppliedMessage {
   type: 'configApplied';
   groups: RegexGroup[];
-  startLine?: number;
-  endLine?: number;
+  startPattern?: string;
+  endPattern?: string;
   rangeDescription?: string;
   namedRanges?: NamedRange[];
   activeRangeId?: string;

@@ -7,7 +7,7 @@ export class EditorStateModel {
   private activeSet = new Set<string>();
   private context: vscode.ExtensionContext;
   /** 编辑器级别的行范围配置 */
-  private lineRangeMap = new Map<string, { startLine?: number; endLine?: number }>();
+  private lineRangeMap = new Map<string, { startPattern?: string; endPattern?: string }>();
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
@@ -24,13 +24,13 @@ export class EditorStateModel {
   }
 
   /** 获取行范围配置 */
-  getLineRange(editorId: string): { startLine?: number; endLine?: number } {
+  getLineRange(editorId: string): { startPattern?: string; endPattern?: string } {
     return this.lineRangeMap.get(editorId) || {};
   }
 
   /** 设置行范围配置 */
-  setLineRange(editorId: string, startLine?: number, endLine?: number): void {
-    this.lineRangeMap.set(editorId, { startLine, endLine });
+  setLineRange(editorId: string, startPattern?: string, endPattern?: string): void {
+    this.lineRangeMap.set(editorId, { startPattern, endPattern });
   }
 
   /** 是否已激活过滤 */

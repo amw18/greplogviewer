@@ -195,9 +195,10 @@ describe('FilterController', () => {
       ]),
     ];
 
-    it('指定 startLine 和 endLine 后，范围外的行都是未匹配', () => {
-      // startLine=3, endLine=7 → 扫描第 3~7 行（0-based: 2~6）
-      const results = fc.filter(lines, groups, 3, 7);
+    it('指定 startPattern 和 endPattern 后，范围外的行都是未匹配', () => {
+      // startPattern='L03' → 第 3 行（0-based: 2）, endPattern='L08' → 第 8 行（0-based: 7）“之后”
+      // 扫描范围 [2, 7)，即第 3-7 行
+      const results = fc.filter(lines, groups, 'L03', 'L08');
 
       // 范围外的行都是 null
       assert.strictEqual(results[0].groupId, null); // L01: line 0, 范围外
@@ -214,9 +215,9 @@ describe('FilterController', () => {
       assert.strictEqual(results[9].groupId, null);  // L10: line 9, 范围外
     });
 
-    it('只指定 startLine，endLine 未指定时匹配到末尾', () => {
-      // startLine=5
-      const results = fc.filter(lines, groups, 5, undefined);
+    it('只指定 startPattern，endPattern 未指定时匹配到末尾', () => {
+      // startPattern='L05' → 第一个匹配行 (0-based: 4)
+      const results = fc.filter(lines, groups, 'L05', undefined);
 
       // 前 4 行范围外
       for (let i = 0; i < 4; i++) {
@@ -231,9 +232,9 @@ describe('FilterController', () => {
       assert.strictEqual(results[9].groupId, null);  // L10 footer
     });
 
-    it('只指定 endLine，startLine 未指定时从第 1 行开始匹配', () => {
-      // endLine=4
-      const results = fc.filter(lines, groups, undefined, 4);
+    it('只指定 endPattern，startPattern 未指定时从第 1 行开始匹配', () => {
+      // endPattern='L05' → 第一个匹配行 (0-based: 4)
+      const results = fc.filter(lines, groups, undefined, 'L05');
 
       assert.strictEqual(results[0].groupId, null);  // L01 header
       assert.strictEqual(results[1].groupId, null);  // L02 header
@@ -248,17 +249,27 @@ describe('FilterController', () => {
       assert.strictEqual(results[9].groupId, null);  // L10
     });
 
-    it('startLine 超出行数时，结果全部未匹配', () => {
-      const results = fc.filter(lines, groups, 999, undefined);
-      results.forEach(r => assert.strictEqual(r.groupId, null));
+    it('startPattern 未匹配任何行时，从第一行开始（fallback=0）', () => {
+      const results = fc.filter(lines, groups, 'NO_SUCH_LINE', undefined);
+      // fallback to 0 → scan entire file
+      assert.strictEqual(results[2].groupId, 'g1');  // ERROR
+      assert.strictEqual(results[4].groupId, 'g1');  // ERROR
+      assert.strictEqual(results[6].groupId, 'g1');  // ERROR
     });
 
     it('范围完全包含所有行时行为与不指定范围相同', () => {
-      const resultsRanged = fc.filter(lines, groups, 1, 10);
+      // 'L01' matches line 0, 'NO_MATCH' falls back to lines.length → entire file
+      const resultsRanged = fc.filter(lines, groups, 'L01', undefined);
       const resultsFull = fc.filter(lines, groups);
       for (let i = 0; i < lines.length; i++) {
         assert.strictEqual(resultsRanged[i].groupId, resultsFull[i].groupId);
       }
+    });
+
+    it('startPattern 匹配行在 endPattern 匹配行之后时，结果全部未匹配', () => {
+      // 'L08' matches line 7, 'L03' matches line 2 → start > end → empty range
+      const results = fc.filter(lines, groups, 'L08', 'L03');
+      results.forEach(r => assert.strictEqual(r.groupId, null));
     });
 
     it('不指定范围时行为不变', () => {

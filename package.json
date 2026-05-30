@@ -19,7 +19,11 @@
   "activationEvents": [
     "onView:greplogviewer.configView",
     "onCommand:greplogviewer.grepKeyword",
-    "onCommand:greplogviewer.grepFunction"
+    "onCommand:greplogviewer.grepFunction",
+    "onCommand:greplogviewer._testGo",
+    "onCommand:greplogviewer._testClear",
+    "onCommand:greplogviewer._testReset",
+    "onCommand:greplogviewer._testGetState"
   ],
   "main": "./out/extension.js",
   "contributes": {
