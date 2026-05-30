@@ -1,5 +1,8 @@
 // GrepController — 右键菜单 grep 关键字/函数跳转到关联代码目录
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import { ViewController } from './ViewController';
 import { RegexGroupModel } from '../model/RegexGroupModel';
 import { FilterResultModel } from '../model/FilterResultModel';
@@ -26,11 +29,14 @@ export class GrepController {
     await this.runGrep(keyword);
   }
 
-  /** Grep Function: perl 多行匹配，从 keyword( 到 ) */
+  /**
+   * Grep Function: 纯 Node.js 多行匹配函数定义（跨平台）
+   * 从 keyword( 开始，按括号深度匹配到闭合 )，支持嵌套括号。
+   */
   async grepFunction(): Promise<void> {
     const keyword = this.getSelectedText();
     if (!keyword) { return; }
-    await this.runGrepFunction(keyword);
+    await this.runGrepFunctionNode(keyword);
   }
 
   /** 获取关联目录配置（拆分 include/exclude，环境变量由 shell 展开） */
@@ -78,8 +84,8 @@ export class GrepController {
 
   /**
    * 解析分号分隔的目录字符串。
-   * 环境变量 ${VAR}/$VAR 保留原样由 shell 展开。
-   * 以 ! 开头的路径为排除项（取 basename 用于 --exclude-dir）。
+   * 环境变量 ${VAR}/$VAR 通过 process.env 展开。
+   * 以 ! 开头的路径为排除项。
    */
   private parseDirs(raw: string): ParsedDirs {
     const includes: string[] = [];
@@ -88,11 +94,13 @@ export class GrepController {
     for (let part of raw.split(';')) {
       part = part.trim();
       if (part.length === 0) { continue; }
+      // 展开环境变量
+      part = part.replace(/\$\{(\w+)\}/g, (_, name) => process.env[name] ?? '');
+      part = part.replace(/\$(\w+)/g, (_, name) => process.env[name] ?? '');
 
       if (part.startsWith('!')) {
         const ex = part.slice(1).trim();
         if (ex.length > 0) {
-          // 保留原始变量引用，shell 会展开 ${VAR}
           excludes.push(ex);
         }
       } else {
@@ -101,11 +109,6 @@ export class GrepController {
     }
 
     return { includes, excludes };
-  }
-
-  /** 转义 grep 正则特殊字符 */
-  private escapeRegex(s: string): string {
-    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   /** 获取选中的文本 */
@@ -123,49 +126,6 @@ export class GrepController {
     }
 
     return editor.document.getText(selection).trim();
-  }
-
-  /** 执行 perl 多行 grep，使用 flip-flop 从 keyword( 匹配到 ) */
-  private async runGrepFunction(keyword: string): Promise<void> {
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    if (!workspaceFolder) {
-      vscode.window.showWarningMessage('GrepLogViewer: No workspace folder open.');
-      return;
-    }
-
-    const rootPath = workspaceFolder.uri.fsPath;
-    const { includes, excludes } = this.getParsedDirs();
-
-    const searchPaths = includes.length > 0
-      ? includes.map(d => `"${d}"`)
-      : [`"."`];
-
-    // find 排除目录（取 basename 匹配）
-    let excludeScript = '';
-    if (excludes.length > 0) {
-      const varDefs = excludes.map((d, i) => `_ex${i}=${d}`).join('; ');
-      const excludeFlags = excludes.map((_, i) =>
-        ` -not -path "*/\${_ex${i}##*/}/*"`
-      ).join('');
-      excludeScript = `${varDefs}; `;
-      excludeScript += `find ${searchPaths.join(' ')} -type f ${excludeFlags} | sort |`;
-    } else {
-      excludeScript = `find ${searchPaths.join(' ')} -type f | sort |`;
-    }
-
-    const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const sep = '>>>';
-
-    // perl flip-flop (..): 从 \bkeyword\s*\( 匹配到下一个 )
-    // 同一行同时满足首尾时也能正确输出单行定义
-    const command = `echo "${sep}" && ${excludeScript} xargs perl -ne 'if (/\\b${escaped}\\s*\\(/ .. /\\)/) { print "\$ARGV:\$.:\$_" }' && echo "${sep}"`;
-
-    let terminal = vscode.window.activeTerminal;
-    if (!terminal) {
-      terminal = vscode.window.createTerminal({ name: 'GrepLogViewer', cwd: rootPath });
-    }
-    terminal.show();
-    terminal.sendText(command);
   }
 
   /** 执行 grep 并在 terminal 中显示结果 */
@@ -204,5 +164,157 @@ export class GrepController {
     }
     terminal.show();
     terminal.sendText(command);
+  }
+
+  // ================================================================
+  //  Grep Function — 纯 Node.js 跨平台实现
+  // ================================================================
+
+  /** 纯 Node.js 多行函数定义搜索 */
+  private async runGrepFunctionNode(keyword: string): Promise<void> {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (!workspaceFolder) {
+      vscode.window.showWarningMessage('GrepLogViewer: No workspace folder open.');
+      return;
+    }
+
+    const rootPath = workspaceFolder.uri.fsPath;
+    const { includes, excludes } = this.getParsedDirs();
+
+    // 构建搜索根目录列表
+    const searchRoots = includes.length > 0
+      ? includes.map(d => path.resolve(rootPath, d))
+      : [rootPath];
+
+    // 排除目录的 basename 集合
+    const excludeNames = new Set(excludes.map(d => path.basename(d)));
+
+    // 构建函数定义匹配正则
+    const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const startPattern = new RegExp(`\\b${escaped}\\s*\\(`);
+
+    // 收集结果
+    const results: string[] = [];
+
+    // 遍历目录
+    for (const searchRoot of searchRoots) {
+      this.searchDir(searchRoot, rootPath, startPattern, excludeNames, results);
+    }
+
+    // 写入临时文件并用终端显示
+    const sep = '>>>';
+    const lines: string[] = [sep];
+    if (results.length === 0) {
+      lines.push('(no matches)');
+    } else {
+      lines.push(...results);
+    }
+    lines.push(sep);
+
+    const tmpFile = path.join(os.tmpdir(), `greplogviewer_func_${Date.now()}.txt`);
+    fs.writeFileSync(tmpFile, lines.join('\n'), 'utf-8');
+
+    // 跨平台显示：Windows 用 type，其他用 cat
+    const catCmd = process.platform === 'win32' ? 'type' : 'cat';
+    const displayCmd = `${catCmd} "${tmpFile.replace(/\\/g, '\\\\')}"`;
+
+    let terminal = vscode.window.activeTerminal;
+    if (!terminal) {
+      terminal = vscode.window.createTerminal({ name: 'GrepLogViewer', cwd: rootPath });
+    }
+    terminal.show();
+    terminal.sendText(displayCmd);
+
+    // 延迟清理临时文件
+    setTimeout(() => {
+      try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
+    }, 10000);
+  }
+
+  /** 递归搜索目录 */
+  private searchDir(
+    dir: string,
+    rootPath: string,
+    pattern: RegExp,
+    excludeNames: Set<string>,
+    results: string[]
+  ): void {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      // 跳过隐藏文件和目录
+      if (entry.name.startsWith('.')) { continue; }
+      // 跳过常见非代码目录
+      if (entry.isDirectory() && (entry.name === 'node_modules' || entry.name === '__pycache__')) {
+        continue;
+      }
+
+      const fullPath = path.join(dir, entry.name);
+
+      if (entry.isDirectory()) {
+        if (excludeNames.has(entry.name)) { continue; }
+        this.searchDir(fullPath, rootPath, pattern, excludeNames, results);
+      } else if (entry.isFile()) {
+        // 跳过二进制/大型文件（简单扩展名过滤）
+        const ext = path.extname(entry.name).toLowerCase();
+        if (['.o', '.obj', '.exe', '.dll', '.so', '.a', '.lib', '.class',
+             '.jar', '.zip', '.tar', '.gz', '.png', '.jpg', '.gif', '.ico',
+             '.pdf', '.ttf', '.woff', '.woff2', '.mp3', '.mp4', '.avi'].includes(ext)) {
+          continue;
+        }
+        this.searchFile(fullPath, rootPath, pattern, results);
+      }
+    }
+  }
+
+  /** 搜索单个文件中的函数定义 */
+  private searchFile(
+    filePath: string,
+    rootPath: string,
+    startPattern: RegExp,
+    results: string[]
+  ): void {
+    let content: string;
+    try {
+      content = fs.readFileSync(filePath, 'utf-8');
+    } catch {
+      return;
+    }
+
+    const relPath = path.relative(rootPath, filePath);
+    const lines = content.split('\n');
+
+    for (let i = 0; i < lines.length; i++) {
+      if (!startPattern.test(lines[i])) { continue; }
+
+      // 找到函数定义起始行，按括号深度匹配到闭合
+      let depth = 0;
+      const matchStart = i;
+      let matchEnd = i;
+
+      for (let j = i; j < lines.length; j++) {
+        for (const ch of lines[j]) {
+          if (ch === '(') { depth++; }
+          else if (ch === ')') { depth--; }
+        }
+        if (depth <= 0) {
+          matchEnd = j;
+          break;
+        }
+      }
+
+      // 输出所有匹配行
+      for (let k = matchStart; k <= matchEnd && k < lines.length; k++) {
+        results.push(`${relPath}:${k + 1}:${lines[k]}`);
+      }
+
+      // 跳过已匹配的行
+      i = matchEnd;
+    }
   }
 }
