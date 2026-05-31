@@ -135,7 +135,8 @@ export class TimeMatchModel {
   }
 
   /** 解析单行的时间戳，失败返回 null */
-  private parseLineTimestamp(line: string): Date | null {
+  /** 从行文本中提取时间戳（供 Timeline 等外部调用） */
+  parseLineTimestamp(line: string): Date | null {
     const result = walkSegments(line, this.formatSegments, 0);
     if (!result) { return null; }
     return buildDate(result.values);

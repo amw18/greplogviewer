@@ -12,6 +12,7 @@ import { ConfigStorageModel } from '../model/ConfigStorageModel';
 import { uuid } from '../model/uuid';
 import { ConfigPanel } from '../view/ConfigPanel';
 import { EditorDecorations } from '../view/EditorDecorations';
+import { KeywordTimeline } from '../view/KeywordTimeline';
 
 export class ViewController {
   /** 用于标记范围内被 keyword 匹配但未被 group 匹配的行。这些行不参与折叠也不 dim。 */
@@ -33,7 +34,8 @@ export class ViewController {
     private filterResultModel: FilterResultModel,
     private regexGroupModel: RegexGroupModel,
     private timeMatchModel: TimeMatchModel,
-    private configStorageModel: ConfigStorageModel
+    private configStorageModel: ConfigStorageModel,
+    private timeline: KeywordTimeline
   ) {
     this.configPanel = new ConfigPanel();
     this.decorations = new EditorDecorations();
@@ -50,6 +52,8 @@ export class ViewController {
     this.configPanel.onApply((n, sc) => this.handleApply(n, sc));
     this.configPanel.onDelete((n, sc) => this.handleDelete(n, sc));
     this.configPanel.onGotoKeywordMatch((dir) => this.handleGotoKeywordMatch(dir));
+
+    this.timeline.onDidClick((lineNumber) => this.handleTimelineClick(lineNumber));
   }
 
   getPanelProvider(): ConfigPanel {
@@ -107,6 +111,9 @@ export class ViewController {
 
         // 恢复时间标注
         this.applyFoldAnnotations(editor, editorId, lines, this.currentKeywords);
+
+        // 恢复时间线图表数据
+        this.sendTimelineData(editorId, lines, this.currentKeywords, scanStart, scanEnd);
       } else {
         // 未激活但有旧配置：清除持久化的手动折叠残留
         await this.removeAllManualFolds(editor);
@@ -181,6 +188,9 @@ export class ViewController {
 
     // 发送范围时间信息到 webview
     this.sendRangeTimeInfo(editorId, lines);
+
+    // 发送时间线图表数据
+    this.sendTimelineData(editorId, lines, keywords, scanStart, scanEnd);
   }
 
   /** 计算范围时间信息并发送到 webview */
@@ -191,6 +201,86 @@ export class ViewController {
 
     const info = this.timeMatchModel.computeRangeTimeInfo(matchedLines, lines);
     this.configPanel.sendRangeTimeInfo(info);
+  }
+
+  /** 计算时间线数据并发送到 KeywordTimeline webview */
+  private sendTimelineData(
+    editorId: string,
+    lines: string[],
+    keywords?: import('../types').KeywordConfig[],
+    scanStart?: number,
+    scanEnd?: number
+  ): void {
+    if (!keywords || keywords.length === 0) {
+      this.timeline.sendTimelineData({
+        type: 'timelineData',
+        timeMin: 0,
+        timeMax: 1,
+        keywords: [],
+      });
+      return;
+    }
+
+    const kwData: import('../types').TimelineKeyword[] = [];
+    let globalMin = Infinity;
+    let globalMax = -Infinity;
+
+    for (const kw of keywords) {
+      if (kw.enabled === false) { continue; }
+      let regex: RegExp;
+      try {
+        regex = new RegExp(kw.pattern, kw.flags);
+      } catch {
+        continue;
+      }
+
+      const points: import('../types').TimelinePoint[] = [];
+      const start = scanStart ?? 0;
+      const end = scanEnd ?? lines.length;
+
+      for (let i = start; i < end; i++) {
+        if (!regex.test(lines[i])) { continue; }
+        const ts = this.timeMatchModel.parseLineTimestamp(lines[i]);
+        if (!ts) { continue; }
+        const ms = ts.getTime();
+        if (ms < globalMin) { globalMin = ms; }
+        if (ms > globalMax) { globalMax = ms; }
+        points.push({ lineNumber: i, time: ms });
+      }
+
+      if (points.length > 0) {
+        kwData.push({
+          name: kw.hint || kw.pattern,
+          color: kw.color,
+          points,
+        });
+      }
+    }
+
+    if (globalMin === Infinity || globalMax === -Infinity) {
+      globalMin = 0;
+      globalMax = 1;
+    } else if (globalMin === globalMax) {
+      // 单点情况：扩展范围使点可见
+      globalMin -= 1000;
+      globalMax += 1000;
+    }
+
+    this.timeline.sendTimelineData({
+      type: 'timelineData',
+      timeMin: globalMin,
+      timeMax: globalMax,
+      keywords: kwData,
+    });
+  }
+
+  /** Timeline 点击：跳转到指定行 */
+  private handleTimelineClick(lineNumber: number): void {
+    const editor = this.currentEditor;
+    if (!editor) { return; }
+    const pos = new vscode.Position(lineNumber, 0);
+    editor.selection = new vscode.Selection(pos, pos);
+    editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
   }
 
   /**
@@ -690,6 +780,10 @@ export class ViewController {
 
       const savedLine = editor.selection.active.line;
       await this.applyFolding(editor);
+
+      // 更新时间线图表
+      this.sendTimelineData(editorId, lines, this.currentKeywords, scanStart, scanEnd);
+
       editor.selection = this.findNearestVisibleLine(savedLine, editorId);
       editor.revealRange(
         new vscode.Range(editor.selection.active, editor.selection.active),

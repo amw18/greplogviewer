@@ -10,6 +10,7 @@ import { ConfigController } from './controller/ConfigController';
 import { FilterController } from './controller/FilterController';
 import { ViewController } from './controller/ViewController';
 import { GrepController } from './controller/GrepController';
+import { KeywordTimeline } from './view/KeywordTimeline';
 
 let viewController: ViewController | undefined;
 let grepController: GrepController | undefined;
@@ -23,10 +24,12 @@ export function activate(context: vscode.ExtensionContext) {
   const filterController = new FilterController();
   const configStorageModel = new ConfigStorageModel(context);
 
+  const timeline = new KeywordTimeline();
+
   viewController = new ViewController(
     configController, filterController,
     editorStateModel, filterResultModel, regexGroupModel, timeMatchModel,
-    configStorageModel
+    configStorageModel, timeline
   );
 
   grepController = new GrepController(viewController, regexGroupModel, filterResultModel, editorStateModel);
@@ -35,6 +38,12 @@ export function activate(context: vscode.ExtensionContext) {
   const sidebarView = vscode.window.registerWebviewViewProvider(
     'greplogviewer.configView',
     panelProvider,
+    { webviewOptions: { retainContextWhenHidden: true } }
+  );
+
+  const timelineView = vscode.window.registerWebviewViewProvider(
+    'greplogviewer.timelineView',
+    timeline,
     { webviewOptions: { retainContextWhenHidden: true } }
   );
 
@@ -91,6 +100,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     sidebarView,
+    timelineView,
     grepKeywordCmd,
     grepFunctionCmd,
     addKeywordCmd,

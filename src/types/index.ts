@@ -250,11 +250,40 @@ export interface GotoKeywordMatchMessage {
   direction: 'next' | 'prev';
 }
 
+/** 时间线图表的单个数据点 */
+export interface TimelinePoint {
+  /** 0-based 行号 */
+  lineNumber: number;
+  /** epoch 毫秒时间戳 */
+  time: number;
+}
+
+/** 时间线图表中一个 keyword 的数据 */
+export interface TimelineKeyword {
+  name: string;
+  color: string;
+  points: TimelinePoint[];
+}
+
+/** Extension → Webview：时间线图表数据 */
+export interface TimelineDataMessage {
+  type: 'timelineData';
+  timeMin: number;
+  timeMax: number;
+  keywords: TimelineKeyword[];
+}
+
+/** Webview → Extension：点击时间线数据点 */
+export interface TimelineClickMessage {
+  type: 'timelineClick';
+  lineNumber: number;
+}
+
 export type WebviewMessage = GoMessage | ResetMessage | ClearMessage
   | ExportConfigMessage | ImportConfigMessage | SaveConfigMessage
   | ListSavedConfigsMessage | ApplySavedConfigMessage | DeleteSavedConfigMessage
-  | GotoKeywordMatchMessage;
+  | GotoKeywordMatchMessage | TimelineClickMessage;
 
 export type ExtensionMessage = UpdateConfigMessage
   | ConfigImportedMessage | SavedConfigsListMessage | ConfigAppliedMessage
-  | RangeTimeInfoMessage;
+  | RangeTimeInfoMessage | TimelineDataMessage;

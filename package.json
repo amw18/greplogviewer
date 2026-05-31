@@ -18,9 +18,11 @@
   ],
   "activationEvents": [
     "onView:greplogviewer.configView",
+    "onView:greplogviewer.timelineView",
     "onCommand:greplogviewer.grepKeyword",
     "onCommand:greplogviewer.grepFunction",
     "onCommand:greplogviewer.addKeyword",
+    "onCommand:greplogviewer.addDirToGroup",
     "onCommand:greplogviewer.addDirToGroup",
     "onCommand:greplogviewer._testGo",
     "onCommand:greplogviewer._testClear",
@@ -34,6 +36,13 @@
         {
           "id": "greplogviewer.configView",
           "name": "GrepLogViewer",
+          "type": "webview"
+        }
+      ],
+      "panel": [
+        {
+          "id": "greplogviewer.timelineView",
+          "name": "Keyword Timeline",
           "type": "webview"
         }
       ]
