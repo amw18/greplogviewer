@@ -3,6 +3,8 @@ node_modules/
 out/
 *.vsix
 goal.md
+GOAL_*.md
 RULES.md
 prompts/
 AGENTS.md
+test/*.sh
