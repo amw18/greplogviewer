@@ -9,6 +9,7 @@ import { FilterResultModel } from '../model/FilterResultModel';
 import { RegexGroupModel } from '../model/RegexGroupModel';
 import { TimeMatchModel } from '../model/TimeMatchModel';
 import { ConfigStorageModel } from '../model/ConfigStorageModel';
+import { uuid } from '../model/uuid';
 import { ConfigPanel } from '../view/ConfigPanel';
 import { EditorDecorations } from '../view/EditorDecorations';
 
@@ -641,6 +642,120 @@ export class ViewController {
       }
     }
     return matchedLines;
+  }
+
+  /** 右键菜单：将选中的文本添加为 keyword 并立即应用 */
+  async addKeyword(pattern: string): Promise<void> {
+    if (!pattern || !this.currentEditor) { return; }
+
+    const hue = (this.currentKeywords?.length ?? 0) * 137.5 % 360;
+    const color = `hsl(${hue}, 70%, 55%)`;
+
+    const newKw: KeywordConfig = {
+      id: uuid(),
+      pattern,
+      flags: '',
+      color,
+      enabled: true,
+    };
+
+    if (!this.currentKeywords) { this.currentKeywords = []; }
+    this.currentKeywords.push(newKw);
+
+    const tp = this.timeMatchModel.getConfig();
+    this.configPanel.render(
+      this.regexGroupModel.getGroups(),
+      this.currentStartPattern, this.currentEndPattern,
+      this.currentRangeDescription, this.currentNamedRanges, this.currentActiveRangeId,
+      tp.format ? tp : undefined,
+      this.currentKeywords
+    );
+
+    const editor = this.currentEditor;
+    const editorId = editor.document.uri.toString();
+    if (this.editorStateModel.isActive(editorId)) {
+      const lines = this.readLines(editor);
+      const groups = this.regexGroupModel.getGroups();
+      const results = this.filterController.filter(lines, groups, this.currentStartPattern, this.currentEndPattern);
+
+      const scanStart = this.currentStartPattern !== undefined
+        ? this.filterController.findFirstMatchLine(lines, this.currentStartPattern) : 0;
+      const scanEnd = this.currentEndPattern !== undefined
+        ? this.filterController.findFirstMatchLine(lines, this.currentEndPattern, lines.length) : lines.length;
+
+      this.markKeywordVisibleLines(results, lines, this.currentKeywords, scanStart, scanEnd);
+      this.filterResultModel.setResults(editorId, results);
+      this.decorations.apply(results, editor, this.currentKeywords, scanStart, scanEnd);
+      this.applyFoldAnnotations(editor, editorId, lines, this.currentKeywords);
+
+      const savedLine = editor.selection.active.line;
+      await this.applyFolding(editor);
+      editor.selection = this.findNearestVisibleLine(savedLine, editorId);
+      editor.revealRange(
+        new vscode.Range(editor.selection.active, editor.selection.active),
+        vscode.TextEditorRevealType.InCenter
+      );
+    }
+  }
+
+  /**
+   * 右键菜单（explorer 目录）：将选中目录的相对路径追加到指定 group 的 associatedDirs。
+   * 弹出 quick pick 让用户选择目标 group。
+   */
+  async addDirToGroup(relativePath: string): Promise<void> {
+    const groups = this.regexGroupModel.getGroups();
+    if (groups.length === 0) {
+      vscode.window.showInformationMessage('No GrepLog groups configured. Add a group first.');
+      return;
+    }
+
+    const items = groups.map((g, i) => ({
+      label: `$(folder) ${g.name || `Group ${i + 1}`}`,
+      description: g.associatedDirs || '(no dirs)',
+      groupIndex: i,
+    }));
+
+    const picked = await vscode.window.showQuickPick(items, {
+      placeHolder: 'Select a group to add this directory to',
+    });
+    if (!picked) { return; }
+
+    const group = groups[picked.groupIndex];
+    const existing = group.associatedDirs || '';
+    // 避免重复追加
+    const existingParts = existing.split(';').map(s => s.trim()).filter(Boolean);
+    if (existingParts.includes(relativePath)) {
+      vscode.window.showInformationMessage(`"${relativePath}" is already in group "${group.name}".`);
+      return;
+    }
+
+    group.associatedDirs = existing ? `${existing}; ${relativePath}` : relativePath;
+
+    // 更新配置面板
+    const tp = this.timeMatchModel.getConfig();
+    this.configPanel.render(
+      groups,
+      this.currentStartPattern, this.currentEndPattern,
+      this.currentRangeDescription, this.currentNamedRanges, this.currentActiveRangeId,
+      tp.format ? tp : undefined,
+      this.currentKeywords
+    );
+  }
+
+  /** 在折叠后找到距 cursorLine 最近的可见行 */
+  private findNearestVisibleLine(cursorLine: number, editorId: string): vscode.Selection {
+    const matchedLines = this.filterResultModel.getMatchedLines(editorId);
+    if (matchedLines.length === 0) {
+      return new vscode.Selection(cursorLine, 0, cursorLine, 0);
+    }
+    matchedLines.sort((a, b) => a - b);
+    let bestLine: number | undefined;
+    for (let i = matchedLines.length - 1; i >= 0; i--) {
+      if (matchedLines[i] <= cursorLine) { bestLine = matchedLines[i]; break; }
+    }
+    if (bestLine === undefined) { bestLine = matchedLines[0]; }
+    const pos = new vscode.Position(bestLine, 0);
+    return new vscode.Selection(pos, pos);
   }
 
   // ── Test-only commands for autotest automation ──

@@ -1,5 +1,6 @@
 // extension.ts — 插件入口
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { RegexGroupModel } from './model/RegexGroupModel';
 import { EditorStateModel } from './model/EditorStateModel';
 import { FilterResultModel } from './model/FilterResultModel';
@@ -44,6 +45,19 @@ export function activate(context: vscode.ExtensionContext) {
   const grepFunctionCmd = vscode.commands.registerCommand('greplogviewer.grepFunction', () => {
     grepController?.grepFunction();
   });
+  const addKeywordCmd = vscode.commands.registerCommand('greplogviewer.addKeyword', async () => {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) { return; }
+    const text = editor.document.getText(editor.selection.isEmpty ? undefined : editor.selection);
+    if (!text) { return; }
+    await viewController?.addKeyword(text);
+  });
+  const addDirToGroupCmd = vscode.commands.registerCommand('greplogviewer.addDirToGroup', async (uri: vscode.Uri) => {
+    const folder = vscode.workspace.getWorkspaceFolder(uri);
+    if (!folder) { return; }
+    const relativePath = path.relative(folder.uri.fsPath, uri.fsPath) || '.';
+    await viewController?.addDirToGroup(relativePath);
+  });
 
   // ── Test-only commands for autotest automation ──
   const testGoCmd = vscode.commands.registerCommand('greplogviewer._testGo', async (config: any) => {
@@ -79,6 +93,8 @@ export function activate(context: vscode.ExtensionContext) {
     sidebarView,
     grepKeywordCmd,
     grepFunctionCmd,
+    addKeywordCmd,
+    addDirToGroupCmd,
     testGoCmd,
     testClearCmd,
     testResetCmd,
