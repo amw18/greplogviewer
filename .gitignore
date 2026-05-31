@@ -7,4 +7,5 @@ GOAL_*.md
 RULES.md
 prompts/
 AGENTS.md
+dev_doc/
 test/*.sh
