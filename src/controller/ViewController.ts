@@ -227,6 +227,7 @@ export class ViewController {
 
     for (const kw of keywords) {
       if (kw.enabled === false) { continue; }
+      if (!kw.pattern) { continue; }
       let regex: RegExp;
       try {
         regex = new RegExp(kw.pattern, kw.flags);

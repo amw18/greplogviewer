@@ -61,10 +61,10 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
   const ctx = canvas.getContext('2d');
 
   let data = null;
-  const PAD = { top: 6, right: 10, bottom: 22, left: 105 };
+  const PAD = { top: 4, right: 10, bottom: 32, left: 105 };
   const DOT_R = 3.5;
-  const ROW_H = 16;
-  const ROW_GAP = 2;
+  const ROW_H = 14;
+  const ROW_GAP = 1;
 
   function resize() {
     const dpr = window.devicePixelRatio || 1;
@@ -119,16 +119,16 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
     ctx.fillRect(0, 0, W, H);
 
     // Grid, sub-grid & time labels
+    const chartBottom = PAD.top + kwCount * (ROW_H + ROW_GAP) - ROW_GAP;
     const tickCount = smartTickCount(chartW, timeRange);
     for (let t = 0; t <= tickCount; t++) {
       const frac = t / tickCount;
       const x = chartLeft + frac * chartW;
-      const yEnd = PAD.top + kwCount * (ROW_H + ROW_GAP) - ROW_GAP;
 
       // Major grid
       ctx.beginPath();
       ctx.moveTo(x, PAD.top);
-      ctx.lineTo(x, yEnd);
+      ctx.lineTo(x, chartBottom);
       ctx.strokeStyle = 'rgba(128,128,128,0.2)';
       ctx.stroke();
 
@@ -138,7 +138,7 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
           const sx = x + (s / 5) * (chartW / tickCount);
           ctx.beginPath();
           ctx.moveTo(sx, PAD.top);
-          ctx.lineTo(sx, yEnd);
+          ctx.lineTo(sx, chartBottom);
           ctx.strokeStyle = 'rgba(128,128,128,0.06)';
           ctx.stroke();
         }
@@ -149,7 +149,7 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
       ctx.fillStyle = 'var(--vscode-descriptionForeground)';
       ctx.textAlign = 'center';
       ctx.font = '8px var(--vscode-font-family, monospace)';
-      ctx.fillText(fmtTick(ts), x, PAD.top + kwCount * (ROW_H + ROW_GAP) + 12);
+      ctx.fillText(fmtTick(ts), x, chartBottom + 13);
     }
 
     // Keywords rows
@@ -186,13 +186,13 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
       }
     }
 
-    // Start / End labels
+    // Start / End labels (below tick labels)
     ctx.fillStyle = 'var(--vscode-descriptionForeground)';
     ctx.font = '7px var(--vscode-font-family, monospace)';
     ctx.textAlign = 'left';
-    ctx.fillText(fmtTick(data.timeMin), chartLeft, PAD.top + kwCount * (ROW_H + ROW_GAP) + 21);
+    ctx.fillText(fmtTick(data.timeMin), chartLeft, chartBottom + 23);
     ctx.textAlign = 'right';
-    ctx.fillText(fmtTick(data.timeMax), chartRight, PAD.top + kwCount * (ROW_H + ROW_GAP) + 21);
+    ctx.fillText(fmtTick(data.timeMax), chartRight, chartBottom + 23);
   }
 
   function pointAt(px, py) {
