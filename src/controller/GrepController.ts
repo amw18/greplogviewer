@@ -139,10 +139,10 @@ export class GrepController {
     const rootPath = workspaceFolder.uri.fsPath;
     const { includes, excludes } = this.getParsedDirs();
 
-    // 使用相对路径（subshell cd 到 workspace root，不改变用户 terminal cwd）
+    // 使用绝对路径确保 grep 在任何 terminal cwd 下都能检索
     const searchPaths = includes.length > 0
-      ? includes.map(d => `"${d}"`)
-      : [`"."`];
+      ? includes.map(d => `"${path.resolve(rootPath, d)}"`)
+      : [`"${rootPath}"`];
 
     // 排除目录：shell 脚本先展开变量再取 basename 传给 --exclude-dir
     let prefix = '';
@@ -156,10 +156,15 @@ export class GrepController {
 
     const safePattern = pattern.replace(/'/g, "'\\''");
     const sep = '>>>';
-    const command = `${prefix}echo "${sep}" && grep -Rn --color=always ${excludeFlags} '${safePattern}' ${searchPaths.join(' ')} && echo "${sep}"`;
+    // 用 sed 把绝对路径截短为 workspace-relative，Ctrl+click 可用
+    const escapedRoot = rootPath.replace(/[.*+?^\${}()|[\]\\]/g, '\\$&');
+    const sedStrip = `sed "s|^\${escapedRoot}/||"`;
+    const command = `${prefix}echo "${sep}" && grep -Rn --color=always ${excludeFlags} '${safePattern}' ${searchPaths.join(' ')} | ${sedStrip} && echo "${sep}"`;
 
-    // 创建新 terminal 确保 cwd = workspace root，Ctrl+click 路径相对正确
-    const terminal = vscode.window.createTerminal({ name: 'GrepLogViewer', cwd: rootPath });
+    let terminal = vscode.window.activeTerminal;
+    if (!terminal) {
+      terminal = vscode.window.createTerminal({ name: 'GrepLogViewer', cwd: rootPath });
+    }
     terminal.show();
     terminal.sendText(command);
   }
@@ -216,8 +221,10 @@ export class GrepController {
     const catCmd = process.platform === 'win32' ? 'type' : 'cat';
     const displayCmd = `${catCmd} "${tmpFile.replace(/\\/g, '\\\\')}"`;
 
-    // 创建新 terminal 确保 cwd = workspace root，Ctrl+click 路径相对正确
-    const terminal = vscode.window.createTerminal({ name: 'GrepLogViewer', cwd: rootPath });
+    let terminal = vscode.window.activeTerminal;
+    if (!terminal) {
+      terminal = vscode.window.createTerminal({ name: 'GrepLogViewer', cwd: rootPath });
+    }
     terminal.show();
     terminal.sendText(displayCmd);
 
