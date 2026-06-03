@@ -139,13 +139,11 @@ export class GrepController {
     const rootPath = workspaceFolder.uri.fsPath;
     const { includes, excludes } = this.getParsedDirs();
 
-    // 将 workspace-relative 的 dirs 转为 relative to $PWD（terminal cwd）
-    // VS Code 无 API 读取 terminal cwd，用 python3 在命令运行时动态转换
+    // 使用绝对路径（不依赖 terminal cwd）
     const absDirs = includes.length > 0
       ? includes.map(d => path.resolve(rootPath, d))
       : [rootPath];
-    const pyPaths = absDirs.map(p => `'${p.replace(/'/g, "'\\''")}'`).join(',');
-    const searchPaths = `$(python3 -c "import os; [print('\\"'+os.path.relpath(p, os.getcwd())+'\\"', end=' ') for p in (${pyPaths})]")`;
+    const searchPaths = absDirs.map(d => `"${d}"`).join(' ');
 
     // 排除目录：shell 脚本先展开变量再取 basename 传给 --exclude-dir
     let prefix = '';
