@@ -157,7 +157,13 @@ export class GrepController {
 
     const safePattern = pattern.replace(/'/g, "'\\''");
     const sep = '>>>';
-    const command = `${prefix}echo "${sep}" && grep -Rn --color=always ${excludeFlags} '${safePattern}' ${searchPaths} && echo "${sep}"`;
+    let command = `${prefix}echo "${sep}" && grep -Rn --color=always ${excludeFlags} '${safePattern}' ${searchPaths}`;
+    // 用 sed 把 home 目录前缀替换为 ~，缩短输出路径
+    const homeDir = os.homedir();
+    if (absDirs.some(d => d.startsWith(homeDir))) {
+      command += ` | sed "s|^${homeDir}/|~\/|"`;
+    }
+    command += ` && echo "${sep}"`;
 
     let terminal = vscode.window.activeTerminal;
     if (!terminal) {
