@@ -293,7 +293,10 @@ export class GrepController {
       return;
     }
 
-    const relPath = path.relative(rootPath, filePath);
+    const homeDir = os.homedir();
+    const displayPath = filePath.startsWith(homeDir)
+      ? '~' + filePath.slice(homeDir.length)
+      : path.relative(rootPath, filePath);
     const lines = content.split('\n');
 
     for (let i = 0; i < lines.length; i++) {
@@ -317,7 +320,7 @@ export class GrepController {
 
       // 输出所有匹配行
       for (let k = matchStart; k <= matchEnd && k < lines.length; k++) {
-        results.push(`${relPath}:${k + 1}:${lines[k]}`);
+        results.push(`${displayPath}:${k + 1}:${lines[k]}`);
       }
 
       // 跳过已匹配的行
