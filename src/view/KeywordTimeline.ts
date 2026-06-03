@@ -61,7 +61,7 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
   const ctx = canvas.getContext('2d');
 
   let data = null;
-  const PAD = { top: 4, right: 10, bottom: 32, left: 105 };
+  const PAD = { top: 4, right: 10, bottom: 20, left: 105 };
   const DOT_R = 3.5;
   const ROW_H = 14;
   const ROW_GAP = 1;
@@ -92,11 +92,10 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
       + pad(d.getSeconds(), 2);
   }
 
-  function smartTickCount(chartW, timeRangeMs) {
-    // Aim for ~10 ticks, at least every 60px, up to 30 ticks
-    const byPx = Math.max(2, Math.floor(chartW / 60));
-    const byTime = Math.max(2, Math.floor(timeRangeMs / (timeRangeMs > 60000 ? 60000 : timeRangeMs > 1000 ? 1000 : 100)));
-    return Math.min(30, Math.max(4, Math.min(byPx, byTime)));
+  function smartTickCount(chartW) {
+    // ~10 等分时间轴，最少 2 个 tick，最多不超过每 30px 一个
+    const maxTicks = Math.max(2, Math.floor(chartW / 30));
+    return Math.max(2, Math.min(10, maxTicks));
   }
 
   function draw() {
@@ -120,7 +119,7 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
 
     // Grid, sub-grid & time labels
     const chartBottom = PAD.top + kwCount * (ROW_H + ROW_GAP) - ROW_GAP;
-    const tickCount = smartTickCount(chartW, timeRange);
+    const tickCount = smartTickCount(chartW);
     for (let t = 0; t <= tickCount; t++) {
       const frac = t / tickCount;
       const x = chartLeft + frac * chartW;
@@ -132,8 +131,8 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
       ctx.strokeStyle = 'rgba(128,128,128,0.2)';
       ctx.stroke();
 
-      // Sub-grid (every 5 sub-ticks between majors, if enough space)
-      if (t < tickCount && chartW / tickCount > 30) {
+      // Sub-grid (every 5 sub-ticks between majors)
+      if (t < tickCount && chartW / tickCount > 40) {
         for (let s = 1; s <= 4; s++) {
           const sx = x + (s / 5) * (chartW / tickCount);
           ctx.beginPath();
@@ -185,14 +184,6 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
         ctx.lineWidth = 1;
       }
     }
-
-    // Start / End labels (below tick labels)
-    ctx.fillStyle = 'var(--vscode-descriptionForeground)';
-    ctx.font = '7px var(--vscode-font-family, monospace)';
-    ctx.textAlign = 'left';
-    ctx.fillText(fmtTick(data.timeMin), chartLeft, chartBottom + 23);
-    ctx.textAlign = 'right';
-    ctx.fillText(fmtTick(data.timeMax), chartRight, chartBottom + 23);
   }
 
   function pointAt(px, py) {
