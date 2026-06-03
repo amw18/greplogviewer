@@ -156,13 +156,10 @@ export class GrepController {
 
     const safePattern = pattern.replace(/'/g, "'\\''");
     const sep = '>>>';
-    // subshell cd: 不改变用户 terminal cwd，但 grep 用相对路径输出短路径
-    const command = `( cd "${rootPath.replace(/"/g, '\\"')}" && ${prefix}echo "${sep}" && grep -Rn --color=always ${excludeFlags} '${safePattern}' ${searchPaths.join(' ')} && echo "${sep}" )`;
+    const command = `${prefix}echo "${sep}" && grep -Rn --color=always ${excludeFlags} '${safePattern}' ${searchPaths.join(' ')} && echo "${sep}"`;
 
-    let terminal = vscode.window.activeTerminal;
-    if (!terminal) {
-      terminal = vscode.window.createTerminal({ name: 'GrepLogViewer', cwd: rootPath });
-    }
+    // 创建新 terminal 确保 cwd = workspace root，Ctrl+click 路径相对正确
+    const terminal = vscode.window.createTerminal({ name: 'GrepLogViewer', cwd: rootPath });
     terminal.show();
     terminal.sendText(command);
   }
@@ -219,10 +216,8 @@ export class GrepController {
     const catCmd = process.platform === 'win32' ? 'type' : 'cat';
     const displayCmd = `${catCmd} "${tmpFile.replace(/\\/g, '\\\\')}"`;
 
-    let terminal = vscode.window.activeTerminal;
-    if (!terminal) {
-      terminal = vscode.window.createTerminal({ name: 'GrepLogViewer', cwd: rootPath });
-    }
+    // 创建新 terminal 确保 cwd = workspace root，Ctrl+click 路径相对正确
+    const terminal = vscode.window.createTerminal({ name: 'GrepLogViewer', cwd: rootPath });
     terminal.show();
     terminal.sendText(displayCmd);
 
