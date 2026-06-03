@@ -139,10 +139,10 @@ export class GrepController {
     const rootPath = workspaceFolder.uri.fsPath;
     const { includes, excludes } = this.getParsedDirs();
 
-    // 搜索目录转为绝对路径（不依赖 terminal cwd）
+    // 使用相对路径（subshell cd 到 workspace root，不改变用户 terminal cwd）
     const searchPaths = includes.length > 0
-      ? includes.map(d => `"${path.resolve(rootPath, d)}"`)
-      : [`"${rootPath}"`];
+      ? includes.map(d => `"${d}"`)
+      : [`"."`];
 
     // 排除目录：shell 脚本先展开变量再取 basename 传给 --exclude-dir
     let prefix = '';
@@ -156,7 +156,8 @@ export class GrepController {
 
     const safePattern = pattern.replace(/'/g, "'\\''");
     const sep = '>>>';
-    const command = `${prefix}echo "${sep}" && grep -Rn --color=always ${excludeFlags} '${safePattern}' ${searchPaths.join(' ')} && echo "${sep}"`;
+    // subshell cd: 不改变用户 terminal cwd，但 grep 用相对路径输出短路径
+    const command = `( cd "${rootPath.replace(/"/g, '\\"')}" && ${prefix}echo "${sep}" && grep -Rn --color=always ${excludeFlags} '${safePattern}' ${searchPaths.join(' ')} && echo "${sep}" )`;
 
     let terminal = vscode.window.activeTerminal;
     if (!terminal) {
