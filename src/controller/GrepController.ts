@@ -156,7 +156,9 @@ export class GrepController {
 
     const safePattern = pattern.replace(/'/g, "'\\''");
     const sep = '>>>';
-    const command = `${prefix}echo "${sep}" && grep -Rn --color=always ${excludeFlags} '${safePattern}' ${searchPaths.join(' ')} && echo "${sep}"`;
+    // cd 到 workspace root：dirs 路径是 workspace-relative，terminal 需在此 cwd
+    const escapedRoot = rootPath.replace(/'/g, "'\\''");
+    const command = `cd '${escapedRoot}' && ${prefix}echo "${sep}" && grep -Rn --color=always ${excludeFlags} '${safePattern}' ${searchPaths.join(' ')} && echo "${sep}"`;
 
     let terminal = vscode.window.activeTerminal;
     if (!terminal) {
@@ -215,8 +217,10 @@ export class GrepController {
     fs.writeFileSync(tmpFile, lines.join('\n'), 'utf-8');
 
     // 跨平台显示：Windows 用 type，其他用 cat
+    // cd 到 workspace root：输出路径是 workspace-relative，Ctrl+click 需此 cwd
     const catCmd = process.platform === 'win32' ? 'type' : 'cat';
-    const displayCmd = `${catCmd} "${tmpFile.replace(/\\/g, '\\\\')}"`;
+    const escapedRoot = rootPath.replace(/'/g, "'\\''");
+    const displayCmd = `cd '${escapedRoot}' && ${catCmd} "${tmpFile.replace(/\\/g, '\\\\')}"`;
 
     let terminal = vscode.window.activeTerminal;
     if (!terminal) {
