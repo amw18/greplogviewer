@@ -128,7 +128,7 @@ export class GrepController {
     return editor.document.getText(selection).trim();
   }
 
-  /** 在插件内用 Node.js 完成检索，生成 ANSI 高亮输出到当前 terminal */
+  /** 执行 grep 并在 terminal 中显示结果 */
   private async runGrep(pattern: string): Promise<void> {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
     if (!workspaceFolder) {
@@ -139,113 +139,31 @@ export class GrepController {
     const rootPath = workspaceFolder.uri.fsPath;
     const { includes, excludes } = this.getParsedDirs();
 
-    const searchRoots = includes.length > 0
-      ? includes.map(d => path.resolve(rootPath, d))
-      : [rootPath];
-    const excludeNames = new Set(excludes.map(d => path.basename(d)));
+    // 搜索目录使用相对路径（terminal cwd = rootPath）
+    const searchPaths = includes.length > 0
+      ? includes.map(d => `"${d}"`)
+      : [`"."`];
 
-    const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const kwRegex = new RegExp(escaped, 'g');
-    const results: string[] = [];
+    // 排除目录：shell 脚本先展开变量再取 basename 传给 --exclude-dir
+    let prefix = '';
+    const excludeFlags = excludes.length > 0
+      ? excludes.map(d => {
+          // 用 shell 取 basename：${d##*/} 去除路径前缀
+          prefix += `_ex${excludes.indexOf(d)}=${d}; `;
+          return `--exclude-dir="\${_ex${excludes.indexOf(d)}##*/}"`;
+        }).join(' ')
+      : '';
 
-    for (const searchRoot of searchRoots) {
-      this.grepDir(searchRoot, rootPath, kwRegex, excludeNames, results);
-    }
-
+    const safePattern = pattern.replace(/'/g, "'\\''");
     const sep = '>>>';
-    const lines: string[] = [sep];
-    if (results.length === 0) {
-      lines.push('(no matches)');
-    } else {
-      lines.push(...results);
-    }
-    lines.push(sep);
-
-    const tmpFile = path.join(os.tmpdir(), `greplogviewer_kw_${Date.now()}.txt`);
-    fs.writeFileSync(tmpFile, lines.join('\n'), 'utf-8');
-
-    // cd 到 workspace root 确保 Ctrl+click 路径解析正确
-    const catCmd = process.platform === 'win32' ? 'type' : 'cat';
-    const displayCmd = `cd "${rootPath.replace(/"/g, '\\"')}" && ${catCmd} "${tmpFile.replace(/\\/g, '\\\\')}"`;
+    const command = `${prefix}echo "${sep}" && grep -Rn --color=always ${excludeFlags} '${safePattern}' ${searchPaths.join(' ')} && echo "${sep}"`;
 
     let terminal = vscode.window.activeTerminal;
     if (!terminal) {
       terminal = vscode.window.createTerminal({ name: 'GrepLogViewer', cwd: rootPath });
     }
     terminal.show();
-    terminal.sendText(displayCmd);
-
-    setTimeout(() => {
-      try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
-    }, 10000);
-  }
-
-  /** 递归搜索目录中的 keyword 匹配 */
-  private grepDir(
-    dir: string,
-    rootPath: string,
-    pattern: RegExp,
-    excludeNames: Set<string>,
-    results: string[]
-  ): void {
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-
-    for (const entry of entries) {
-      if (entry.name.startsWith('.')) { continue; }
-      if (entry.isDirectory() && (entry.name === 'node_modules' || entry.name === '__pycache__')) {
-        continue;
-      }
-
-      const fullPath = path.join(dir, entry.name);
-
-      if (entry.isDirectory()) {
-        if (excludeNames.has(entry.name)) { continue; }
-        this.grepDir(fullPath, rootPath, pattern, excludeNames, results);
-      } else if (entry.isFile()) {
-        const ext = path.extname(entry.name).toLowerCase();
-        if (['.o','.obj','.exe','.dll','.so','.a','.lib','.class',
-             '.jar','.zip','.tar','.gz','.png','.jpg','.gif','.ico',
-             '.pdf','.ttf','.woff','.woff2','.mp3','.mp4','.avi'].includes(ext)) {
-          continue;
-        }
-        this.grepFile(fullPath, rootPath, pattern, results);
-      }
-    }
-  }
-
-  /** 搜索单个文件中的 keyword，ANSI 红色高亮匹配文本 */
-  private grepFile(
-    filePath: string,
-    rootPath: string,
-    pattern: RegExp,
-    results: string[]
-  ): void {
-    let content: string;
-    try {
-      content = fs.readFileSync(filePath, 'utf-8');
-    } catch {
-      return;
-    }
-
-    const relPath = path.relative(rootPath, filePath);
-    const lines = content.split('\n');
-    const RED = '\x1b[31m';
-    const RST = '\x1b[0m';
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      pattern.lastIndex = 0;
-      const match = pattern.exec(line);
-      if (!match) { continue; }
-      // 高亮所有匹配
-      const highlighted = line.replace(pattern, `${RED}$&${RST}`);
-      results.push(`${relPath}:${i + 1}:${highlighted}`);
-    }
+    terminal.sendText(command);
   }
 
   // ================================================================
