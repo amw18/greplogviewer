@@ -203,8 +203,8 @@ export class GrepController {
 
     const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const kwPattern = `\\b${escaped}\\s*\\(`;
-    // grep -rl: 只输出文件名，不输出匹配内容
-    const grepCmd = `${prefix}grep -rl ${excludeFlags} '${kwPattern}' ${searchPaths}`;
+    // grep -Erl: 只输出文件名（ERE 模式，\( = 字面括号）
+    const grepCmd = `${prefix}grep -Erl ${excludeFlags} '${kwPattern}' ${searchPaths}`;
 
     // Step 2: 逐一读取候选文件，多行匹配函数定义
     const result = spawnSync('sh', ['-c', grepCmd], { cwd: rootPath, encoding: 'utf-8', timeout: 15000 });
