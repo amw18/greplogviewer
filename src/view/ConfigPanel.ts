@@ -332,7 +332,11 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   .swatch { width: 16px; height: 16px; border-radius: 50%; cursor: pointer;
             border: 1px solid var(--vscode-panel-border); flex-shrink: 0;
             transition: transform 0.1s; }
-  .swatch:hover { transform: scale(1.3); border-color: var(--vscode-focusBorder); }
+  .count-badge { font-size: 9px; color: var(--vscode-badge-foreground);
+    background: var(--vscode-badge-background);
+    padding: 0 5px; border-radius: 8px; line-height: 16px;
+    white-space: nowrap; flex-shrink: 0; }
+  .count-badge.zero { opacity: 0.4; }
 
   /* ── Flags 选择器 ── */
   .flags-trigger { display: inline-flex; align-items: center; justify-content: center;
@@ -631,7 +635,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       // 匹配行数
       var gc = matchCounts && matchCounts.groupCounts ? (matchCounts.groupCounts[g.id] || 0) : -1;
       if (gc >= 0) {
-        html += '<span style="font-size:10px;color:var(--vscode-descriptionForeground);white-space:nowrap;min-width:28px">' + gc + '</span>';
+        html += '<span class="count-badge' + (gc === 0 ? ' zero' : '') + '">' + gc + '</span>';
       }
       if (g.expressions.length > 0) {
         html += '<input type="text" class="pattern" value="' + esc(g.expressions[0].pattern) + '" data-gi="' + gi + '" data-ei="0" placeholder="/regex/" style="flex:1;min-width:50px">';
@@ -688,7 +692,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       // 匹配行数
       var kc = matchCounts && matchCounts.keywordCounts ? (matchCounts.keywordCounts[kw.id] || 0) : -1;
       if (kc >= 0) {
-        html += '<span style="font-size:10px;color:var(--vscode-descriptionForeground);white-space:nowrap;min-width:22px">' + kc + '</span>';
+        html += '<span class="count-badge' + (kc === 0 ? ' zero' : '') + '">' + kc + '</span>';
       }
       html += '<button class="move-btn" data-action="moveKwUp" data-ki="' + ki + '" title="Move up"' + (ki === 0 ? ' disabled' : '') + '>▲</button>';
       html += '<button class="move-btn" data-action="moveKwDown" data-ki="' + ki + '" title="Move down"' + (ki === keywords.length - 1 ? ' disabled' : '') + '>▼</button>';
@@ -729,8 +733,8 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
 
     var statsHtml = '';
     if (matchCounts) {
-      statsHtml = '<span style="font-size:10px;color:var(--vscode-descriptionForeground);margin-left:8px">'
-        + matchCounts.totalMatched + '/' + matchCounts.totalLines + ' lines matched</span>';
+      statsHtml = '<span class="count-badge" style="margin-left:auto">'
+        + matchCounts.totalMatched + '/' + matchCounts.totalLines + '</span>';
     }
     html += '<div class="action-bar">';
     html += '<button class="action-btn" id="go-btn">Go</button>';

@@ -115,6 +115,7 @@ export class ViewController {
 
         // 恢复时间线图表数据
         this.sendTimelineData(editorId, lines, this.currentKeywords, scanStart, scanEnd);
+        this.sendMatchCounts(editorId, lines, this.currentKeywords, scanStart, scanEnd);
       } else {
         // 未激活但有旧配置：清除持久化的手动折叠残留
         await this.removeAllManualFolds(editor);
@@ -859,8 +860,9 @@ export class ViewController {
       const savedLine = editor.selection.active.line;
       await this.applyFolding(editor);
 
-      // 更新时间线图表
+      // 更新时间线图表和匹配统计
       this.sendTimelineData(editorId, lines, this.currentKeywords, scanStart, scanEnd);
+      this.sendMatchCounts(editorId, lines, this.currentKeywords, scanStart, scanEnd);
 
       editor.selection = this.findNearestVisibleLine(savedLine, editorId);
       editor.revealRange(
