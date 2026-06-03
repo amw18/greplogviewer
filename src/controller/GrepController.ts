@@ -311,13 +311,10 @@ export class GrepController {
 
       if (!foundBrace || hasOtherCode) { continue; }
 
-      // 输出 keyword( 起始行到 ) 所在行（如果 { 单独一行也输出）
-      const endLine = braceLine >= 0 ? braceLine : parenEnd;
-      for (let k = matchStart; k <= endLine && k < lines.length; k++) {
-        results.push(`${displayPath}:${k + 1}:${lines[k]}`);
-      }
+      // 只输出签名首行
+      results.push(`${displayPath}:${matchStart + 1}:${lines[matchStart]}`);
 
-      i = endLine;
+      i = braceLine >= 0 ? braceLine : parenEnd;
     }
   }
 
