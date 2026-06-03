@@ -139,10 +139,14 @@ export class GrepController {
     const rootPath = workspaceFolder.uri.fsPath;
     const { includes, excludes } = this.getParsedDirs();
 
-    // 搜索目录使用相对路径（terminal cwd = rootPath）
-    const searchPaths = includes.length > 0
-      ? includes.map(d => `"${d}"`)
-      : [`"."`];
+    // 将 workspace-relative 的 dirs 转为 relative to $PWD（terminal cwd）
+    let searchPaths: string;
+    const absDirs = includes.length > 0
+      ? includes.map(d => path.resolve(rootPath, d))
+      : [rootPath];
+    // 用 python3 把绝对路径转成相对 terminal cwd 的路径
+    const pyList = absDirs.map(p => `r'${p.replace(/'/g, "\\'")}'`).join(', ');
+    searchPaths = `$(python3 -c "import os; print(' '.join(f'\"{os.path.relpath(p, os.getcwd())}\"' for p in [${pyList}]))")`;
 
     // 排除目录：shell 脚本先展开变量再取 basename 传给 --exclude-dir
     let prefix = '';
@@ -156,9 +160,7 @@ export class GrepController {
 
     const safePattern = pattern.replace(/'/g, "'\\''");
     const sep = '>>>';
-    // cd 到 workspace root：dirs 路径是 workspace-relative，terminal 需在此 cwd
-    const escapedRoot = rootPath.replace(/'/g, "'\\''");
-    const command = `cd '${escapedRoot}' && ${prefix}echo "${sep}" && grep -Rn --color=always ${excludeFlags} '${safePattern}' ${searchPaths.join(' ')} && echo "${sep}"`;
+    const command = `${prefix}echo "${sep}" && grep -Rn --color=always ${excludeFlags} '${safePattern}' ${searchPaths} && echo "${sep}"`;
 
     let terminal = vscode.window.activeTerminal;
     if (!terminal) {
@@ -217,10 +219,8 @@ export class GrepController {
     fs.writeFileSync(tmpFile, lines.join('\n'), 'utf-8');
 
     // 跨平台显示：Windows 用 type，其他用 cat
-    // cd 到 workspace root：输出路径是 workspace-relative，Ctrl+click 需此 cwd
     const catCmd = process.platform === 'win32' ? 'type' : 'cat';
-    const escapedRoot = rootPath.replace(/'/g, "'\\''");
-    const displayCmd = `cd '${escapedRoot}' && ${catCmd} "${tmpFile.replace(/\\/g, '\\\\')}"`;
+    const displayCmd = `${catCmd} "${tmpFile.replace(/\\/g, '\\\\')}"`;
 
     let terminal = vscode.window.activeTerminal;
     if (!terminal) {
