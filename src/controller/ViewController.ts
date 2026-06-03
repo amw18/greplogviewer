@@ -318,13 +318,15 @@ export class ViewController {
     if (!results) { return; }
 
     const totalLines = lines.length;
-    let totalMatched = 0;
+    const matchedSet = new Set<number>();
     const groupCounts: Record<string, number> = {};
 
     for (const r of results) {
       if (r.groupId && r.groupId !== '__kw_visible__') {
-        totalMatched++;
+        matchedSet.add(r.lineNumber);
         groupCounts[r.groupId] = (groupCounts[r.groupId] || 0) + 1;
+      } else if (r.groupId === '__kw_visible__') {
+        matchedSet.add(r.lineNumber);
       }
     }
 
@@ -338,7 +340,7 @@ export class ViewController {
         try { regex = new RegExp(kw.pattern, kw.flags); } catch { continue; }
         let count = 0;
         for (let i = start; i < end; i++) {
-          if (regex.test(lines[i])) { count++; }
+          if (regex.test(lines[i])) { count++; matchedSet.add(i); }
         }
         if (count > 0) { keywordCounts[kw.id] = count; }
       }
@@ -347,7 +349,7 @@ export class ViewController {
     this.configPanel.sendMatchCounts({
       type: 'matchCounts',
       totalLines,
-      totalMatched,
+      totalMatched: matchedSet.size,
       groupCounts,
       keywordCounts,
     });
