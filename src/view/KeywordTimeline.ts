@@ -250,7 +250,6 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
   window.addEventListener('message', function(event) {
     const msg = event.data;
     if (msg.type === 'timelineData') {
-      console.log('timelineData received', msg.keywords.length, 'keywords, timeMin:', msg.timeMin, 'timeMax:', msg.timeMax);
       data = msg;
       if (data.keywords.length > 0) {
         empty.style.display = 'none';

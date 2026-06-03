@@ -26,6 +26,7 @@ export class ViewController {
   private currentNamedRanges?: import('../types').NamedRange[];
   private currentActiveRangeId?: string;
   private currentKeywords?: KeywordConfig[];
+  private isApplyingGo = false;  // 防止 Go 期间的 attach 重入
 
   constructor(
     configController: ConfigController,
@@ -113,9 +114,11 @@ export class ViewController {
         // 恢复时间标注
         this.applyFoldAnnotations(editor, editorId, lines, this.currentKeywords);
 
-        // 恢复时间线图表数据
-        this.sendTimelineData(editorId, lines, this.currentKeywords, scanStart, scanEnd);
-        this.sendMatchCounts(editorId, lines, this.currentKeywords, scanStart, scanEnd);
+        // Go 期间 attach 被 showTextDocument 触发时不重发 timeline/matchCounts
+        if (!this.isApplyingGo) {
+          this.sendTimelineData(editorId, lines, this.currentKeywords, scanStart, scanEnd);
+          this.sendMatchCounts(editorId, lines, this.currentKeywords, scanStart, scanEnd);
+        }
       } else {
         // 未激活但有旧配置：清除持久化的手动折叠残留
         await this.removeAllManualFolds(editor);
@@ -212,7 +215,9 @@ export class ViewController {
     // 折叠标注（含时间 + keyword 命中统计）
     this.applyFoldAnnotations(editor, editorId, lines, keywords);
 
+    this.isApplyingGo = true;
     await this.applyFolding(editor);
+    this.isApplyingGo = false;
 
     // 发送范围时间信息到 webview
     this.sendRangeTimeInfo(editorId, lines);
@@ -306,7 +311,6 @@ export class ViewController {
       timeMax: globalMax,
       keywords: kwData,
     });
-    console.log('sendTimelineData:', kwData.length, 'keywords, range:', globalMin, '-', globalMax);
   }
 
   /** 计算匹配行数并发送到 webview */
