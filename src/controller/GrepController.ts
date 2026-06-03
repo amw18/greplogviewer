@@ -140,13 +140,12 @@ export class GrepController {
     const { includes, excludes } = this.getParsedDirs();
 
     // 将 workspace-relative 的 dirs 转为 relative to $PWD（terminal cwd）
-    let searchPaths: string;
+    // VS Code 无 API 读取 terminal cwd，用 python3 在命令运行时动态转换
     const absDirs = includes.length > 0
       ? includes.map(d => path.resolve(rootPath, d))
       : [rootPath];
-    // 用 python3 把绝对路径转成相对 terminal cwd 的路径
-    const pyList = absDirs.map(p => `r'${p.replace(/'/g, "\\'")}'`).join(', ');
-    searchPaths = `$(python3 -c "import os; print(' '.join(f'\"{os.path.relpath(p, os.getcwd())}\"' for p in [${pyList}]))")`;
+    const pyPaths = absDirs.map(p => `'${p.replace(/'/g, "'\\''")}'`).join(',');
+    const searchPaths = `$(python3 -c "import os; [print('\\"'+os.path.relpath(p, os.getcwd())+'\\"', end=' ') for p in (${pyPaths})]")`;
 
     // 排除目录：shell 脚本先展开变量再取 basename 传给 --exclude-dir
     let prefix = '';
