@@ -139,10 +139,10 @@ export class GrepController {
     const rootPath = workspaceFolder.uri.fsPath;
     const { includes, excludes } = this.getParsedDirs();
 
-    // 搜索目录使用相对路径（terminal cwd = rootPath）
+    // 搜索目录转为绝对路径（不依赖 terminal cwd）
     const searchPaths = includes.length > 0
-      ? includes.map(d => `"${d}"`)
-      : [`"."`];
+      ? includes.map(d => `"${path.resolve(rootPath, d)}"`)
+      : [`"${rootPath}"`];
 
     // 排除目录：shell 脚本先展开变量再取 basename 传给 --exclude-dir
     let prefix = '';
