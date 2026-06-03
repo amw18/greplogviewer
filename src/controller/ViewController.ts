@@ -260,7 +260,7 @@ export class ViewController {
       if (kw.enabled === false) { continue; }
       if (!kw.pattern) { continue; }
       // 去掉 g 标志避免 test() 状态残留导致漏匹配
-      const flags = kw.flags.replace(/g/g, '');
+      const flags = (kw.flags || '').replace(/g/g, '');
       let regex: RegExp;
       try {
         regex = new RegExp(kw.pattern, flags);
@@ -306,6 +306,7 @@ export class ViewController {
       timeMax: globalMax,
       keywords: kwData,
     });
+    console.log('sendTimelineData:', kwData.length, 'keywords, range:', globalMin, '-', globalMax);
   }
 
   /** 计算匹配行数并发送到 webview */

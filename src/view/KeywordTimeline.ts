@@ -114,7 +114,7 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
     const timeRange = data.timeMax - data.timeMin || 1;
 
     // BG
-    ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--vscode-editor-background') || '#1e1e1e';
+    ctx.fillStyle = getComputedStyle(document.body).backgroundColor || '#1e1e1e';
     ctx.fillRect(0, 0, W, H);
 
     // Grid, sub-grid & time labels
@@ -250,6 +250,7 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
   window.addEventListener('message', function(event) {
     const msg = event.data;
     if (msg.type === 'timelineData') {
+      console.log('timelineData received', msg.keywords.length, 'keywords, timeMin:', msg.timeMin, 'timeMax:', msg.timeMax);
       data = msg;
       if (data.keywords.length > 0) {
         empty.style.display = 'none';
