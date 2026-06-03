@@ -245,36 +245,66 @@ export class GrepController {
     for (let i = 0; i < lines.length; i++) {
       if (!startPattern.test(lines[i])) { continue; }
 
-      // 从 keyword( 行开始，按括号深度匹配到闭合的 )
+      // 从 keyword( 行开始，按括号深度追踪到闭合的 )
       let depth = 0;
       let started = false;
       const matchStart = i;
       let parenEnd = i;
+      let closeCol = -1;  // ) 所在的列（同一行内）
 
       for (let j = i; j < lines.length; j++) {
-        for (const ch of lines[j]) {
+        for (let c = 0; c < lines[j].length; c++) {
+          const ch = lines[j][c];
           if (ch === '(') { depth++; started = true; }
-          else if (ch === ')') { depth--; }
+          else if (ch === ')') {
+            depth--;
+            if (started && depth <= 0) {
+              parenEnd = j;
+              closeCol = c;
+              break;
+            }
+          }
         }
-        if (started && depth <= 0) {
-          parenEnd = j;
-          break;
+        if (closeCol >= 0) { break; }
+      }
+      if (closeCol < 0) { continue; }
+
+      // 检查 ) 之后到 { 之间是否只有空白
+      // 从 ) 下一字符开始扫描，跳过空白，直到遇到非空白字符
+      let foundBrace = false;
+      let hasOtherCode = false;
+      let braceLine = -1;
+
+      scanLoop:
+      for (let j = parenEnd; j < Math.min(parenEnd + 5, lines.length); j++) {
+        const startCol = (j === parenEnd) ? closeCol + 1 : 0;
+        for (let c = startCol; c < lines[j].length; c++) {
+          const ch = lines[j][c];
+          if (ch === ' ' || ch === '\t' || ch === '\r') { continue; }
+          // 跳过单行注释
+          if (ch === '/' && c + 1 < lines[j].length && lines[j][c + 1] === '/') {
+            break; // 跳过本行剩余
+          }
+          if (ch === '{') {
+            foundBrace = true;
+            braceLine = j;
+            break scanLoop;
+          }
+          // 遇到其他非空白字符（; 或任何代码）→ 不是定义
+          hasOtherCode = true;
+          break scanLoop;
         }
       }
 
-      // 检查闭合 ) 之后是否有 {（可能在同行或后续行，跳过空白行）
-      let hasBrace = false;
-      for (let j = parenEnd; j < Math.min(parenEnd + 3, lines.length); j++) {
-        if (lines[j].includes('{')) { hasBrace = true; break; }
-      }
-      if (!hasBrace) { continue; }
+      if (!foundBrace || hasOtherCode) { continue; }
 
-      // 输出 keyword( 起始行
-      for (let k = matchStart; k <= parenEnd && k < lines.length; k++) {
+      // 输出 keyword( 起始行到 ) 所在行（如果 { 单独一行也输出）
+      const endLine = braceLine >= 0 ? braceLine : parenEnd;
+      for (let k = matchStart; k <= endLine && k < lines.length; k++) {
         results.push(`${displayPath}:${k + 1}:${lines[k]}`);
       }
 
-      i = parenEnd;
+      i = endLine;
     }
   }
 
