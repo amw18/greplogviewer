@@ -291,6 +291,15 @@ export interface SyncConfigMessage {
   keywords?: KeywordConfig[];
 }
 
+/** Extension → Webview：匹配行数统计 */
+export interface MatchCountsMessage {
+  type: 'matchCounts';
+  totalLines: number;
+  totalMatched: number;
+  groupCounts: Record<string, number>;
+  keywordCounts: Record<string, number>;
+}
+
 export type WebviewMessage = GoMessage | ResetMessage | ClearMessage
   | ExportConfigMessage | ImportConfigMessage | SaveConfigMessage
   | ListSavedConfigsMessage | ApplySavedConfigMessage | DeleteSavedConfigMessage
@@ -298,4 +307,4 @@ export type WebviewMessage = GoMessage | ResetMessage | ClearMessage
 
 export type ExtensionMessage = UpdateConfigMessage
   | ConfigImportedMessage | SavedConfigsListMessage | ConfigAppliedMessage
-  | RangeTimeInfoMessage | TimelineDataMessage;
+  | RangeTimeInfoMessage | TimelineDataMessage | MatchCountsMessage;

@@ -134,6 +134,10 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
 
   /** gotoKeywordMatch 回调：通知扩展跳转匹配行 */
   private gotoKeywordMatchCallback: ((direction: 'next' | 'prev') => void) | undefined;
+
+  sendMatchCounts(counts: import('../types').MatchCountsMessage): void {
+    this.view?.webview.postMessage(counts);
+  }
   private syncConfigCallback: ((groups: RegexGroup[], startPattern?: string, endPattern?: string, rangeDescription?: string, namedRanges?: import('../types').NamedRange[], activeRangeId?: string, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void) | undefined;
 
   /** 向 webview 发送已保存配置列表 */
@@ -400,6 +404,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   let timePattern = state.timePattern || { format: '' };
   var savedConfigsList = [];
   var rangeTimeInfoHtml = '';
+  var matchCounts = null;  // { totalLines, totalMatched, groupCounts, keywordCounts }
 
   // 向后兼容：旧配置有 startLine/endLine（数字）或 startPattern/endPattern 是数字时自动迁移
   function migrateOldRanges() {
@@ -623,6 +628,11 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       html += '<div class="group-header">';
       html += '<input type="checkbox" data-gi="' + gi + '" class="group-enabled"' + (g.enabled !== false ? ' checked' : '') + ' title="Enable/disable this group">';
       html += '<input type="text" value="' + esc(g.name) + '" data-gi="' + gi + '" class="group-name" placeholder="Group name">';
+      // 匹配行数
+      var gc = matchCounts && matchCounts.groupCounts ? (matchCounts.groupCounts[g.id] || 0) : -1;
+      if (gc >= 0) {
+        html += '<span style="font-size:10px;color:var(--vscode-descriptionForeground);white-space:nowrap;min-width:28px">' + gc + '</span>';
+      }
       if (g.expressions.length > 0) {
         html += '<input type="text" class="pattern" value="' + esc(g.expressions[0].pattern) + '" data-gi="' + gi + '" data-ei="0" placeholder="/regex/" style="flex:1;min-width:50px">';
         html += flagsPickerHtml('expr', gi, 0, null, g.expressions[0].flags);
@@ -675,6 +685,11 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       html += flagsPickerHtml('kw', null, null, ki, kw.flags);
       html += colorPickerHtml('ki', ki, kw.color);
       html += '<input type="text" class="hint" value="' + esc(kw.hint || '') + '" data-ki="' + ki + '" placeholder="hint">';
+      // 匹配行数
+      var kc = matchCounts && matchCounts.keywordCounts ? (matchCounts.keywordCounts[kw.id] || 0) : -1;
+      if (kc >= 0) {
+        html += '<span style="font-size:10px;color:var(--vscode-descriptionForeground);white-space:nowrap;min-width:22px">' + kc + '</span>';
+      }
       html += '<button class="move-btn" data-action="moveKwUp" data-ki="' + ki + '" title="Move up"' + (ki === 0 ? ' disabled' : '') + '>▲</button>';
       html += '<button class="move-btn" data-action="moveKwDown" data-ki="' + ki + '" title="Move down"' + (ki === keywords.length - 1 ? ' disabled' : '') + '>▼</button>';
       html += '<button class="remove-btn" data-action="removeKeyword" data-ki="' + ki + '">&times;</button>';
@@ -712,10 +727,16 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
 
     html += '</div></div>';
 
+    var statsHtml = '';
+    if (matchCounts) {
+      statsHtml = '<span style="font-size:10px;color:var(--vscode-descriptionForeground);margin-left:8px">'
+        + matchCounts.totalMatched + '/' + matchCounts.totalLines + ' lines matched</span>';
+    }
     html += '<div class="action-bar">';
     html += '<button class="action-btn" id="go-btn">Go</button>';
     html += '<button class="action-btn reset-btn" id="clear-btn">Clear</button>';
     html += '<button class="action-btn reset-btn" id="reset-btn">Reset</button>';
+    html += statsHtml;
     html += '</div>';
     document.getElementById('app').innerHTML = html;
     vscode.postMessage({ type: 'listSavedConfigs' });
@@ -856,6 +877,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       vscode.postMessage({ type: 'clear' });
     } else if (btn.id === 'reset-btn') {
       groups = []; keywords = [];
+      matchCounts = null;
       startPattern = undefined; endPattern = undefined;
       rangeDescription = undefined;
       namedRanges = []; activeRangeId = undefined;
@@ -1130,9 +1152,10 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       } else {
         rangeTimeInfoHtml = '';
       }
-      var el = document.getElementById('range-time-info');
-      if (el) { el.textContent = rangeTimeInfoHtml; }
-      return;
+      render();
+    } else if (msg.type === 'matchCounts') {
+      matchCounts = msg;
+      render();
     } else if (msg.type === 'savedConfigsList') {
       // Update the saved configs dropdown
       savedConfigsList = msg.configs || [];

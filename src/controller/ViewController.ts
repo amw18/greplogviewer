@@ -218,6 +218,9 @@ export class ViewController {
 
     // 发送时间线图表数据
     this.sendTimelineData(editorId, lines, keywords, scanStart, scanEnd);
+
+    // 发送匹配行数统计
+    this.sendMatchCounts(editorId, lines, keywords, scanStart, scanEnd);
   }
 
   /** 计算范围时间信息并发送到 webview */
@@ -299,6 +302,53 @@ export class ViewController {
       timeMin: globalMin,
       timeMax: globalMax,
       keywords: kwData,
+    });
+  }
+
+  /** 计算匹配行数并发送到 webview */
+  private sendMatchCounts(
+    editorId: string,
+    lines: string[],
+    keywords?: import('../types').KeywordConfig[],
+    scanStart?: number,
+    scanEnd?: number
+  ): void {
+    const results = this.filterResultModel.getResults(editorId);
+    if (!results) { return; }
+
+    const totalLines = lines.length;
+    let totalMatched = 0;
+    const groupCounts: Record<string, number> = {};
+
+    for (const r of results) {
+      if (r.groupId && r.groupId !== '__kw_visible__') {
+        totalMatched++;
+        groupCounts[r.groupId] = (groupCounts[r.groupId] || 0) + 1;
+      }
+    }
+
+    const keywordCounts: Record<string, number> = {};
+    if (keywords && keywords.length > 0) {
+      const start = scanStart ?? 0;
+      const end = scanEnd ?? lines.length;
+      for (const kw of keywords) {
+        if (kw.enabled === false || !kw.pattern) { continue; }
+        let regex: RegExp;
+        try { regex = new RegExp(kw.pattern, kw.flags); } catch { continue; }
+        let count = 0;
+        for (let i = start; i < end; i++) {
+          if (regex.test(lines[i])) { count++; }
+        }
+        if (count > 0) { keywordCounts[kw.id] = count; }
+      }
+    }
+
+    this.configPanel.sendMatchCounts({
+      type: 'matchCounts',
+      totalLines,
+      totalMatched,
+      groupCounts,
+      keywordCounts,
     });
   }
 
