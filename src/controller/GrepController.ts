@@ -200,9 +200,9 @@ export class GrepController {
         }).join(' ')
       : '';
 
-    // 匹配 keyword( 的函数定义行
+    // 匹配 keyword( 的函数定义行（BRE 模式，( 直接就是字面括号）
     const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const funcPattern = `\\b${escaped}\\s*\\(`;
+    const funcPattern = `\\b${escaped}\\s*(`;
 
     const sep = '>>>';
     let command = `${prefix}echo "${sep}" && grep -Rn --color=always ${excludeFlags} '${funcPattern}' ${searchPaths}`;
