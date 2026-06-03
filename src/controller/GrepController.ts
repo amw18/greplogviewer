@@ -201,9 +201,9 @@ export class GrepController {
       : '';
 
     // 匹配 keyword(...) { 函数定义行（不匹配 fun(); 调用）
-    // -E = ERE 模式：( 是分组符，\( 才是字面括号
+    // -E = ERE 模式：( 是分组符，[(] 是字面括号字符类
     const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const funcPattern = `\\b${escaped}\\[(][^)]*\\)[[:space:]]*\\{`;
+    const funcPattern = `\\b${escaped}[(][^)]*\\)[[:space:]]*\\{`;
 
     const sep = '>>>';
     let command = `${prefix}echo "${sep}" && grep -ERn --color=always ${excludeFlags} '${funcPattern}' ${searchPaths}`;
