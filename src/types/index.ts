@@ -279,10 +279,22 @@ export interface TimelineClickMessage {
   lineNumber: number;
 }
 
+export interface SyncConfigMessage {
+  type: 'syncConfig';
+  groups: RegexGroup[];
+  startPattern?: string;
+  endPattern?: string;
+  rangeDescription?: string;
+  namedRanges?: NamedRange[];
+  activeRangeId?: string;
+  timePattern?: TimePatternConfig;
+  keywords?: KeywordConfig[];
+}
+
 export type WebviewMessage = GoMessage | ResetMessage | ClearMessage
   | ExportConfigMessage | ImportConfigMessage | SaveConfigMessage
   | ListSavedConfigsMessage | ApplySavedConfigMessage | DeleteSavedConfigMessage
-  | GotoKeywordMatchMessage | TimelineClickMessage;
+  | GotoKeywordMatchMessage | TimelineClickMessage | SyncConfigMessage;
 
 export type ExtensionMessage = UpdateConfigMessage
   | ConfigImportedMessage | SavedConfigsListMessage | ConfigAppliedMessage

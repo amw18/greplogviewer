@@ -61,6 +61,9 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
         case 'gotoKeywordMatch':
           this.gotoKeywordMatchCallback?.(msg.direction);
           break;
+        case 'syncConfig':
+          this.syncConfigCallback?.(msg.groups, msg.startPattern, msg.endPattern, msg.rangeDescription, msg.namedRanges, msg.activeRangeId, msg.timePattern, msg.keywords);
+          break;
       }
     });
 
@@ -125,8 +128,13 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     this.gotoKeywordMatchCallback = callback;
   }
 
+  onSyncConfig(callback: (groups: RegexGroup[], startPattern?: string, endPattern?: string, rangeDescription?: string, namedRanges?: import('../types').NamedRange[], activeRangeId?: string, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void): void {
+    this.syncConfigCallback = callback;
+  }
+
   /** gotoKeywordMatch 回调：通知扩展跳转匹配行 */
   private gotoKeywordMatchCallback: ((direction: 'next' | 'prev') => void) | undefined;
+  private syncConfigCallback: ((groups: RegexGroup[], startPattern?: string, endPattern?: string, rangeDescription?: string, namedRanges?: import('../types').NamedRange[], activeRangeId?: string, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void) | undefined;
 
   /** 向 webview 发送已保存配置列表 */
   sendSavedConfigsList(configs: { name: string; scope: ConfigScope }[]): void {
@@ -431,6 +439,25 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
 
   function saveState() { vscode.setState({ groups, startPattern, endPattern, rangeDescription, namedRanges, activeRangeId, keywords }); }
 
+  var syncTimer = null;
+  function syncToExtension() {
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(function() {
+      var tf = document.getElementById('time-format');
+      vscode.postMessage({
+        type: 'syncConfig',
+        groups: groups,
+        startPattern: startPattern,
+        endPattern: endPattern,
+        rangeDescription: rangeDescription,
+        namedRanges: namedRanges,
+        activeRangeId: activeRangeId,
+        timePattern: timePattern,
+        keywords: keywords
+      });
+    }, 300);
+  }
+
   function uuid() {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
       var r = Math.random() * 16 | 0;
@@ -536,6 +563,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       groups[gi].expressions[ei].flags = flags;
     } else {
       keywords[ki].flags = flags;
+      syncToExtension();
     }
     // 更新触发器显示
     var trigger = document.querySelector('.flags-trigger[data-flags-' + kind + '="' + id + '"]');
@@ -952,13 +980,13 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     }
     // Keyword inputs
     if (!isNaN(ki)) {
-      if (el.classList.contains('pattern')) keywords[ki].pattern = el.value;
+      if (el.classList.contains('pattern')) { keywords[ki].pattern = el.value; syncToExtension(); }
       else if (el.classList.contains('hint')) keywords[ki].hint = el.value || undefined;
       saveState(); return;
     }
     if (isNaN(gi)) return;
     if (el.classList.contains('group-name')) groups[gi].name = el.value;
-    else if (el.classList.contains('dirs-input')) groups[gi].associatedDirs = el.value;
+    else if (el.classList.contains('dirs-input')) { groups[gi].associatedDirs = el.value; syncToExtension(); }
     else if (el.classList.contains('pattern') && !isNaN(ei)) groups[gi].expressions[ei].pattern = el.value;
     saveState();
   });

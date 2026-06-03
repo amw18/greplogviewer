@@ -52,6 +52,7 @@ export class ViewController {
     this.configPanel.onApply((n, sc) => this.handleApply(n, sc));
     this.configPanel.onDelete((n, sc) => this.handleDelete(n, sc));
     this.configPanel.onGotoKeywordMatch((dir) => this.handleGotoKeywordMatch(dir));
+    this.configPanel.onSyncConfig((g, sp, ep, rd, nr, ar, tp, kw) => this.handleSyncConfig(g, sp, ep, rd, nr, ar, tp, kw));
 
     this.timeline.onDidClick((lineNumber) => this.handleTimelineClick(lineNumber));
   }
@@ -137,6 +138,32 @@ export class ViewController {
       tp.format ? tp : undefined,
       this.currentKeywords
     );
+  }
+
+  /** 实时同步配置（不触发过滤），供 grep 等无需 Go 的功能使用 */
+  private handleSyncConfig(groups: RegexGroup[], startPattern?: string, endPattern?: string, rangeDescription?: string, namedRanges?: import('../types').NamedRange[], activeRangeId?: string, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): void {
+    if (!this.currentEditor) { return; }
+    const editorId = this.currentEditor.document.uri.toString();
+
+    this.regexGroupModel.setGroups(groups);
+    this.currentStartPattern = startPattern;
+    this.currentEndPattern = endPattern;
+    this.currentRangeDescription = rangeDescription;
+    this.currentNamedRanges = namedRanges;
+    this.currentActiveRangeId = activeRangeId;
+    this.currentKeywords = keywords;
+
+    if (timePattern && timePattern.format) {
+      this.timeMatchModel.setConfig(timePattern);
+    }
+
+    // 持久化到 workspaceState（grepKeyword/grepFunction 从此读取）
+    this.editorStateModel.saveConfig(editorId, {
+      groups, startPattern, endPattern, rangeDescription,
+      namedRanges, activeRangeId,
+      timePattern: this.timeMatchModel.isConfigured() ? this.timeMatchModel.getConfig() : undefined,
+      keywords,
+    });
   }
 
   /** Go: 应用过滤 + 颜色高亮 + 创建折叠 + 时间标注 */
