@@ -1,7 +1,9 @@
 // GrepController — 右键菜单 grep 关键字/函数跳转到关联代码目录
 import * as vscode from 'vscode';
+import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { spawnSync } from 'child_process';
 import { ViewController } from './ViewController';
 import { RegexGroupModel } from '../model/RegexGroupModel';
 import { FilterResultModel } from '../model/FilterResultModel';
@@ -174,7 +176,7 @@ export class GrepController {
   //  Grep Function — 纯 Node.js 跨平台实现
   // ================================================================
 
-  /** 用 grep 搜索函数定义 */
+  /** 用 grep + Node.js 搜索多行函数定义 */
   private async runGrepFunction(keyword: string): Promise<void> {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
     if (!workspaceFolder) {
@@ -185,13 +187,12 @@ export class GrepController {
     const rootPath = workspaceFolder.uri.fsPath;
     const { includes, excludes } = this.getParsedDirs();
 
-    // 搜索目录使用绝对路径
     const absDirs = includes.length > 0
       ? includes.map(d => path.resolve(rootPath, d))
       : [rootPath];
-    const searchPaths = absDirs.map(d => `"${d}"`).join(' ');
 
-    // 排除目录
+    // Step 1: 用 grep 快速找出包含 keyword 的文件
+    const searchPaths = absDirs.map(d => `"${d}"`).join(' ');
     let prefix = '';
     const excludeFlags = excludes.length > 0
       ? excludes.map(d => {
@@ -200,25 +201,109 @@ export class GrepController {
         }).join(' ')
       : '';
 
-    // 匹配 keyword(...) { 函数定义行（不匹配 fun(); 调用）
-    // -E = ERE 模式：( 是分组符，[(] 是字面括号字符类
     const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const funcPattern = `\\b${escaped}[(][^)]*\\)[[:space:]]*\\{`;
+    const kwPattern = `\\b${escaped}\\s*\\(`;
+    // grep -rl: 只输出文件名，不输出匹配内容
+    const grepCmd = `${prefix}grep -rl ${excludeFlags} '${kwPattern}' ${searchPaths}`;
 
-    const sep = '>>>';
-    let command = `${prefix}echo "${sep}" && grep -ERn --color=always ${excludeFlags} '${funcPattern}' ${searchPaths}`;
-    // ~ 前缀缩短
-    const homeDir = os.homedir();
-    if (absDirs.some(d => d.startsWith(homeDir))) {
-      command += ` | sed "s|^${homeDir}/|~\/|"`;
+    // Step 2: 逐一读取候选文件，多行匹配函数定义
+    const result = spawnSync('sh', ['-c', grepCmd], { cwd: rootPath, encoding: 'utf-8', timeout: 15000 });
+    const files = (result.stdout || '').trim().split('\n').filter(Boolean);
+
+    // 在候选文件中匹配函数定义（多行）
+    const defPattern = new RegExp(`\\b${escaped}\\s*\\(`);
+    const results: string[] = [];
+
+    for (const file of files) {
+      const absPath = path.isAbsolute(file) ? file : path.resolve(rootPath, file);
+      this.matchDefinitions(absPath, rootPath, defPattern, results);
     }
-    command += ` && echo "${sep}"`;
+
+    this.outputResults(results, rootPath);
+  }
+
+  /** 在单个文件中匹配多行函数定义 */
+  private matchDefinitions(
+    filePath: string,
+    rootPath: string,
+    startPattern: RegExp,
+    results: string[]
+  ): void {
+    let content: string;
+    try {
+      content = fs.readFileSync(filePath, 'utf-8');
+    } catch {
+      return;
+    }
+
+    const homeDir = os.homedir();
+    const displayPath = filePath.startsWith(homeDir)
+      ? '~' + filePath.slice(homeDir.length)
+      : path.relative(rootPath, filePath);
+    const lines = content.split('\n');
+
+    for (let i = 0; i < lines.length; i++) {
+      if (!startPattern.test(lines[i])) { continue; }
+
+      // 从 keyword( 行开始，按括号深度匹配到闭合的 )
+      let depth = 0;
+      let started = false;
+      const matchStart = i;
+      let parenEnd = i;
+
+      for (let j = i; j < lines.length; j++) {
+        for (const ch of lines[j]) {
+          if (ch === '(') { depth++; started = true; }
+          else if (ch === ')') { depth--; }
+        }
+        if (started && depth <= 0) {
+          parenEnd = j;
+          break;
+        }
+      }
+
+      // 检查闭合 ) 之后是否有 {（可能在同行或后续行，跳过空白行）
+      let hasBrace = false;
+      for (let j = parenEnd; j < Math.min(parenEnd + 3, lines.length); j++) {
+        if (lines[j].includes('{')) { hasBrace = true; break; }
+      }
+      if (!hasBrace) { continue; }
+
+      // 输出 keyword( 起始行
+      for (let k = matchStart; k <= parenEnd && k < lines.length; k++) {
+        results.push(`${displayPath}:${k + 1}:${lines[k]}`);
+      }
+
+      i = parenEnd;
+    }
+  }
+
+  /** 输出结果到 terminal */
+  private outputResults(results: string[], rootPath: string): void {
+    const sep = '>>>';
+    const lines: string[] = [sep];
+    if (results.length === 0) {
+      lines.push('(no matches)');
+    } else {
+      lines.push(...results);
+    }
+    lines.push(sep);
+
+    const tmpFile = path.join(os.tmpdir(), `greplogviewer_func_${Date.now()}.txt`);
+    fs.writeFileSync(tmpFile, lines.join('\n'), 'utf-8');
+
+    const catCmd = process.platform === 'win32' ? 'type' : 'cat';
+    const displayCmd = `${catCmd} "${tmpFile.replace(/\\/g, '\\\\')}"`;
 
     let terminal = vscode.window.activeTerminal;
     if (!terminal) {
       terminal = vscode.window.createTerminal({ name: 'GrepLogViewer', cwd: rootPath });
     }
     terminal.show();
-    terminal.sendText(command);
+    terminal.sendText(displayCmd);
+
+    setTimeout(() => {
+      try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
+    }, 10000);
   }
 }
