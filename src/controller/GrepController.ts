@@ -269,28 +269,41 @@ export class GrepController {
       }
       if (closeCol < 0) { continue; }
 
-      // 检查 ) 之后到 { 之间是否只有空白
-      // 从 ) 下一字符开始扫描，跳过空白，直到遇到非空白字符
+      // 检查 ) 之后到 { 之间是否只有空白和注释
       let foundBrace = false;
       let hasOtherCode = false;
       let braceLine = -1;
+      let inBlockComment = false;
 
       scanLoop:
       for (let j = parenEnd; j < Math.min(parenEnd + 5, lines.length); j++) {
         const startCol = (j === parenEnd) ? closeCol + 1 : 0;
         for (let c = startCol; c < lines[j].length; c++) {
+          // 块注释内：只管找 */
+          if (inBlockComment) {
+            if (lines[j][c] === '*' && c + 1 < lines[j].length && lines[j][c + 1] === '/') {
+              inBlockComment = false;
+              c++; // 跳过 /
+            }
+            continue;
+          }
           const ch = lines[j][c];
           if (ch === ' ' || ch === '\t' || ch === '\r') { continue; }
-          // 跳过单行注释
+          // 单行注释
           if (ch === '/' && c + 1 < lines[j].length && lines[j][c + 1] === '/') {
             break; // 跳过本行剩余
+          }
+          // 块注释开始
+          if (ch === '/' && c + 1 < lines[j].length && lines[j][c + 1] === '*') {
+            inBlockComment = true;
+            c++; // 跳过 *
+            continue;
           }
           if (ch === '{') {
             foundBrace = true;
             braceLine = j;
             break scanLoop;
           }
-          // 遇到其他非空白字符（; 或任何代码）→ 不是定义
           hasOtherCode = true;
           break scanLoop;
         }
