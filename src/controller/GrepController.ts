@@ -200,12 +200,13 @@ export class GrepController {
         }).join(' ')
       : '';
 
-    // 匹配 keyword( 的函数定义行（BRE 模式，( 直接就是字面括号）
+    // 匹配 keyword(...) { 函数定义行（不匹配 fun(); 调用）
+    // -E = ERE 模式：( 是分组符，\( 才是字面括号
     const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const funcPattern = `\\b${escaped}\\s*(`;
+    const funcPattern = `\\b${escaped}\\[(][^)]*\\)[[:space:]]*\\{`;
 
     const sep = '>>>';
-    let command = `${prefix}echo "${sep}" && grep -Rn --color=always ${excludeFlags} '${funcPattern}' ${searchPaths}`;
+    let command = `${prefix}echo "${sep}" && grep -ERn --color=always ${excludeFlags} '${funcPattern}' ${searchPaths}`;
     // ~ 前缀缩短
     const homeDir = os.homedir();
     if (absDirs.some(d => d.startsWith(homeDir))) {
