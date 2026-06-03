@@ -259,9 +259,11 @@ export class ViewController {
     for (const kw of keywords) {
       if (kw.enabled === false) { continue; }
       if (!kw.pattern) { continue; }
+      // 去掉 g 标志避免 test() 状态残留导致漏匹配
+      const flags = kw.flags.replace(/g/g, '');
       let regex: RegExp;
       try {
-        regex = new RegExp(kw.pattern, kw.flags);
+        regex = new RegExp(kw.pattern, flags);
       } catch {
         continue;
       }

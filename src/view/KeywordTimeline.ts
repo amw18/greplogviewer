@@ -218,8 +218,14 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
     if (hit) {
       canvas.style.cursor = 'pointer';
       tooltip.style.display = 'block';
-      tooltip.style.left = Math.min(e.clientX + 12, window.innerWidth - 200) + 'px';
-      tooltip.style.top = (e.clientY - 28) + 'px';
+      var tx = e.clientX + 12;
+      var ty = e.clientY - 28;
+      // 边界约束：不超出视口
+      var tw = tooltip.offsetWidth || 220;
+      if (tx + tw > window.innerWidth - 4) { tx = window.innerWidth - tw - 4; }
+      if (ty < 4) { ty = e.clientY + 10; }
+      tooltip.style.left = tx + 'px';
+      tooltip.style.top = ty + 'px';
       tooltip.textContent = hit.keyword.name + '  @  ' + fmtFull(hit.point.time)
         + '  (L' + (hit.point.lineNumber + 1) + ')';
     } else {
