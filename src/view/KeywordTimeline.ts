@@ -61,7 +61,7 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
   const ctx = canvas.getContext('2d');
 
   let data = null;
-  const PAD = { top: 4, right: 10, bottom: 20, left: 105 };
+  const PAD = { top: 4, right: 50, bottom: 20, left: 105 };
   const DOT_R = 3.5;
   const ROW_H = 14;
   const ROW_GAP = 1;
@@ -100,6 +100,7 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
 
   function draw() {
     if (!data || data.keywords.length === 0) { return; }
+    console.log('[Timeline draw] start, kwCount:', data.keywords.length, 'timeMin:', data.timeMin, 'timeMax:', data.timeMax);
     const W = window.innerWidth;
     const H = window.innerHeight;
     ctx.clearRect(0, 0, W, H);
@@ -114,12 +115,17 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
     const timeRange = data.timeMax - data.timeMin || 1;
 
     // BG
-    ctx.fillStyle = getComputedStyle(document.body).backgroundColor || '#1e1e1e';
+    const bodyStyle = getComputedStyle(document.body);
+    ctx.fillStyle = bodyStyle.backgroundColor || '#1e1e1e';
     ctx.fillRect(0, 0, W, H);
 
+    const axisColor = bodyStyle.getPropertyValue('--vscode-descriptionForeground') || '#999999';
+    const gridColor = bodyStyle.backgroundColor
+      ? 'rgba(128,128,128,0.35)' : 'rgba(180,180,180,0.3)';
     // Grid, sub-grid & time labels
     const chartBottom = PAD.top + kwCount * (ROW_H + ROW_GAP) - ROW_GAP;
     const tickCount = smartTickCount(chartW);
+    console.log('[Timeline draw] chartW:', chartW, 'tickCount:', tickCount, 'chartBottom:', chartBottom);
     for (let t = 0; t <= tickCount; t++) {
       const frac = t / tickCount;
       const x = chartLeft + frac * chartW;
@@ -128,7 +134,7 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
       ctx.beginPath();
       ctx.moveTo(x, PAD.top);
       ctx.lineTo(x, chartBottom);
-      ctx.strokeStyle = 'rgba(128,128,128,0.2)';
+      ctx.strokeStyle = gridColor;
       ctx.stroke();
 
       // Sub-grid (every 5 sub-ticks between majors)
@@ -138,14 +144,14 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
           ctx.beginPath();
           ctx.moveTo(sx, PAD.top);
           ctx.lineTo(sx, chartBottom);
-          ctx.strokeStyle = 'rgba(128,128,128,0.06)';
+          ctx.strokeStyle = 'rgba(128,128,128,0.12)';
           ctx.stroke();
         }
       }
 
       // Label
       const ts = data.timeMin + frac * timeRange;
-      ctx.fillStyle = 'var(--vscode-descriptionForeground)';
+      ctx.fillStyle = axisColor;
       ctx.textAlign = 'center';
       ctx.font = '8px var(--vscode-font-family, monospace)';
       ctx.fillText(fmtTick(ts), x, chartBottom + 13);
@@ -250,11 +256,15 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
   window.addEventListener('message', function(event) {
     const msg = event.data;
     if (msg.type === 'timelineData') {
+      console.log('[Timeline webview] received', msg.keywords.length, 'keywords, timeMin:', msg.timeMin, 'timeMax:', msg.timeMax);
+      msg.keywords.forEach(function(kw, i) { console.log('[Timeline webview]   kw[' + i + ']:', kw.name, kw.points.length, 'points'); });
       data = msg;
       if (data.keywords.length > 0) {
         empty.style.display = 'none';
         canvas.style.display = 'block';
+        console.log('[Timeline webview] calling draw(), kwCount:', data.keywords.length, 'W:', window.innerWidth, 'H:', window.innerHeight);
         draw();
+        console.log('[Timeline webview] draw() complete');
       } else {
         empty.style.display = 'flex';
         canvas.style.display = 'none';

@@ -17,6 +17,13 @@ import { KeywordTimeline } from '../view/KeywordTimeline';
 export class ViewController {
   /** 用于标记范围内被 keyword 匹配但未被 group 匹配的行。这些行不参与折叠也不 dim。 */
   private static readonly KW_VISIBLE_ID = '__kw_visible__';
+
+  /** 安全构建 keyword 正则：null-safe flags + 移除 g 标志避免 test() 状态残留 */
+  private static buildKwRegex(kw: KeywordConfig): RegExp | null {
+    if (!kw.pattern) { return null; }
+    const flags = (kw.flags || '').replace(/g/g, '');
+    try { return new RegExp(kw.pattern, flags); } catch { return null; }
+  }
   private configPanel: ConfigPanel;
   private decorations: EditorDecorations;
   private currentEditor: vscode.TextEditor | undefined;
@@ -264,14 +271,8 @@ export class ViewController {
     for (const kw of keywords) {
       if (kw.enabled === false) { continue; }
       if (!kw.pattern) { continue; }
-      // 去掉 g 标志避免 test() 状态残留导致漏匹配
-      const flags = (kw.flags || '').replace(/g/g, '');
-      let regex: RegExp;
-      try {
-        regex = new RegExp(kw.pattern, flags);
-      } catch {
-        continue;
-      }
+      const regex = ViewController.buildKwRegex(kw);
+      if (!regex) { continue; }
 
       const points: import('../types').TimelinePoint[] = [];
       const start = scanStart ?? 0;
@@ -343,8 +344,8 @@ export class ViewController {
       const end = scanEnd ?? lines.length;
       for (const kw of keywords) {
         if (kw.enabled === false || !kw.pattern) { continue; }
-        let regex: RegExp;
-        try { regex = new RegExp(kw.pattern, kw.flags); } catch { continue; }
+        const regex = ViewController.buildKwRegex(kw);
+        if (!regex) { continue; }
         let count = 0;
         for (let i = start; i < end; i++) {
           if (regex.test(lines[i])) { count++; matchedSet.add(i); }
@@ -419,12 +420,8 @@ export class ViewController {
       const hitMap = new Map<string, { hint: string; count: number }>();
       for (const kw of keywords) {
         if (kw.enabled === false) { continue; }
-        let regex: RegExp;
-        try {
-          regex = new RegExp(kw.pattern, kw.flags);
-        } catch {
-          continue;
-        }
+        const regex = ViewController.buildKwRegex(kw);
+        if (!regex) { continue; }
         let count = 0;
         for (let i = fr.start; i <= fr.end; i++) {
           if (regex.test(lines[i])) { count++; }
@@ -459,11 +456,8 @@ export class ViewController {
     const kwRegexes: RegExp[] = [];
     for (const kw of keywords) {
       if (kw.enabled === false) { continue; }
-      try {
-        kwRegexes.push(new RegExp(kw.pattern, kw.flags));
-      } catch {
-        continue;
-      }
+      const re = ViewController.buildKwRegex(kw);
+      if (re) { kwRegexes.push(re); }
     }
     if (kwRegexes.length === 0) { return; }
 
@@ -807,12 +801,8 @@ export class ViewController {
     const matchedLines = new Set<number>();
     for (const kw of keywords) {
       if (kw.enabled === false) { continue; }
-      let regex: RegExp;
-      try {
-        regex = new RegExp(kw.pattern, kw.flags);
-      } catch {
-        continue;
-      }
+      const regex = ViewController.buildKwRegex(kw);
+      if (!regex) { continue; }
       for (let i = 0; i < lines.length; i++) {
         if (regex.test(lines[i])) {
           matchedLines.add(i);

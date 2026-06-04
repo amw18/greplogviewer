@@ -1,0 +1,17 @@
+.vscode/**
+.vscode-test/**
+.gitignore
+.git/**
+**/.DS_Store
+node_modules/
+src/**
+test/**
+*.vsix
+goal.md
+GOAL_*.md
+RULES.md
+prompts/**
+AGENTS.md
+dev_doc/**
+tsconfig.json
+.gitignore
