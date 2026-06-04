@@ -46,10 +46,13 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
     pointer-events: none; white-space: nowrap; }
   .empty { display: flex; align-items: center; justify-content: center;
     height: 100%; color: var(--vscode-descriptionForeground); font-size: 11px; }
+  .zoom-indicator { display: none; position: absolute; top: 1px; left: 105px; right: 50px;
+    height: 3px; opacity: 0.5; pointer-events: none; z-index: 10; }
 </style>
 </head>
 <body>
 <canvas id="canvas"></canvas>
+<div id="zoom-indicator" class="zoom-indicator"></div>
 <div id="tooltip" class="tooltip"></div>
 <div id="empty" class="empty">Click Go with Time Pattern + Keywords to see timeline</div>
 <script>
@@ -61,6 +64,10 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
   const ctx = canvas.getContext('2d');
 
   let data = null;
+  let viewMin = null;
+  let viewMax = null;
+  let drawRAF = null;  // requestAnimationFrame 节流，合并同帧多次 draw
+  const MIN_ZOOM_MS = 1000;
   const PAD = { top: 4, right: 50, bottom: 20, left: 105 };
   const DOT_R = 3.5;
   const ROW_H = 14;
@@ -75,7 +82,36 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
     canvas.style.width = w + 'px';
     canvas.style.height = h + 'px';
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    if (data && data.keywords.length > 0) { draw(); }
+    if (data && data.keywords.length > 0) { scheduleDraw(); }
+  }
+
+  // ── Zoom ──
+  function resetView() {
+    if (!data) { return; }
+    viewMin = data.timeMin;
+    viewMax = data.timeMax;
+  }
+
+  function zoomAt(mouseX, factor) {
+    if (!data) { return; }
+    const chartLeft = PAD.left;
+    const chartRight = window.innerWidth - PAD.right;
+    const chartW = chartRight - chartLeft;
+    const frac = Math.max(0, Math.min(1, (mouseX - chartLeft) / chartW));
+    const mouseTime = viewMin + frac * (viewMax - viewMin);
+    const half = (viewMax - viewMin) * factor / 2;
+    let newMin = mouseTime - half;
+    let newMax = mouseTime + half;
+    if (newMax - newMin < MIN_ZOOM_MS) {
+      const mid = (newMin + newMax) / 2;
+      newMin = mid - MIN_ZOOM_MS / 2;
+      newMax = mid + MIN_ZOOM_MS / 2;
+    }
+    if (newMin < data.timeMin) { newMin = data.timeMin; newMax = newMin + (viewMax - viewMin); }
+    if (newMax > data.timeMax) { newMax = data.timeMax; newMin = newMax - (viewMax - viewMin); }
+    viewMin = Math.max(data.timeMin, newMin);
+    viewMax = Math.min(data.timeMax, Math.max(viewMin + MIN_ZOOM_MS, newMax));
+    scheduleDraw();
   }
 
   function fmtFull(ms) {
@@ -98,9 +134,17 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
     return Math.max(2, Math.min(10, maxTicks));
   }
 
+  function scheduleDraw() {
+    if (drawRAF) { return; }
+    drawRAF = requestAnimationFrame(function() {
+      drawRAF = null;
+      draw();
+    });
+  }
+
   function draw() {
     if (!data || data.keywords.length === 0) { return; }
-    console.log('[Timeline draw] start, kwCount:', data.keywords.length, 'timeMin:', data.timeMin, 'timeMax:', data.timeMax);
+    if (viewMin === null) { resetView(); }
     const W = window.innerWidth;
     const H = window.innerHeight;
     ctx.clearRect(0, 0, W, H);
@@ -112,7 +156,7 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
     const chartLeft = PAD.left;
     const chartRight = W - PAD.right;
     const chartW = chartRight - chartLeft;
-    const timeRange = data.timeMax - data.timeMin || 1;
+    const timeRange = viewMax - viewMin || 1;
 
     // BG
     const bodyStyle = getComputedStyle(document.body);
@@ -125,7 +169,6 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
     // Grid, sub-grid & time labels
     const chartBottom = PAD.top + kwCount * (ROW_H + ROW_GAP) - ROW_GAP;
     const tickCount = smartTickCount(chartW);
-    console.log('[Timeline draw] chartW:', chartW, 'tickCount:', tickCount, 'chartBottom:', chartBottom);
     for (let t = 0; t <= tickCount; t++) {
       const frac = t / tickCount;
       const x = chartLeft + frac * chartW;
@@ -150,7 +193,7 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
       }
 
       // Label
-      const ts = data.timeMin + frac * timeRange;
+      const ts = viewMin + frac * timeRange;
       ctx.fillStyle = axisColor;
       ctx.textAlign = 'center';
       ctx.font = '8px var(--vscode-font-family, monospace)';
@@ -176,8 +219,8 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
 
       // Dots (batch same x positions to reduce overlap noise is OK)
       for (const pt of kw.points) {
-        if (pt.time < data.timeMin || pt.time > data.timeMax) { continue; }
-        const frac = (pt.time - data.timeMin) / timeRange;
+        if (pt.time < viewMin || pt.time > viewMax) { continue; }
+        const frac = (pt.time - viewMin) / timeRange;
         const x = chartLeft + frac * chartW;
 
         ctx.beginPath();
@@ -190,6 +233,18 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
         ctx.lineWidth = 1;
       }
     }
+
+    // Zoom indicator bar
+    const indicator = document.getElementById('zoom-indicator');
+    if (indicator && data.timeMax > data.timeMin) {
+      const totalMs = data.timeMax - data.timeMin;
+      const leftFrac = (viewMin - data.timeMin) / totalMs;
+      const widthFrac = (viewMax - viewMin) / totalMs;
+      indicator.style.display = (widthFrac >= 0.99) ? 'none' : 'block';
+      indicator.style.left = (chartLeft + leftFrac * chartW) + 'px';
+      indicator.style.width = Math.max(4, widthFrac * chartW) + 'px';
+      indicator.style.background = axisColor;
+    }
   }
 
   function pointAt(px, py) {
@@ -199,15 +254,15 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
     const chartLeft = PAD.left;
     const chartRight = W - PAD.right;
     const chartW = chartRight - chartLeft;
-    const timeRange = data.timeMax - data.timeMin || 1;
+    const timeRange = viewMax - viewMin || 1;
 
     for (let k = 0; k < kwCount; k++) {
       const kw = data.keywords[k];
       const yMid = PAD.top + k * (ROW_H + ROW_GAP) + ROW_H / 2;
 
       for (const pt of kw.points) {
-        if (pt.time < data.timeMin || pt.time > data.timeMax) { continue; }
-        const frac = (pt.time - data.timeMin) / timeRange;
+        if (pt.time < viewMin || pt.time > viewMax) { continue; }
+        const frac = (pt.time - viewMin) / timeRange;
         const x = chartLeft + frac * chartW;
         const dx = px - x;
         const dy = py - yMid;
@@ -251,20 +306,25 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
     tooltip.style.display = 'none';
   });
 
+  canvas.addEventListener('wheel', function(e) {
+    e.preventDefault();
+    if (!data) { return; }
+    // deltaY > 0 → zoom out, deltaY < 0 → zoom in
+    const factor = e.deltaY > 0 ? 1.5 : 0.67;
+    zoomAt(e.clientX, factor);
+  }, { passive: false });
+
   window.addEventListener('resize', resize);
 
   window.addEventListener('message', function(event) {
     const msg = event.data;
     if (msg.type === 'timelineData') {
-      console.log('[Timeline webview] received', msg.keywords.length, 'keywords, timeMin:', msg.timeMin, 'timeMax:', msg.timeMax);
-      msg.keywords.forEach(function(kw, i) { console.log('[Timeline webview]   kw[' + i + ']:', kw.name, kw.points.length, 'points'); });
       data = msg;
+      resetView();
       if (data.keywords.length > 0) {
         empty.style.display = 'none';
         canvas.style.display = 'block';
-        console.log('[Timeline webview] calling draw(), kwCount:', data.keywords.length, 'W:', window.innerWidth, 'H:', window.innerHeight);
         draw();
-        console.log('[Timeline webview] draw() complete');
       } else {
         empty.style.display = 'flex';
         canvas.style.display = 'none';
