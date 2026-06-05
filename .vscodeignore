@@ -13,5 +13,6 @@ RULES.md
 prompts/**
 AGENTS.md
 dev_doc/**
+docs/**
 tsconfig.json
 .gitignore
