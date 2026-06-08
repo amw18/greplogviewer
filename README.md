@@ -1,6 +1,6 @@
 # GrepLogViewer
 
-> 基于正则的日志增强查看器 — 匹配行彩色高亮 + 未匹配行自动折叠 + 关键字时间线
+> Regex-based log viewer — color highlighting, auto-folding, and keyword timeline
 
 <p align="center">
   <img src="screenshot.png" alt="screenshot" width="800">
@@ -8,64 +8,64 @@
 
 ---
 
-## 怎么用
+## Usage
 
-1. 打开任意文本 / 日志文件
-2. 左侧边栏 **GrepLogViewer** 面板配置规则
-3. 点 **Go** → 生效
+1. Open any text/log file
+2. Configure rules in the **GrepLogViewer** sidebar panel
+3. Click **Go** to apply
 
-**所有效果由 Go 按钮触发**，切换编辑器、改配置都不会自动生效。
-
----
-
-## 功能
-
-### 正则组高亮 + 自动折叠
-
-为每组正则设定颜色，匹配行整行高亮。未匹配行**自动折叠**，只留下关心的内容。
-
-### 关键字子串高亮
-
-关键字匹配子串级着色，不与行颜色冲突（范围减法）。
-
-### 折叠时间标注
-
-配置时间格式后，每个折叠区域显示隐藏行数 + 时间跨度。
-
-### 关键字时间线
-
-底部面板以时间轴展示各关键字命中分布：
-- 每关键字一行，色点标记
-- 悬停看精确时间和行号，点击跳转
-- 滚轮缩放，以光标位置为中心
-
-### 右键 Grep 跳转
-
-选中文本 → 右击 → **Grep Keyword** / **Grep Function**→ 在关联代码目录中搜索，结果输出到终端。
-
-支持 `;` 分隔多目录、`!` 排除、`${VAR}` 环境变量。
-
-### 配置管理
-
-预设保存（User / Workspace）、JSON 导入导出。
+All effects are triggered by the Go button — switching editors or changing config does not auto-apply.
 
 ---
 
-## 安装
+## Features
 
-VS Code 扩展商店搜索 **GrepLogViewer**。
+### Regex Group Coloring & Auto-Folding
+
+Assign colors to regex groups. Matched lines get full-line highlights. Unmatched lines are **auto-folded** — only relevant content stays visible.
+
+### Keyword Substring Highlighting
+
+Substring-level coloring that never clashes with group colors (range subtraction).
+
+### Fold Time Annotations
+
+With a time pattern configured, each folded region displays hidden line count + time span.
+
+### Keyword Timeline
+
+Bottom-panel time axis chart showing keyword hit distribution over time:
+- One row per keyword, color-coded dots
+- Hover for precise time + line number, click to jump
+- Mouse wheel zoom centered on cursor
+
+### Right-Click Grep
+
+Select text → right-click → **Grep Keyword** / **Grep Function** → searches associated code directories, output to terminal.
+
+Supports `;`-separated dirs, `!` exclusion, `${VAR}` environment variables.
+
+### Config Management
+
+Named presets (User / Workspace), JSON import/export.
 
 ---
 
-## 开发
+## Installation
+
+Search **GrepLogViewer** in the VS Code Extensions marketplace.
+
+---
+
+## Development
 
 ```bash
 git clone https://github.com/amw18/greplogviewer.git
 cd greplogviewer
 npm install
-npm test        # 165 项测试
-npx tsc         # 编译
-# F5 启动调试
+npm test        # 165 tests
+npx tsc         # compile
+# F5 to launch Extension Dev Host
 ```
 
 ## License
