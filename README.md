@@ -49,24 +49,13 @@ Supports `;`-separated dirs, `!` exclusion, `${VAR}` environment variables.
 
 Named presets (User / Workspace), JSON import/export.
 
+## Use Cases
+
+- **Log debugging**: filter ERROR/WARN lines, collapse noise, jump to code
+- **Trace analysis**: correlate timestamps across keyword occurrences with the timeline
+- **Code auditing**: grep keywords or function definitions across code directories from any file
+
 ---
-
-## Installation
-
-Search **GrepLogViewer** in the VS Code Extensions marketplace.
-
----
-
-## Development
-
-```bash
-git clone https://github.com/amw18/greplogviewer.git
-cd greplogviewer
-npm install
-npm test        # 165 tests
-npx tsc         # compile
-# F5 to launch Extension Dev Host
-```
 
 ## License
 
