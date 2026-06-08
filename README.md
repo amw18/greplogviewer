@@ -3,7 +3,7 @@
 > 基于正则的日志增强查看器 — 匹配行彩色高亮 + 未匹配行自动折叠 + 关键字时间线
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/amw18/greplogviewer/main/docs/screenshot-main.png" alt="screenshot" width="800">
+  <img src="screenshot.png" alt="screenshot" width="800">
 </p>
 
 ---
