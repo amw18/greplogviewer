@@ -1,8 +1,8 @@
 {
   "name": "greplogviewer",
-  "displayName": "GrepLogViewer",
+  "displayName": "Grep Log Viewer",
   "description": "Regex-based text file viewer with color highlighting and auto-folding",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "publisher": "any-tool",
   "license": "MIT",
   "repository": {
