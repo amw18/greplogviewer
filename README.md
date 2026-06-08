@@ -3,7 +3,7 @@
 > Regex-based log viewer — color highlighting, auto-folding, and keyword timeline
 
 <p align="center">
-  <img src="screenshot.png" alt="screenshot" width="800">
+  <img src="https://cdn.jsdelivr.net/gh/amw18/greplogviewer@main/screenshot.png" alt="screenshot" width="800">
 </p>
 
 ---
