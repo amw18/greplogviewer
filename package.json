@@ -2,12 +2,12 @@
   "name": "greplogviewer",
   "displayName": "GrepLogViewer",
   "description": "Regex-based text file viewer with color highlighting and auto-folding",
-  "version": "0.0.1",
-  "publisher": "your-publisher-name",
+  "version": "0.0.2",
+  "publisher": "any-tool",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-username/greplogviewer"
+    "url": "https://github.com/amw18/greplogviewer"
   },
   "icon": "icon.png",
   "engines": {

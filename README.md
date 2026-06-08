@@ -1,109 +1,72 @@
 # GrepLogViewer
 
-> Regex-based log file viewer with color highlighting, auto-folding, and keyword timeline — all inside VS Code.
+> 基于正则的日志增强查看器 — 匹配行彩色高亮 + 未匹配行自动折叠 + 关键字时间线
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/amw18/greplogviewer/main/docs/screenshot-main.png" alt="GrepLogViewer" width="800">
+  <img src="https://raw.githubusercontent.com/amw18/greplogviewer/main/docs/screenshot-main.png" alt="screenshot" width="800">
 </p>
 
 ---
 
-## Features
+## 怎么用
 
-### 🎨 Regex Group Coloring
+1. 打开任意文本 / 日志文件
+2. 左侧边栏 **GrepLogViewer** 面板配置规则
+3. 点 **Go** → 生效
 
-Define regex groups with custom colors. Matched lines get full-line highlighting. Unmatched lines are **auto-folded** so you only see what matters.
-
-### 🔍 Keyword Highlighting
-
-Highlight specific substrings within lines using independent colors. Keywords use a range-subtraction technique so they never clash with group-level colors.
-
-### ⏱️ Time Pattern & Fold Annotations
-
-Configure a time format (`HH:mm:ss.SSS`) and each folded region shows:
-- Number of hidden lines
-- Time range of hidden content
-- Keyword hit counts
-
-### 🕐 Keyword Timeline
-
-A bottom-panel timeline chart visualizes all keyword matches across time:
-
-- **One row per keyword** with color-coded dots
-- **Hover** to see exact timestamps and line numbers; **click** to jump
-- **Mouse wheel zoom** in/out centered on cursor — inspect dense clusters
-- **Zoom indicator** bar shows current view range vs full data
-
-### 🖱️ Right-Click Grep
-
-Select text in any file, right-click:
-
-| Command | What it does |
-|---------|-------------|
-| **Grep Keyword** | Searches associated code directories for the selected word |
-| **Grep Function** | Finds function definitions matching the selected word |
-
-Results output to the current terminal. Directories support `;` separation, `!` exclusion, and `${VAR}` environment variables.
-
-### 💾 Config Management
-
-Save named configs (`User` or `Workspace` scope), export/import as JSON, apply saved configs with one click.
+**所有效果由 Go 按钮触发**，切换编辑器、改配置都不会自动生效。
 
 ---
 
-## Installation
+## 功能
 
-1. Open VS Code
-2. Go to Extensions (`Ctrl+Shift+X`)
-3. Search **GrepLogViewer**
-4. Click **Install**
+### 正则组高亮 + 自动折叠
 
-Or download from [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=your-publisher-name.greplogviewer).
+为每组正则设定颜色，匹配行整行高亮。未匹配行**自动折叠**，只留下关心的内容。
 
----
+### 关键字子串高亮
 
-## Quick Start
+关键字匹配子串级着色，不与行颜色冲突（范围减法）。
 
-1. Open a log file
-2. Click the **GrepLogViewer** icon in the left sidebar
-3. Add a regex group with a pattern (e.g. `ERROR|FATAL`) and pick a color
-4. *(Optional)* Add keywords (e.g. `timeout`) with a different color
-5. *(Optional)* Set a **Time Pattern** to see fold annotations with timestamps
-6. Click **Go** → matched lines are highlighted, everything else is folded
+### 折叠时间标注
 
----
+配置时间格式后，每个折叠区域显示隐藏行数 + 时间跨度。
 
-## Configuration
+### 关键字时间线
 
-All settings live in the sidebar panel:
+底部面板以时间轴展示各关键字命中分布：
+- 每关键字一行，色点标记
+- 悬停看精确时间和行号，点击跳转
+- 滚轮缩放，以光标位置为中心
 
-| Section | Purpose |
-|---------|---------|
-| **Line Ranges** | Limit scanning to a start/end pattern region |
-| **Regex Groups** | Define regex patterns with colors for full-line matching |
-| **Time Pattern** | Format string for extracting timestamps (e.g. `HH:mm:ss.SSS`) |
-| **Keyword Highlight** | Substring matches with independent colors |
+### 右键 Grep 跳转
+
+选中文本 → 右击 → **Grep Keyword** / **Grep Function**→ 在关联代码目录中搜索，结果输出到终端。
+
+支持 `;` 分隔多目录、`!` 排除、`${VAR}` 环境变量。
+
+### 配置管理
+
+预设保存（User / Workspace）、JSON 导入导出。
 
 ---
 
-## Requirements
+## 安装
 
-- VS Code `^1.85.0`
+VS Code 扩展商店搜索 **GrepLogViewer**。
 
 ---
 
-## Contributing
+## 开发
 
 ```bash
 git clone https://github.com/amw18/greplogviewer.git
 cd greplogviewer
 npm install
-npm test        # 165 tests
-npx tsc         # compile
-# F5 to launch Extension Dev Host
+npm test        # 165 项测试
+npx tsc         # 编译
+# F5 启动调试
 ```
-
----
 
 ## License
 
