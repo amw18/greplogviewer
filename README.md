@@ -51,7 +51,7 @@ Named presets (User / Workspace), JSON import/export.
 
 ## Use Cases
 
-- **Log debugging**: filter ERROR/WARN lines, collapse noise, jump to code
+- **Log debugging**: color-code by module (e.g., ERROR red, WARN yellow), auto-fold everything else. 30,000 lines → 500 at a glance
 - **Trace analysis**: correlate timestamps across keyword occurrences with the timeline
 - **Code auditing**: grep keywords or function definitions across code directories from any file
 
