@@ -45,13 +45,13 @@ Select text → right-click → **Grep Keyword** / **Grep Function** → searche
 
 Supports `;`-separated dirs, `!` exclusion, `${VAR}` environment variables.
 
-### Config Management
+### Config Sharing
 
-Named presets (User / Workspace), JSON import/export.
+Save named configs (User or Workspace scope), export as JSON, share with your team. One-click import to apply a teammate's setup — everyone debugs with the same color scheme, patterns, and keywords.
 
 ## Use Cases
 
-- **Log debugging**: color-code by module (e.g., ERROR red, WARN yellow), auto-fold everything else. 30,000 lines → 500 at a glance
+- **Large log file**: color-code by module (e.g., specified kernel module -> green, HAL -> yellow), auto-fold everything else. 30,000 lines → 500 at a glance
 - **Trace analysis**: correlate timestamps across keyword occurrences with the timeline
 - **Code auditing**: grep keywords or function definitions across code directories from any file
 
