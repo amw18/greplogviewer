@@ -750,6 +750,11 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     html += '</div>';
     document.getElementById('app').innerHTML = html;
     vscode.postMessage({ type: 'listSavedConfigs' });
+    // 重绘 timeline（render 重建了 DOM）
+    if (tlData && tlData.keywords && tlData.keywords.length) {
+      tlInitCtx();
+      tlDraw();
+    }
   }
 
   function collectStartEnd() {
