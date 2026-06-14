@@ -1348,18 +1348,18 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
         tlCtx.lineWidth = 1;
       }
     }
-    // ruler — 时间差横坐标
+    // ruler — 相对时间差
     var chartBottom = pt + n * (rh || 1);
     var bodyStyle = getComputedStyle(document.body);
     var axisColor = bodyStyle.getPropertyValue('--vscode-descriptionForeground') || '#999999';
     tlCtx.fillStyle = axisColor;
+    tlCtx.textAlign = 'center';
     tlCtx.font = '9px sans-serif';
     var steps = 5;
     for (var si = 0; si <= steps; si++) {
       var tx = pl + (si / steps) * pw;
-      var offsetMs = (tlMin + (si / steps) * tRange) - tlMin;
-      var label = formatOffset(offsetMs);
-      tlCtx.fillText(label, tx - 20, chartBottom + 13);
+      var elapsed = (si / steps) * tRange;
+      tlCtx.fillText(formatOffset(elapsed), tx, chartBottom + 13);
     }
   }
 
@@ -1415,8 +1415,9 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
         tip.style.display = 'block';
         tip.style.left = (mx + 10) + 'px';
         tip.style.top = (my - 20) + 'px';
-        var d = new Date(hit.point.time);
-        tip.textContent = hit.keyword.name + ' L' + (hit.point.lineNumber + 1) + ' ' + d.toISOString().substr(11, 12);
+        var tMin = tlViewMin != null ? tlViewMin : tlData.timeMin;
+        var relMs = hit.point.time - tMin;
+        tip.textContent = hit.keyword.name + ' L' + (hit.point.lineNumber + 1) + ' +' + formatOffset(relMs);
       } else if (tip) {
         tip.style.display = 'none';
       }
