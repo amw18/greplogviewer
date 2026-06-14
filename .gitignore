@@ -2,6 +2,7 @@
 node_modules/
 out/
 *.vsix
+.vscode-test/
 goal.md
 GOAL_*.md
 RULES.md
