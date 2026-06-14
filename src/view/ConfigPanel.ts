@@ -58,9 +58,6 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
         case 'deleteSavedConfig':
           this.deleteCallback?.(msg.name, msg.scope);
           break;
-        case 'gotoKeywordMatch':
-          this.gotoKeywordMatchCallback?.(msg.direction);
-          break;
         case 'syncConfig':
           this.syncConfigCallback?.(msg.groups, msg.startPattern, msg.endPattern, msg.rangeDescription, msg.namedRanges, msg.activeRangeId, msg.timePattern, msg.keywords);
           break;
@@ -124,21 +121,24 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     this.deleteCallback = callback;
   }
 
-  onGotoKeywordMatch(callback: (direction: 'next' | 'prev') => void): void {
-    this.gotoKeywordMatchCallback = callback;
-  }
-
   onSyncConfig(callback: (groups: RegexGroup[], startPattern?: string, endPattern?: string, rangeDescription?: string, namedRanges?: import('../types').NamedRange[], activeRangeId?: string, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void): void {
     this.syncConfigCallback = callback;
   }
 
-  /** gotoKeywordMatch 回调：通知扩展跳转匹配行 */
-  private gotoKeywordMatchCallback: ((direction: 'next' | 'prev') => void) | undefined;
+  onTimelineClick(callback: (lineNumber: number) => void): void {
+    this.timelineClickCallback = callback;
+  }
 
   sendMatchCounts(counts: import('../types').MatchCountsMessage): void {
     this.view?.webview.postMessage(counts);
   }
+
+  sendTimelineData(data: import('../types').TimelineDataMessage): void {
+    this.view?.webview.postMessage(data);
+  }
+
   private syncConfigCallback: ((groups: RegexGroup[], startPattern?: string, endPattern?: string, rangeDescription?: string, namedRanges?: import('../types').NamedRange[], activeRangeId?: string, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void) | undefined;
+  private timelineClickCallback: ((lineNumber: number) => void) | undefined;
 
   /** 向 webview 发送已保存配置列表 */
   sendSavedConfigsList(configs: { name: string; scope: ConfigScope }[]): void {
@@ -233,14 +233,18 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
          color: var(--vscode-foreground); background: var(--vscode-sideBar-background);
          padding: 4px; }
   .group-card { border: 1px solid var(--vscode-panel-border); border-radius: 3px;
-                margin-bottom: 6px; padding: 6px; }
-  .group-header { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; }
-  .group-header input[type="checkbox"] { margin: 0; cursor: pointer; }
-  .group-header input[type="text"] { flex: 1; background: var(--vscode-input-background);
+                margin-bottom: 4px; padding: 4px; cursor: grab; }
+  .group-card.dragging { opacity: 0.4; cursor: grabbing; }
+  .group-card.drag-over { border-color: var(--vscode-focusBorder); border-style: dashed; }
+  .group-header { display: flex; align-items: center; gap: 3px; margin-bottom: 2px; flex-wrap: wrap; }
+  .group-header input[type="checkbox"] { margin: 0; cursor: pointer; flex-shrink: 0; }
+  .group-header input[type="text"] { background: var(--vscode-input-background);
         color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border);
-        padding: 1px 4px; border-radius: 2px; font-size: 12px; }
+        padding: 1px 3px; border-radius: 2px; font-size: 11px; }
+  .group-header .group-name { flex: 0 1 60px; min-width: 40px; }
+  .group-header .group-first-expr { flex: 1 1 60px; min-width: 40px; }
   .remove-btn { background: none; border: none; color: var(--vscode-errorForeground);
-                cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; }
+                cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; flex-shrink: 0; }
   .move-btn { background: none; border: none; color: var(--vscode-descriptionForeground);
               cursor: pointer; font-size: 10px; line-height: 1; padding: 0 2px; }
   .move-btn:hover { color: var(--vscode-foreground); }
@@ -264,12 +268,22 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
                color: var(--vscode-button-secondaryForeground); }
   .reset-btn:hover { background: var(--vscode-button-secondaryHoverBackground); }
 
-  .section { margin-bottom: 8px; }
+  .section { margin-bottom: 4px; }
   .section-header { font-size: 11px; font-weight: 600; text-transform: uppercase;
                     color: var(--vscode-descriptionForeground); letter-spacing: 0.5px;
-                    padding: 4px 6px; border-bottom: 1px solid var(--vscode-panel-border);
-                    margin-bottom: 4px; }
+                    padding: 3px 6px; border: none; border-bottom: 1px solid var(--vscode-panel-border);
+                    margin-bottom: 2px; cursor: pointer; user-select: none;
+                    display: flex; align-items: center; gap: 4px; width: 100%;
+                    background: none; font-family: inherit; }
+  .section-header:hover { color: var(--vscode-foreground); }
+  .section-toggle { font-size: 10px; transition: transform 0.15s; width: 10px; text-align: center; }
+  .section-toggle.open { transform: rotate(90deg); }
   .section-body { padding: 0 2px; }
+  .section-body.collapsed { display: none; }
+
+  .section.collapsible .section-header { cursor: pointer; }
+  .section.collapsible.auto-open .section-body { display: block; }
+  .section.collapsible.auto-open .section-toggle { transform: rotate(90deg); }
 
   .line-range { display: flex; align-items: center; gap: 4px; padding: 4px; flex-wrap: wrap; }
   .line-range label { font-size: 11px; color: var(--vscode-descriptionForeground); }
@@ -293,11 +307,6 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
         padding: 1px 4px; border-radius: 2px; font-size: 11px; }
   .range-card-row .range-lbl { font-size: 10px; color: var(--vscode-descriptionForeground); flex-shrink: 0; }
 
-  .keyword-nav { display: flex; gap: 4px; padding: 2px 4px 4px 4px; }
-  .keyword-nav .nav-btn { background: var(--vscode-button-secondaryBackground);
-        color: var(--vscode-button-secondaryForeground); border: none;
-        padding: 1px 6px; border-radius: 2px; cursor: pointer; font-size: 11px; }
-  .keyword-nav .nav-btn:hover { background: var(--vscode-button-secondaryHoverBackground); }
   .keyword-row { display: flex; align-items: center; gap: 3px; margin-bottom: 3px;
                  padding: 3px; background: var(--vscode-input-background); border-radius: 2px; }
   .keyword-row input[type="text"] { flex: 1; background: transparent;
@@ -361,14 +370,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   .flags-popover input[type="checkbox"] { margin: 0; cursor: pointer; }
   .flags-popover .flag-desc { color: var(--vscode-descriptionForeground);
     font-size: 10px; margin-left: auto; }
-
-  .dirs-row { display: flex; align-items: center; gap: 3px; margin-bottom: 3px;
-              padding: 3px; background: var(--vscode-input-background); border-radius: 2px; }
-  .dirs-label { font-size: 10px; color: var(--vscode-descriptionForeground);
-                width: 36px; text-align: center; flex-shrink: 0; }
-  .dirs-input { flex: 1; background: transparent;
-                color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border);
-                padding: 1px 4px; border-radius: 2px; font-size: 11px; }
+  .flag-sep { border-top: 1px solid var(--vscode-panel-border); margin: 3px 0; }
 
   /* ── Config Management ── */
   .cfg-mgmt-row { display: flex; align-items: center; gap: 3px; margin-bottom: 4px; }
@@ -556,6 +558,17 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       h += '<span class="flag-desc">' + fo.desc + '</span>';
       h += '</label>';
     }
+    // Keyword mode: matchScope option
+    if (kind === 'kw') {
+      h += '<div class="flag-sep"></div>';
+      var kwScope = 'full';
+      if (ki !== null && keywords[ki]) { kwScope = keywords[ki].matchScope || 'full'; }
+      h += '<label>';
+      h += '<input type="checkbox" data-flag="matched" data-flags-kw="' + id + '"' + (kwScope === 'matched' ? ' checked' : '') + '>';
+      h += '<code>grp</code>';
+      h += '<span class="flag-desc">only in group lines</span>';
+      h += '</label>';
+    }
     h += '</div>';
     h += '</span>';
     return h;
@@ -588,10 +601,11 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     ensureDefaultRange();
     var html = '';
 
-    // ── Section: Line Ranges ──
-    html += '<div class="section">';
-    html += '<div class="section-header">Line Ranges</div>';
-    html += '<div class="section-body">';
+    // ── Section: Line Ranges (collapsible, default collapsed) ──
+    html += '<div class="section collapsible" id="section-lineRanges">';
+    html += '<button class="section-header" data-action="toggleSection" data-section="lineRanges">';
+    html += '<span class="section-toggle">▶</span><span>Line Ranges</span></button>';
+    html += '<div class="section-body collapsed">';
     for (var ri = 0; ri < namedRanges.length; ri++) {
       var rng = namedRanges[ri];
       var isActive = rng.id === activeRangeId;
@@ -609,12 +623,13 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     }
     html += '<button class="add-btn" data-action="addRange" style="display:block;width:100%">+ Add Range</button>';
     html += '<div id="range-time-info" class="range-time-info">' + (rangeTimeInfoHtml || '') + '</div>';
-    html += '</div></div>';
+    html += '</div></div>';  // close section-body and section for Line Ranges
 
-    // ── Section: Time Pattern ──
-    html += '<div class="section">';
-    html += '<div class="section-header">Time Pattern</div>';
-    html += '<div class="section-body">';
+    // ── Section: Time Pattern (collapsible, default collapsed) ──
+    html += '<div class="section collapsible" id="section-timePattern">';
+    html += '<button class="section-header" data-action="toggleSection" data-section="timePattern">';
+    html += '<span class="section-toggle">▶</span><span>Time Pattern</span></button>';
+    html += '<div class="section-body collapsed">';
     html += '<div class="time-pattern">';
     html += '<label style="font-size:11px;color:var(--vscode-descriptionForeground)">Format string</label>';
     html += '<input type="text" id="time-format" value="' + esc(timePattern?.format || '') + '" placeholder="e.g. [YYYY-MM-DD HH:mm:ss{.SSS}]" style="width:100%">';
@@ -628,33 +643,28 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
 
     for (var gi = 0; gi < groups.length; gi++) {
       var g = groups[gi];
-      html += '<div class="group-card">';
+      html += '<div class="group-card" draggable="true" data-gi="' + gi + '">';
       html += '<div class="group-header">';
       html += '<input type="checkbox" data-gi="' + gi + '" class="group-enabled"' + (g.enabled !== false ? ' checked' : '') + ' title="Enable/disable this group">';
-      html += '<input type="text" value="' + esc(g.name) + '" data-gi="' + gi + '" class="group-name" placeholder="Group name">';
-      // 匹配行数
+      html += '<input type="text" value="' + esc(g.name) + '" data-gi="' + gi + '" class="group-name" placeholder="Name">';
       var gc = matchCounts && matchCounts.groupCounts ? (matchCounts.groupCounts[g.id] || 0) : -1;
       if (gc >= 0) {
         html += '<span class="count-badge' + (gc === 0 ? ' zero' : '') + '">' + gc + '</span>';
       }
       if (g.expressions.length > 0) {
-        html += '<input type="text" class="pattern" value="' + esc(g.expressions[0].pattern) + '" data-gi="' + gi + '" data-ei="0" placeholder="/regex/" style="flex:1;min-width:50px">';
+        html += '<input type="text" class="group-first-expr" value="' + esc(g.expressions[0].pattern) + '" data-gi="' + gi + '" data-ei="0" placeholder="/regex/">';
         html += flagsPickerHtml('expr', gi, 0, null, g.expressions[0].flags);
       }
       html += colorPickerHtml('gi', gi, g.color);
-      html += '<button class="move-btn" data-action="moveGroupUp" data-gi="' + gi + '" title="Move up"' + (gi === 0 ? ' disabled' : '') + '>▲</button>';
-      html += '<button class="move-btn" data-action="moveGroupDown" data-gi="' + gi + '" title="Move down"' + (gi === groups.length - 1 ? ' disabled' : '') + '>▼</button>';
       html += '<button class="remove-btn" data-action="removeGroup" data-gi="' + gi + '">&times;</button>';
+      html += '<button class="add-btn" data-action="addExpr" data-gi="' + gi + '" style="font-size:10px;padding:1px 4px">+</button>';
       html += '</div>';
-      // 关联代码目录
-      html += '<div class="dirs-row">';
-      html += '<span class="dirs-label">Dirs</span>';
-      html += '<input type="text" class="dirs-input" value="' + esc(g.associatedDirs || '') + '" data-gi="' + gi + '" placeholder="src/server; src/utils; !src/test (env: \$VAR or \${VAR})">';
-      html += '</div>';
+
+      // Expression rows (from e1 since e0 is inline in header)
       for (var ei = 1; ei < g.expressions.length; ei++) {
         var e = g.expressions[ei];
         html += '<div class="expr-row">';
-        html += '<input type="checkbox" data-gi="' + gi + '" data-ei="' + ei + '" class="expr-enabled"' + (e.enabled !== false ? ' checked' : '') + ' title="Enable/disable this expression">';
+        html += '<input type="checkbox" data-gi="' + gi + '" data-ei="' + ei + '" class="expr-enabled"' + (e.enabled !== false ? ' checked' : '') + ' title="Enable/disable">';
         html += '<select data-gi="' + gi + '" data-ei="' + ei + '" class="expr-op">';
         html += '<option value="and"' + (e.operator==='and'?' selected':'') + '>AND</option>';
         html += '<option value="or"' + (e.operator==='or'?' selected':'') + '>OR</option>';
@@ -662,12 +672,9 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
         html += '</select>';
         html += '<input type="text" class="pattern" value="' + esc(e.pattern) + '" data-gi="' + gi + '" data-ei="' + ei + '" placeholder="/regex/">';
         html += flagsPickerHtml('expr', gi, ei, null, e.flags);
-        html += '<button class="move-btn" data-action="moveExprUp" data-gi="' + gi + '" data-ei="' + ei + '" title="Move up"' + (ei === 0 ? ' disabled' : '') + '>▲</button>';
-        html += '<button class="move-btn" data-action="moveExprDown" data-gi="' + gi + '" data-ei="' + ei + '" title="Move down"' + (ei === g.expressions.length - 1 ? ' disabled' : '') + '>▼</button>';
         html += '<button class="remove-btn" data-action="removeExpr" data-gi="' + gi + '" data-ei="' + ei + '">&times;</button>';
         html += '</div>';
       }
-      html += '<button class="add-btn" data-action="addExpr" data-gi="' + gi + '" style="margin-top:2px">+ Expr</button>';
       html += '</div>';
     }
     html += '<button class="add-btn" data-action="addGroup" style="display:block;width:100%">+ Add Group</button>';
@@ -677,36 +684,35 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     html += '<div class="section">';
     html += '<div class="section-header">Keyword Highlight</div>';
     html += '<div class="section-body">';
-    html += '<div class="keyword-nav">';
-    html += '<button class="nav-btn" data-action="gotoPrevKeyword" title="Jump to previous keyword match">▲ Prev</button>';
-    html += '<button class="nav-btn" data-action="gotoNextKeyword" title="Jump to next keyword match">▼ Next</button>';
-    html += '</div>';
     for (var ki = 0; ki < keywords.length; ki++) {
       var kw = keywords[ki];
       html += '<div class="keyword-row">';
-      html += '<input type="checkbox" data-ki="' + ki + '" class="keyword-enabled"' + (kw.enabled !== false ? ' checked' : '') + ' title="Enable/disable this keyword">';
+      html += '<input type="checkbox" data-ki="' + ki + '" class="keyword-enabled"' + (kw.enabled !== false ? ' checked' : '') + ' title="Enable/disable">';
       html += '<input type="text" class="pattern" value="' + esc(kw.pattern) + '" data-ki="' + ki + '" placeholder="regex">';
       html += flagsPickerHtml('kw', null, null, ki, kw.flags);
       html += colorPickerHtml('ki', ki, kw.color);
       html += '<input type="text" class="hint" value="' + esc(kw.hint || '') + '" data-ki="' + ki + '" placeholder="hint">';
-      // 匹配行数
       var kc = matchCounts && matchCounts.keywordCounts ? (matchCounts.keywordCounts[kw.id] || 0) : -1;
       if (kc >= 0) {
         html += '<span class="count-badge' + (kc === 0 ? ' zero' : '') + '">' + kc + '</span>';
       }
-      html += '<button class="move-btn" data-action="moveKwUp" data-ki="' + ki + '" title="Move up"' + (ki === 0 ? ' disabled' : '') + '>▲</button>';
-      html += '<button class="move-btn" data-action="moveKwDown" data-ki="' + ki + '" title="Move down"' + (ki === keywords.length - 1 ? ' disabled' : '') + '>▼</button>';
       html += '<button class="remove-btn" data-action="removeKeyword" data-ki="' + ki + '">&times;</button>';
       html += '</div>';
     }
     html += '<button class="add-btn" data-action="addKeyword" style="display:block;width:100%">+ Add Keyword</button>';
-    html += '<span style="font-size:10px;color:var(--vscode-descriptionForeground)">Regex matches are highlighted with the chosen color. Add a "hint" to show a note next to matching lines.</span>';
-    html += '</div></div>';
+    // ── Keyword Timeline ──
+    html += '<div id="tl-container" style="position:relative;width:100%;height:120px;margin:4px 0;border:1px solid var(--vscode-panel-border);border-radius:4px;overflow:hidden">';
+    html += '<canvas id="tl-canvas" style="display:block;width:100%;height:100%"></canvas>';
+    html += '<div id="tl-empty" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--vscode-descriptionForeground);pointer-events:none">Click Go to see keyword timeline</div>';
+    html += '<div id="tl-tooltip" style="position:absolute;display:none;background:var(--vscode-editor-background);color:var(--vscode-editor-foreground);border:1px solid var(--vscode-panel-border);padding:2px 6px;font-size:11px;pointer-events:none;white-space:nowrap;border-radius:2px;z-index:10"></div>';
+    html += '<div id="tl-zoom" style="position:absolute;bottom:2px;right:4px;font-size:10px;color:var(--vscode-descriptionForeground);pointer-events:none"></div>';
+    html += '</div>';
 
-    // ── Section: Config Management ──
-    html += '<div class="section">';
-    html += '<div class="section-header">Config Management</div>';
-    html += '<div class="section-body">';
+    // ── Section: Config Management (collapsible) ──
+    html += '<div class="section collapsible" id="section-configMgmt">';
+    html += '<button class="section-header" data-action="toggleSection" data-section="configMgmt">';
+    html += '<span class="section-toggle">▶</span><span>Config Management</span></button>';
+    html += '<div class="section-body collapsed">';
 
     // Save row
     html += '<div class="cfg-mgmt-row">';
@@ -793,7 +799,45 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     saveState();
   }
 
-  // 事件委托
+  // ── Drag and Drop for Group Cards ──
+  var dragFromGi = -1;
+  document.getElementById('app').addEventListener('dragstart', function(e) {
+    var card = e.target.closest('.group-card');
+    if (!card) { return; }
+    dragFromGi = parseInt(card.dataset.gi);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(dragFromGi));
+    card.classList.add('dragging');
+  });
+  document.getElementById('app').addEventListener('dragend', function(e) {
+    var card = e.target.closest('.group-card');
+    if (card) { card.classList.remove('dragging'); }
+    dragFromGi = -1;
+    document.querySelectorAll('.group-card.drag-over').forEach(function(c) { c.classList.remove('drag-over'); });
+  });
+  document.getElementById('app').addEventListener('dragover', function(e) {
+    e.preventDefault();
+    var card = e.target.closest('.group-card');
+    if (!card || dragFromGi < 0) { return; }
+    e.dataTransfer.dropEffect = 'move';
+    document.querySelectorAll('.group-card.drag-over').forEach(function(c) { c.classList.remove('drag-over'); });
+    card.classList.add('drag-over');
+  });
+  document.getElementById('app').addEventListener('drop', function(e) {
+    e.preventDefault();
+    var card = e.target.closest('.group-card');
+    if (!card || dragFromGi < 0) { return; }
+    card.classList.remove('drag-over');
+    var toGi = parseInt(card.dataset.gi);
+    if (dragFromGi !== toGi && !isNaN(dragFromGi) && !isNaN(toGi)) {
+      var item = groups.splice(dragFromGi, 1)[0];
+      groups.splice(toGi, 0, item);
+      saveState(); render();
+    }
+    dragFromGi = -1;
+  });
+
+  // ── 事件委托 ──
   document.getElementById('app').addEventListener('click', function(e) {
     // ── 颜色触发器：切换弹出面板（fixed 定位 + 边界约束）──
     var trigger = e.target.closest('.color-trigger');
@@ -932,13 +976,6 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       groups.push({ id: uuid(), name: 'New Group', color: randomColor(), expressions: [{ id: uuid(), pattern: '', flags: '', operator: 'and', enabled: true }], enabled: true });
       saveState(); render();
     } else if (action === 'removeGroup') { groups.splice(gi, 1); saveState(); render(); }
-    else if (action === 'moveGroupUp' && gi > 0) {
-      var tmp = groups[gi]; groups[gi] = groups[gi - 1]; groups[gi - 1] = tmp;
-      saveState(); render();
-    } else if (action === 'moveGroupDown' && gi < groups.length - 1) {
-      var tmp = groups[gi]; groups[gi] = groups[gi + 1]; groups[gi + 1] = tmp;
-      saveState(); render();
-    }
     else if (action === 'addExpr') {
       groups[gi].expressions.push({ id: uuid(), pattern: '', flags: '', operator: 'and', enabled: true });
       saveState(); render();
@@ -953,17 +990,11 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       saveState(); render();
     }
     else if (action === 'addKeyword') {
-      keywords.push({ id: uuid(), pattern: '', flags: '', color: randomColor(), enabled: true });
+      keywords.push({ id: uuid(), pattern: '', flags: '', color: randomColor(), enabled: true, matchScope: 'matched' });
       saveState(); render();
     } else if (action === 'removeKeyword') {
       var ki = parseInt(btn.dataset.ki);
       keywords.splice(ki, 1); saveState(); render();
-    } else if (action === 'moveKwUp') {
-      var ki = parseInt(btn.dataset.ki);
-      if (ki > 0) { var tmp = keywords[ki]; keywords[ki] = keywords[ki - 1]; keywords[ki - 1] = tmp; saveState(); render(); }
-    } else if (action === 'moveKwDown') {
-      var ki = parseInt(btn.dataset.ki);
-      if (ki < keywords.length - 1) { var tmp = keywords[ki]; keywords[ki] = keywords[ki + 1]; keywords[ki + 1] = tmp; saveState(); render(); }
     }
     else if (action === 'addRange') {
       collectRangeData();
@@ -983,10 +1014,22 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       var ri = parseInt(btn.dataset.ri);
       if (namedRanges[ri]) { activeRangeId = namedRanges[ri].id; saveState(); render(); }
     }
-    else if (action === 'gotoNextKeyword') {
-      vscode.postMessage({ type: 'gotoKeywordMatch', direction: 'next' });
-    } else if (action === 'gotoPrevKeyword') {
-      vscode.postMessage({ type: 'gotoKeywordMatch', direction: 'prev' });
+    else if (action === 'toggleSection') {
+      var secId = btn.dataset.section;
+      var body = document.querySelector('#section-' + secId + ' .section-body');
+      var toggle = document.querySelector('#section-' + secId + ' .section-toggle');
+      var section = document.getElementById('section-' + secId);
+      if (body) {
+        var isOpen = !body.classList.contains('collapsed');
+        if (isOpen) {
+          body.classList.add('collapsed');
+          if (toggle) { toggle.classList.remove('open'); toggle.textContent = '▶'; }
+
+        } else {
+          body.classList.remove('collapsed');
+          if (toggle) { toggle.classList.add('open'); toggle.textContent = '▼'; }
+        }
+      }
     }
   });
 
@@ -1012,7 +1055,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     }
     if (isNaN(gi)) return;
     if (el.classList.contains('group-name')) groups[gi].name = el.value;
-    else if (el.classList.contains('dirs-input')) { groups[gi].associatedDirs = el.value; syncToExtension(); }
+    else if (el.classList.contains('group-first-expr') && !isNaN(ei)) groups[gi].expressions[ei].pattern = el.value;
     else if (el.classList.contains('pattern') && !isNaN(ei)) groups[gi].expressions[ei].pattern = el.value;
     saveState();
   });
@@ -1038,13 +1081,24 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     }
     // Flags 复选框变更
     if (el.dataset.flag) {
-      var fk = el.dataset.flagsExpr !== undefined ? 'expr' : 'kw';
-      var fid = el.dataset.flagsExpr !== undefined ? el.dataset.flagsExpr : el.dataset.flagsKw;
-      var parts = fid.split(':');
-      if (fk === 'expr') {
-        setFlags('expr', parseInt(parts[0]), parseInt(parts[1]), null);
+      if (el.dataset.flag === 'matched') {
+        // matchScope toggle for keywords
+        var fid = el.dataset.flagsKw;
+        var parts = fid.split(':');
+        var ki2 = parseInt(parts[1]);
+        if (keywords[ki2]) {
+          keywords[ki2].matchScope = el.checked ? 'matched' : 'full';
+          saveState();
+        }
       } else {
-        setFlags('kw', null, null, parseInt(parts[1]));
+        var fk = el.dataset.flagsExpr !== undefined ? 'expr' : 'kw';
+        var fid2 = el.dataset.flagsExpr !== undefined ? el.dataset.flagsExpr : el.dataset.flagsKw;
+        var parts2 = fid2.split(':');
+        if (fk === 'expr') {
+          setFlags('expr', parseInt(parts2[0]), parseInt(parts2[1]), null);
+        } else {
+          setFlags('kw', null, null, parseInt(parts2[1]));
+        }
       }
     }
   });
@@ -1060,14 +1114,11 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     document.querySelectorAll('.group-name').forEach(function(el) {
       groups[parseInt(el.dataset.gi)].name = el.value;
     });
-    document.querySelectorAll('.dirs-input').forEach(function(el) {
-      groups[parseInt(el.dataset.gi)].associatedDirs = el.value;
-    });
     document.querySelectorAll('.expr-enabled').forEach(function(el) {
       var gii = parseInt(el.dataset.gi), eii = parseInt(el.dataset.ei);
       if (!isNaN(eii)) groups[gii].expressions[eii].enabled = el.checked;
     });
-    document.querySelectorAll('.pattern').forEach(function(el) {
+    document.querySelectorAll('.pattern, .group-first-expr').forEach(function(el) {
       var gii = parseInt(el.dataset.gi), eii = parseInt(el.dataset.ei);
       var kii = parseInt(el.dataset.ki);
       if (!isNaN(eii)) groups[gii].expressions[eii].pattern = el.value;
@@ -1157,6 +1208,13 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
         rangeTimeInfoHtml = '';
       }
       render();
+    } else if (msg.type === 'timelineData') {
+      tlData = msg;
+      tlViewMin = null; tlViewMax = null;
+      var emptyEl = document.getElementById('tl-empty');
+      if (emptyEl) emptyEl.style.display = msg.keywords && msg.keywords.length ? 'none' : 'flex';
+      tlInitCtx();
+      tlDraw();
     } else if (msg.type === 'matchCounts') {
       matchCounts = msg;
       render();
@@ -1182,6 +1240,155 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   });
 
   render();
+
+  // ── Keyword Timeline ──
+  var tlData = null, tlViewMin = null, tlViewMax = null, tlDrawRAF = null;
+  var tlPad = { top: 6, right: 40, bottom: 22, left: 80 };
+  var tlDotR = 3, tlRowH = 13, tlRowGap = 2, tlMinZoom = 1000;
+  var tlCtx = null;
+
+  function tlInitCtx() {
+    var cv = document.getElementById('tl-canvas');
+    if (!cv) return;
+    tlCtx = cv.getContext('2d');
+    var dpr = window.devicePixelRatio || 1;
+    var rect = cv.parentElement.getBoundingClientRect();
+    cv.width = rect.width * dpr;
+    cv.height = rect.height * dpr;
+    cv.style.width = rect.width + 'px';
+    cv.style.height = rect.height + 'px';
+    tlCtx.scale(dpr, dpr);
+    return { w: rect.width, h: rect.height };
+  }
+
+  function tlDraw() {
+    if (!tlCtx || !tlData || !tlData.keywords.length) return;
+    var dim = tlInitCtx();
+    if (!dim) return;
+    var W = dim.w, H = dim.h;
+    tlCtx.clearRect(0, 0, W, H);
+    var pl = tlPad.left, pr = tlPad.right, pt = tlPad.top, pb = tlPad.bottom;
+    var pw = W - pl - pr, ph = H - pt - pb;
+    if (pw <= 0 || ph <= 0) return;
+    var kws = tlData.keywords, n = kws.length;
+    var rh = tlRowH + tlRowGap;
+    var rowsH = n * rh;
+    if (rowsH > ph) { rh = ph / n; }
+    var tlMin = tlViewMin != null ? tlViewMin : tlData.timeMin;
+    var tlMax = tlViewMax != null ? tlViewMax : tlData.timeMax;
+    var tRange = tlMax - tlMin || 1;
+    // grid lines
+    tlCtx.strokeStyle = 'rgba(128,128,128,0.15)';
+    tlCtx.lineWidth = 1;
+    for (var i = 0; i <= n; i++) {
+      var gy = pt + i * (rh || 1);
+      tlCtx.beginPath(); tlCtx.moveTo(pl, gy); tlCtx.lineTo(W - pr, gy); tlCtx.stroke();
+    }
+    // dots
+    for (var ki = 0; ki < n; ki++) {
+      var kw = kws[ki];
+      if (!kw.points) continue;
+      var cy = pt + ki * (rh || 1) + (rh || 1) / 2;
+      tlCtx.fillStyle = kw.color;
+      for (var pi = 0; pi < kw.points.length; pi++) {
+        var p = kw.points[pi];
+        var cx = pl + ((p.time - tlMin) / tRange) * pw;
+        tlCtx.beginPath(); tlCtx.arc(cx, cy, tlDotR, 0, Math.PI * 2); tlCtx.fill();
+      }
+    }
+    // ruler
+    tlCtx.fillStyle = 'var(--vscode-descriptionForeground)';
+    tlCtx.font = '9px sans-serif';
+    var steps = 5;
+    for (var si = 0; si <= steps; si++) {
+      var tx = pl + (si / steps) * pw;
+      var tVal = tlMin + (si / steps) * tRange;
+      var d = new Date(tVal);
+      var label = d.toISOString().substr(11, 12);
+      tlCtx.fillText(label, tx - 20, H - pb + 14);
+    }
+  }
+
+  function tlPointAt(mx, my) {
+    if (!tlCtx || !tlData || !tlData.keywords.length) return null;
+    var cv = document.getElementById('tl-canvas');
+    if (!cv) return null;
+    var rect = cv.getBoundingClientRect();
+    var pl = tlPad.left, pr = tlPad.right, pt = tlPad.top;
+    var W = rect.width, pw = W - pl - pr;
+    if (pw <= 0) return null;
+    var tlMin = tlViewMin != null ? tlViewMin : tlData.timeMin;
+    var tlMax = tlViewMax != null ? tlViewMax : tlData.timeMax;
+    var tRange = tlMax - tlMin || 1;
+    var kws = tlData.keywords, n = kws.length;
+    var rh = tlRowH + tlRowGap;
+    var rowsH = n * rh;
+    var ch = rect.height;
+    if (rowsH > ch - tlPad.top - tlPad.bottom) { rh = (ch - tlPad.top - tlPad.bottom) / n; }
+    for (var ki = 0; ki < n; ki++) {
+      var kw = kws[ki];
+      if (!kw.points) continue;
+      var cy = pt + ki * (rh || 1) + (rh || 1) / 2;
+      for (var pi = 0; pi < kw.points.length; pi++) {
+        var p = kw.points[pi];
+        var cx = pl + ((p.time - tlMin) / tRange) * pw;
+        var dx = mx - cx, dy = my - cy;
+        if (dx * dx + dy * dy < (tlDotR + 6) * (tlDotR + 6)) {
+          return { keyword: kw, point: p, cx: cx, cy: cy };
+        }
+      }
+    }
+    return null;
+  }
+
+  var tlContainer = document.getElementById('tl-container');
+  if (tlContainer) {
+    tlContainer.addEventListener('mousemove', function(e) {
+      var cv = document.getElementById('tl-canvas');
+      if (!cv || !tlData) return;
+      var r = cv.getBoundingClientRect();
+      var hit = tlPointAt(e.clientX - r.left, e.clientY - r.top);
+      var tip = document.getElementById('tl-tooltip');
+      if (hit && tip) {
+        tip.style.display = 'block';
+        tip.style.left = (e.clientX - r.left + 10) + 'px';
+        tip.style.top = (e.clientY - r.top - 20) + 'px';
+        var d = new Date(hit.point.time);
+        tip.textContent = hit.keyword.name + ' L' + (hit.point.lineNumber + 1) + ' ' + d.toISOString().substr(11, 12);
+      } else if (tip) {
+        tip.style.display = 'none';
+      }
+    });
+    tlContainer.addEventListener('click', function(e) {
+      var cv = document.getElementById('tl-canvas');
+      if (!cv) return;
+      var r = cv.getBoundingClientRect();
+      var hit = tlPointAt(e.clientX - r.left, e.clientY - r.top);
+      if (hit) {
+        vscode.postMessage({ type: 'timelineClick', lineNumber: hit.point.lineNumber });
+      }
+    });
+    tlContainer.addEventListener('wheel', function(e) {
+      e.preventDefault();
+      if (!tlData) return;
+      var cv = document.getElementById('tl-canvas');
+      if (!cv) return;
+      var r = cv.getBoundingClientRect();
+      var cl = tlPad.left, cr = r.width - tlPad.right, cw = cr - cl;
+      var frac = Math.max(0, Math.min(1, (e.clientX - r.left - cl) / cw));
+      var mt = (tlViewMin != null ? tlViewMin : tlData.timeMin) + frac * ((tlViewMax != null ? tlViewMax : tlData.timeMax) - (tlViewMin != null ? tlViewMin : tlData.timeMin));
+      var factor = e.deltaY > 0 ? 1.5 : 0.67;
+      var half = ((tlViewMax != null ? tlViewMax : tlData.timeMax) - (tlViewMin != null ? tlViewMin : tlData.timeMin)) * factor / 2;
+      var nmin = mt - half, nmax = mt + half;
+      if (nmax - nmin < tlMinZoom) { var mid = (nmin + nmax) / 2; nmin = mid - tlMinZoom / 2; nmax = mid + tlMinZoom / 2; }
+      if (nmin < tlData.timeMin) { nmin = tlData.timeMin; nmax = nmin + (tlViewMax != null ? tlViewMax : tlData.timeMax) - (tlViewMin != null ? tlViewMin : tlData.timeMin); }
+      if (nmax > tlData.timeMax) { nmax = tlData.timeMax; nmin = nmax - (tlViewMax != null ? tlViewMax : tlData.timeMax) + (tlViewMin != null ? tlViewMin : tlData.timeMin); }
+      tlViewMin = nmin; tlViewMax = nmax;
+      var zoomEl = document.getElementById('tl-zoom');
+      if (zoomEl) zoomEl.textContent = ((nmax - nmin) / 1000).toFixed(1) + 's';
+      tlDraw();
+    });
+  }
 })();
 </script>
 </body>

@@ -59,10 +59,7 @@ export class ViewController {
     this.configPanel.onListSaved(() => this.handleListSaved());
     this.configPanel.onApply((n, sc) => this.handleApply(n, sc));
     this.configPanel.onDelete((n, sc) => this.handleDelete(n, sc));
-    this.configPanel.onGotoKeywordMatch((dir) => this.handleGotoKeywordMatch(dir));
     this.configPanel.onSyncConfig((g, sp, ep, rd, nr, ar, tp, kw) => this.handleSyncConfig(g, sp, ep, rd, nr, ar, tp, kw));
-
-    this.timeline.onDidClick((lineNumber) => this.handleTimelineClick(lineNumber));
   }
 
   getPanelProvider(): ConfigPanel {
@@ -137,6 +134,15 @@ export class ViewController {
       this.currentRangeDescription = undefined;
       this.currentNamedRanges = undefined;
       this.currentActiveRangeId = undefined;
+    }
+
+    // 自动检测时间格式（仅在未配置时）
+    if (!this.timeMatchModel.isConfigured() && !savedConfig?.timePattern) {
+      const sampleLines = this.readLines(editor);
+      const autoTp = this.timeMatchModel.autoDetect(sampleLines);
+      if (autoTp) {
+        this.timeMatchModel.setConfig(autoTp);
+      }
     }
 
     const tp = this.timeMatchModel.getConfig();
@@ -256,6 +262,12 @@ export class ViewController {
   ): void {
     if (!keywords || keywords.length === 0) {
       this.timeline.sendTimelineData({
+        type: 'timelineData',
+        timeMin: 0,
+        timeMax: 1,
+        keywords: [],
+      });
+      this.configPanel.sendTimelineData({
         type: 'timelineData',
         timeMin: 0,
         timeMax: 1,
@@ -454,18 +466,29 @@ export class ViewController {
     }
     // 预编译启用的 keyword 正则
     const kwRegexes: RegExp[] = [];
+    // 分离 full 和 matched scope 的 keyword
+    const fullKwRegexes: RegExp[] = [];
+    const matchedKwRegexes: RegExp[] = [];
     for (const kw of keywords) {
       if (kw.enabled === false) { continue; }
       const re = ViewController.buildKwRegex(kw);
-      if (re) { kwRegexes.push(re); }
+      if (!re) { continue; }
+      if (kw.matchScope === 'matched') {
+        matchedKwRegexes.push(re);
+      } else {
+        // 未设置 matchScope 时默认 'full'（向后兼容）
+        fullKwRegexes.push(re);
+      }
     }
-    if (kwRegexes.length === 0) { return; }
 
-    for (const r of results) {
-      if (r.groupId !== null) { continue; }
-      if (r.lineNumber >= scanStart && r.lineNumber < scanEnd
-          && kwRegexes.some(re => re.test(lines[r.lineNumber]))) {
-        r.groupId = ViewController.KW_VISIBLE_ID;
+    // 'full' scope: 标记未匹配的 keyword 命中行为可见（现有行为）
+    if (fullKwRegexes.length > 0) {
+      for (const r of results) {
+        if (r.groupId !== null) { continue; }
+        if (r.lineNumber >= scanStart && r.lineNumber < scanEnd
+            && fullKwRegexes.some(re => re.test(lines[r.lineNumber]))) {
+          r.groupId = ViewController.KW_VISIBLE_ID;
+        }
       }
     }
   }
@@ -751,6 +774,39 @@ export class ViewController {
     }
   }
 
+  /** 跳转到当前光标位置的上一个/下一个 group 匹配行 */
+  private handleGotoGroupMatch(direction: 'prev' | 'next'): void {
+    const editor = this.currentEditor;
+    if (!editor) { return; }
+    const editorId = editor.document.uri.toString();
+    if (!this.editorStateModel.isActive(editorId)) { return; }
+
+    const matchedLines = this.filterResultModel.getMatchedLines(editorId);
+    if (matchedLines.length === 0) { return; }
+
+    matchedLines.sort((a, b) => a - b);
+    const currentLine = editor.selection.active.line;
+
+    let targetLine: number | undefined;
+    if (direction === 'next') {
+      for (const l of matchedLines) {
+        if (l > currentLine) { targetLine = l; break; }
+      }
+      if (targetLine === undefined) { targetLine = matchedLines[0]; }
+    } else {
+      for (let i = matchedLines.length - 1; i >= 0; i--) {
+        if (matchedLines[i] < currentLine) { targetLine = matchedLines[i]; break; }
+      }
+      if (targetLine === undefined) { targetLine = matchedLines[matchedLines.length - 1]; }
+    }
+
+    if (targetLine !== undefined) {
+      const pos = new vscode.Position(targetLine, 0);
+      editor.selection = new vscode.Selection(pos, pos);
+      editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+    }
+  }
+
   /** 跳转到当前光标位置的下一个/上一个关键字匹配行 */
   private handleGotoKeywordMatch(direction: 'next' | 'prev'): void {
     const editor = this.currentEditor;
@@ -825,6 +881,7 @@ export class ViewController {
       flags: '',
       color,
       enabled: true,
+      matchScope: 'matched',
     };
 
     if (!this.currentKeywords) { this.currentKeywords = []; }
@@ -871,49 +928,7 @@ export class ViewController {
     }
   }
 
-  /**
-   * 右键菜单（explorer 目录）：将选中目录的相对路径追加到指定 group 的 associatedDirs。
-   * 弹出 quick pick 让用户选择目标 group。
-   */
-  async addDirToGroup(relativePath: string): Promise<void> {
-    const groups = this.regexGroupModel.getGroups();
-    if (groups.length === 0) {
-      vscode.window.showInformationMessage('No GrepLog groups configured. Add a group first.');
-      return;
-    }
 
-    const items = groups.map((g, i) => ({
-      label: `$(folder) ${g.name || `Group ${i + 1}`}`,
-      description: g.associatedDirs || '(no dirs)',
-      groupIndex: i,
-    }));
-
-    const picked = await vscode.window.showQuickPick(items, {
-      placeHolder: 'Select a group to add this directory to',
-    });
-    if (!picked) { return; }
-
-    const group = groups[picked.groupIndex];
-    const existing = group.associatedDirs || '';
-    // 避免重复追加
-    const existingParts = existing.split(';').map(s => s.trim()).filter(Boolean);
-    if (existingParts.includes(relativePath)) {
-      vscode.window.showInformationMessage(`"${relativePath}" is already in group "${group.name}".`);
-      return;
-    }
-
-    group.associatedDirs = existing ? `${existing}; ${relativePath}` : relativePath;
-
-    // 更新配置面板
-    const tp = this.timeMatchModel.getConfig();
-    this.configPanel.render(
-      groups,
-      this.currentStartPattern, this.currentEndPattern,
-      this.currentRangeDescription, this.currentNamedRanges, this.currentActiveRangeId,
-      tp.format ? tp : undefined,
-      this.currentKeywords
-    );
-  }
 
   /** 在折叠后找到距 cursorLine 最近的可见行 */
   private findNearestVisibleLine(cursorLine: number, editorId: string): vscode.Selection {
