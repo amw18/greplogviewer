@@ -46,6 +46,44 @@ export class TimeMatchModel {
   }
 
   /**
+   * 从日志行自动检测时间格式。
+   * 采样前 5 行，按优先级尝试常见格式模板。
+   * @returns 检测到的格式配置，未检测到返回 null
+   */
+  autoDetect(lines: string[]): TimePatternConfig | null {
+    if (lines.length === 0) { return null; }
+
+    // 常见格式按优先级排序
+    const formats = [
+      '[YYYY-MM-DD HH:mm:ss.SSS]',
+      '[YY-MM-DD HH:mm:ss.SSS]',
+      '[YYYY-MM-DD HH:mm:ss]',
+      '[YY-MM-DD HH:mm:ss]',
+      'YYYY-MM-DD HH:mm:ss.SSS',
+      'YYYY-MM-DD HH:mm:ss',
+      '[s.SSSSSS]',
+      '[    s.SSSSSS]',
+    ];
+
+    const sampleSize = Math.min(5, lines.length);
+    const minMatches = Math.min(3, sampleSize);
+
+    for (const format of formats) {
+      const segments = this.parseFormat(format);
+      let matches = 0;
+      for (let i = 0; i < sampleSize; i++) {
+        const result = walkSegments(lines[i], segments, 0);
+        if (result) { matches++; }
+      }
+      if (matches >= minMatches) {
+        return { format };
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * 为折叠区间计算时间元数据（仅解析边界行）
    * @param ranges 未匹配行区间
    * @param lines 文档所有行

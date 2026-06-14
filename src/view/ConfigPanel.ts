@@ -1250,6 +1250,21 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   var tlDotR = 3, tlRowH = 13, tlRowGap = 2, tlMinZoom = 1000;
   var tlCtx = null;
 
+  function formatOffset(ms) {
+    if (ms < 0) return '0';
+    if (ms < 1000) return Math.round(ms) + 'ms';
+    var s = ms / 1000;
+    if (s < 60) return s.toFixed(1) + 's';
+    var m = Math.floor(s / 60);
+    var rs = Math.round(s % 60);
+    if (m < 60) return m + 'm ' + rs + 's';
+    var h = Math.floor(m / 60);
+    var rm = Math.round(m % 60);
+    if (h < 24) return h + 'h ' + rm + 'm';
+    var d = Math.floor(h / 24);
+    return d + 'd ' + Math.round(h % 24) + 'h';
+  }
+
   function tlInitCtx() {
     var cv = document.getElementById('tl-canvas');
     if (!cv) return;
@@ -1333,7 +1348,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
         tlCtx.lineWidth = 1;
       }
     }
-    // ruler
+    // ruler — 时间差横坐标
     var chartBottom = pt + n * (rh || 1);
     var bodyStyle = getComputedStyle(document.body);
     var axisColor = bodyStyle.getPropertyValue('--vscode-descriptionForeground') || '#999999';
@@ -1342,9 +1357,8 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     var steps = 5;
     for (var si = 0; si <= steps; si++) {
       var tx = pl + (si / steps) * pw;
-      var tVal = tlMin + (si / steps) * tRange;
-      var d = new Date(tVal);
-      var label = d.toISOString().substr(11, 12);
+      var offsetMs = (tlMin + (si / steps) * tRange) - tlMin;
+      var label = formatOffset(offsetMs);
       tlCtx.fillText(label, tx - 20, chartBottom + 13);
     }
   }

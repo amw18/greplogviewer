@@ -27,8 +27,6 @@ export interface RegexGroup {
   expressions: RegexExpression[];
   /** 是否启用，默认 true。false 时整组在过滤时被跳过 */
   enabled?: boolean;
-  /** 关联代码目录，分号分隔的相对路径，用于右键 grep 跳转。如 "src/server; src/utils" */
-  associatedDirs?: string;
 }
 
 /** 过滤结果：每行的匹配信息 */
@@ -81,6 +79,8 @@ export interface KeywordConfig {
   enabled?: boolean;
   /** 匹配行末尾显示的提示文本（after 装饰） */
   hint?: string;
+  /** 匹配范围：'matched' 仅在已匹配行中匹配 | 'full' 全文扫描。默认 'full'（向后兼容旧数据） */
+  matchScope?: 'matched' | 'full';
 }
 
 /** 命名的行范围 */
@@ -300,10 +300,16 @@ export interface MatchCountsMessage {
   keywordCounts: Record<string, number>;
 }
 
+export interface GotoGroupMatchMessage {
+  type: 'gotoGroupMatch';
+  direction: 'prev' | 'next';
+}
+
 export type WebviewMessage = GoMessage | ResetMessage | ClearMessage
   | ExportConfigMessage | ImportConfigMessage | SaveConfigMessage
   | ListSavedConfigsMessage | ApplySavedConfigMessage | DeleteSavedConfigMessage
-  | GotoKeywordMatchMessage | TimelineClickMessage | SyncConfigMessage;
+  | GotoKeywordMatchMessage | GotoGroupMatchMessage
+  | TimelineClickMessage | SyncConfigMessage;
 
 export type ExtensionMessage = UpdateConfigMessage
   | ConfigImportedMessage | SavedConfigsListMessage | ConfigAppliedMessage

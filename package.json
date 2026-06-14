@@ -22,8 +22,6 @@
     "onCommand:greplogviewer.grepKeyword",
     "onCommand:greplogviewer.grepFunction",
     "onCommand:greplogviewer.addKeyword",
-    "onCommand:greplogviewer.addDirToGroup",
-    "onCommand:greplogviewer.addDirToGroup",
     "onCommand:greplogviewer._testGo",
     "onCommand:greplogviewer._testClear",
     "onCommand:greplogviewer._testReset",
@@ -37,9 +35,7 @@
           "id": "greplogviewer.configView",
           "name": "GrepLogViewer",
           "type": "webview"
-        }
-      ],
-      "panel": [
+        },
         {
           "id": "greplogviewer.timelineView",
           "name": "Keyword Timeline",
@@ -59,10 +55,6 @@
       {
         "command": "greplogviewer.addKeyword",
         "title": "Add as Keyword"
-      },
-      {
-        "command": "greplogviewer.addDirToGroup",
-        "title": "Add to GrepLog Group Dirs"
       }
     ],
     "menus": {
@@ -81,13 +73,6 @@
           "command": "greplogviewer.addKeyword",
           "when": "editorHasSelection",
           "group": "greplogviewer@3"
-        }
-      ],
-      "explorer/context": [
-        {
-          "command": "greplogviewer.addDirToGroup",
-          "when": "explorerResourceIsFolder",
-          "group": "greplogviewer@1"
         }
       ]
     }

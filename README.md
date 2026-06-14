@@ -10,11 +10,7 @@
 
 ## 📖 Usage
 
-1. Open any text/log file
-2. Configure rules in the **GrepLogViewer** sidebar panel
-3. Click **Go** to apply
-
-> ⚠️ All effects are triggered by the Go button — switching editors does not auto-apply.
+Open log file -> set/import/apply rules -> Click **Go** 
 
 ---
 
@@ -34,10 +30,7 @@ With a time pattern configured, each folded region displays hidden line count + 
 
 ### 🕐 Keyword Timeline
 
-Bottom-panel time axis chart showing keyword hit distribution over time:
-- One row per keyword, color-coded dots
-- Hover for precise time + line number, click to jump
-- Mouse wheel zoom centered on cursor
+Bottom-panel time axis chart showing keyword hit distribution over time.
 
 ### 🖱️ Right-Click Grep
 
@@ -47,7 +40,7 @@ Supports `;`-separated dirs, `!` exclusion, `${VAR}` environment variables.
 
 ### 📦 Config Sharing
 
-Save named configs (User or Workspace scope), export as JSON, share with your team. One-click import to apply a teammate's setup — everyone debugs with the same color scheme, patterns, and keywords.
+Save named configs (User or Workspace scope), export as JSON, share with your team.
 
 ## 🎯 Use Cases
 

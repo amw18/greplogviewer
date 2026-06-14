@@ -32,18 +32,19 @@ export class EditorDecorations {
    * @param scanStart 行范围起始（0-based），仅在此范围内扫描关键字
    * @param scanEnd 行范围结束（0-based, exclusive）
    */
-  apply(results: FilterResult[], editor: vscode.TextEditor, keywords?: KeywordConfig[], scanStart?: number, scanEnd?: number): void {
+  apply(results: FilterResult[], editor: vscode.TextEditor, keywords?: KeywordConfig[], scanStart?: number, scanEnd?: number, matchedLinesOverride?: Set<number>): void {
     this.clear();
     this.editor = editor;
 
     // ── 1. 收集匹配行号，预计算关键字匹配 ──
-    // 关键字在 [scanStart, scanEnd) 范围内扫描所有行（不限于组匹配行），
-    // 这样范围内的关键字匹配行不会被折叠。
-    const matchedLineNums = new Set<number>();
-    for (const r of results) {
-      if (r.groupId) { matchedLineNums.add(r.lineNumber); }
-    }
-    const kwByLine = this.computeKeywordMatches(keywords, editor, scanStart, scanEnd);
+    const matchedLineNums = matchedLinesOverride ?? (() => {
+      const m = new Set<number>();
+      for (const r of results) {
+        if (r.groupId && r.groupId !== '__kw_visible__') { m.add(r.lineNumber); }
+      }
+      return m;
+    })();
+    const kwByLine = this.computeKeywordMatches(keywords, editor, scanStart, scanEnd, matchedLineNums);
 
     // ── 2. 按 groupId 分组匹配行，同时从行范围内挖掉关键字子串 ──
     const groupLines = new Map<string, vscode.Range[]>();
@@ -212,14 +213,16 @@ export class EditorDecorations {
   // ── 内部辅助 ──
 
   /**
-   * 计算关键字的匹配位置，扫描 [scanStart, scanEnd) 范围内所有行。
-   * 若 keywords 为空或范围无效则返回空 Map。
+   * 计算关键字的匹配位置。
+   * matchScope='matched' 时仅扫描 matchedLineNums 中的行，
+   * matchScope='full'（或未设置）时扫描 [scanStart, scanEnd) 内所有行。
    */
   private computeKeywordMatches(
     keywords: KeywordConfig[] | undefined,
     editor: vscode.TextEditor,
     scanStart?: number,
-    scanEnd?: number
+    scanEnd?: number,
+    matchedLineNums?: Set<number>
   ): Map<number, KeywordMatch[]> {
     const map = new Map<number, KeywordMatch[]>();
     if (!keywords || keywords.length === 0) { return map; }
@@ -234,7 +237,12 @@ export class EditorDecorations {
         continue;
       }
 
+      const isMatchedScope = kw.matchScope === 'matched' && matchedLineNums && matchedLineNums.size > 0;
+
       for (let i = scanStart; i < scanEnd; i++) {
+        // matchScope='matched'：只扫描已匹配行
+        if (isMatchedScope && !matchedLineNums!.has(i)) { continue; }
+
         const line = editor.document.lineAt(i).text;
         regex.lastIndex = 0;
         let match: RegExpExecArray | null;
