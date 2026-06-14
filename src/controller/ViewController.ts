@@ -318,12 +318,14 @@ export class ViewController {
       globalMax += 1000;
     }
 
-    this.timeline.sendTimelineData({
-      type: 'timelineData',
+    const tlMsg = {
+      type: 'timelineData' as const,
       timeMin: globalMin,
       timeMax: globalMax,
       keywords: kwData,
-    });
+    };
+    this.timeline.sendTimelineData(tlMsg);
+    this.configPanel.sendTimelineData(tlMsg);
   }
 
   /** 计算匹配行数并发送到 webview */

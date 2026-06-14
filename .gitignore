@@ -9,3 +9,4 @@ prompts/
 AGENTS.md
 dev_doc/
 test/*.sh
+autotest/

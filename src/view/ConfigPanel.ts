@@ -752,6 +752,8 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     vscode.postMessage({ type: 'listSavedConfigs' });
     // 重绘 timeline（render 重建了 DOM）
     if (tlData && tlData.keywords && tlData.keywords.length) {
+      var emptyEl2 = document.getElementById('tl-empty');
+      if (emptyEl2) emptyEl2.style.display = 'none';
       tlInitCtx();
       tlDraw();
     }
@@ -1268,6 +1270,9 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
 
   function tlDraw() {
     if (!tlCtx || !tlData || !tlData.keywords.length) return;
+    // 隐藏空状态提示，确保 canvas 可见
+    var emptyEl = document.getElementById('tl-empty');
+    if (emptyEl) emptyEl.style.display = 'none';
     var dim = tlInitCtx();
     if (!dim) return;
     var W = dim.w, H = dim.h;
