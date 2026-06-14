@@ -1304,16 +1304,34 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     // dots
     for (var ki = 0; ki < n; ki++) {
       var kw = kws[ki];
+      var yTop = pt + ki * (rh || 1);
+      var yMid = yTop + (rh || 1) / 2;
+
+      // Row background
+      tlCtx.fillStyle = 'rgba(128,128,128,0.03)';
+      tlCtx.fillRect(pl, yTop, pw, (rh || 1));
+
+      // Keyword label on y-axis
+      tlCtx.fillStyle = kw.color;
+      tlCtx.textAlign = 'right';
+      tlCtx.font = '10px sans-serif';
+      var labelText = kw.name.length > 16 ? kw.name.slice(0, 15) + '…' : kw.name;
+      tlCtx.fillText(labelText, pl - 6, yMid + 3);
+
       if (!kw.points) continue;
-      var cy = pt + ki * (rh || 1) + (rh || 1) / 2;
       tlCtx.fillStyle = kw.color;
       for (var pi = 0; pi < kw.points.length; pi++) {
         var p = kw.points[pi];
         var cx = pl + ((p.time - tlMin) / tRange) * pw;
-        tlCtx.beginPath(); tlCtx.arc(cx, cy, tlDotR, 0, Math.PI * 2); tlCtx.fill();
+        tlCtx.beginPath(); tlCtx.arc(cx, yMid, tlDotR, 0, Math.PI * 2); tlCtx.fill();
+        tlCtx.strokeStyle = 'rgba(0,0,0,0.4)';
+        tlCtx.lineWidth = 0.5;
+        tlCtx.stroke();
+        tlCtx.lineWidth = 1;
       }
     }
     // ruler
+    var chartBottom = pt + n * (rh || 1);
     var bodyStyle = getComputedStyle(document.body);
     var axisColor = bodyStyle.getPropertyValue('--vscode-descriptionForeground') || '#999999';
     tlCtx.fillStyle = axisColor;
@@ -1324,7 +1342,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       var tVal = tlMin + (si / steps) * tRange;
       var d = new Date(tVal);
       var label = d.toISOString().substr(11, 12);
-      tlCtx.fillText(label, tx - 20, H - pb + 14);
+      tlCtx.fillText(label, tx - 20, chartBottom + 13);
     }
   }
 
@@ -1360,11 +1378,18 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     return null;
   }
 
-  var tlContainer = document.getElementById('tl-container');
-  if (tlContainer) {
-    tlContainer.addEventListener('mousemove', function(e) {
+  // ── Timeline 事件（委托到 #app，dom 重建后仍生效）──
+  var tlEventsSetup = false;
+  function tlSetupEvents() {
+    if (tlEventsSetup) return;
+    tlEventsSetup = true;
+    var app = document.getElementById('app');
+    if (!app) return;
+
+    app.addEventListener('mousemove', function(e) {
       var cv = document.getElementById('tl-canvas');
       if (!cv || !tlData) return;
+      if (e.target !== cv && !cv.contains(e.target)) return;
       var r = cv.getBoundingClientRect();
       var hit = tlPointAt(e.clientX - r.left, e.clientY - r.top);
       var tip = document.getElementById('tl-tooltip');
@@ -1378,16 +1403,18 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
         tip.style.display = 'none';
       }
     });
-    tlContainer.addEventListener('click', function(e) {
+    app.addEventListener('click', function(e) {
       var cv = document.getElementById('tl-canvas');
       if (!cv) return;
+      if (e.target !== cv && !cv.contains(e.target)) return;
       var r = cv.getBoundingClientRect();
       var hit = tlPointAt(e.clientX - r.left, e.clientY - r.top);
       if (hit) {
         vscode.postMessage({ type: 'timelineClick', lineNumber: hit.point.lineNumber });
       }
     });
-    tlContainer.addEventListener('wheel', function(e) {
+    app.addEventListener('wheel', function(e) {
+      if (!e.target.closest('#tl-canvas')) return;
       e.preventDefault();
       if (!tlData) return;
       var cv = document.getElementById('tl-canvas');
@@ -1406,8 +1433,9 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       var zoomEl = document.getElementById('tl-zoom');
       if (zoomEl) zoomEl.textContent = ((nmax - nmin) / 1000).toFixed(1) + 's';
       tlDraw();
-    });
+    }, { passive: false });
   }
+  tlSetupEvents();
 })();
 </script>
 </body>
