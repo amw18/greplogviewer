@@ -1314,7 +1314,9 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       }
     }
     // ruler
-    tlCtx.fillStyle = 'var(--vscode-descriptionForeground)';
+    var bodyStyle = getComputedStyle(document.body);
+    var axisColor = bodyStyle.getPropertyValue('--vscode-descriptionForeground') || '#999999';
+    tlCtx.fillStyle = axisColor;
     tlCtx.font = '9px sans-serif';
     var steps = 5;
     for (var si = 0; si <= steps; si++) {
