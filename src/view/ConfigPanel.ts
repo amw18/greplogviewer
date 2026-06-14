@@ -702,8 +702,8 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     html += '<button class="add-btn" data-action="addKeyword" style="display:block;width:100%">+ Add Keyword</button>';
     // ── Keyword Timeline ──
     html += '<div id="tl-container" style="position:relative;width:100%;height:120px;margin:4px 0;border:1px solid var(--vscode-panel-border);border-radius:4px;overflow:hidden">';
-    html += '<canvas id="tl-canvas" style="display:block;width:100%;height:100%"></canvas>';
-    html += '<div id="tl-empty" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--vscode-descriptionForeground);pointer-events:none">Click Go to see keyword timeline</div>';
+    html += '<canvas id="tl-canvas" style="display:block;width:100%;height:100%;position:relative;z-index:1"></canvas>';
+    html += '<div id="tl-empty" style="position:absolute;inset:0;z-index:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--vscode-descriptionForeground);pointer-events:none">Click Go to see keyword timeline</div>';
     html += '<div id="tl-tooltip" style="position:absolute;display:none;background:var(--vscode-editor-background);color:var(--vscode-editor-foreground);border:1px solid var(--vscode-panel-border);padding:2px 6px;font-size:11px;pointer-events:none;white-space:nowrap;border-radius:2px;z-index:10"></div>';
     html += '<div id="tl-zoom" style="position:absolute;bottom:2px;right:4px;font-size:10px;color:var(--vscode-descriptionForeground);pointer-events:none"></div>';
     html += '</div>';
@@ -751,12 +751,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     document.getElementById('app').innerHTML = html;
     vscode.postMessage({ type: 'listSavedConfigs' });
     // 重绘 timeline（render 重建了 DOM）
-    if (tlData && tlData.keywords && tlData.keywords.length) {
-      var emptyEl2 = document.getElementById('tl-empty');
-      if (emptyEl2) emptyEl2.style.display = 'none';
-      tlInitCtx();
-      tlDraw();
-    }
+    tlRefresh();
   }
 
   function collectStartEnd() {
@@ -1218,13 +1213,11 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     } else if (msg.type === 'timelineData') {
       tlData = msg;
       tlViewMin = null; tlViewMax = null;
-      var emptyEl = document.getElementById('tl-empty');
-      if (emptyEl) emptyEl.style.display = msg.keywords && msg.keywords.length ? 'none' : 'flex';
-      tlInitCtx();
-      tlDraw();
+      tlRefresh();
     } else if (msg.type === 'matchCounts') {
       matchCounts = msg;
       render();
+      tlRefresh();
     } else if (msg.type === 'savedConfigsList') {
       // Update the saved configs dropdown
       savedConfigsList = msg.configs || [];
@@ -1258,14 +1251,28 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     var cv = document.getElementById('tl-canvas');
     if (!cv) return;
     tlCtx = cv.getContext('2d');
+    if (!tlCtx) return;
     var dpr = window.devicePixelRatio || 1;
     var rect = cv.parentElement.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
     cv.width = rect.width * dpr;
     cv.height = rect.height * dpr;
     cv.style.width = rect.width + 'px';
     cv.style.height = rect.height + 'px';
     tlCtx.scale(dpr, dpr);
     return { w: rect.width, h: rect.height };
+  }
+
+  /** 刷新 timeline：管理可见性、初始化 canvas 并绘制 */
+  function tlRefresh() {
+    var emptyEl = document.getElementById('tl-empty');
+    if (tlData && tlData.keywords && tlData.keywords.length) {
+      if (emptyEl) emptyEl.style.display = 'none';
+      tlInitCtx();
+      tlDraw();
+    } else {
+      if (emptyEl) emptyEl.style.display = 'flex';
+    }
   }
 
   function tlDraw() {
