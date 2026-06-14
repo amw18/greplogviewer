@@ -60,6 +60,7 @@ export class ViewController {
     this.configPanel.onApply((n, sc) => this.handleApply(n, sc));
     this.configPanel.onDelete((n, sc) => this.handleDelete(n, sc));
     this.configPanel.onSyncConfig((g, sp, ep, rd, nr, ar, tp, kw) => this.handleSyncConfig(g, sp, ep, rd, nr, ar, tp, kw));
+    this.configPanel.onTimelineClick((line) => this.handleTimelineClick(line));
   }
 
   getPanelProvider(): ConfigPanel {

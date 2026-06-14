@@ -61,6 +61,9 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
         case 'syncConfig':
           this.syncConfigCallback?.(msg.groups, msg.startPattern, msg.endPattern, msg.rangeDescription, msg.namedRanges, msg.activeRangeId, msg.timePattern, msg.keywords);
           break;
+        case 'timelineClick':
+          this.timelineClickCallback?.(msg.lineNumber);
+          break;
       }
     });
 
@@ -1389,14 +1392,15 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     app.addEventListener('mousemove', function(e) {
       var cv = document.getElementById('tl-canvas');
       if (!cv || !tlData) return;
-      if (e.target !== cv && !cv.contains(e.target)) return;
       var r = cv.getBoundingClientRect();
-      var hit = tlPointAt(e.clientX - r.left, e.clientY - r.top);
+      var mx = e.clientX - r.left, my = e.clientY - r.top;
+      if (mx < 0 || my < 0 || mx > r.width || my > r.height) return;
+      var hit = tlPointAt(mx, my);
       var tip = document.getElementById('tl-tooltip');
       if (hit && tip) {
         tip.style.display = 'block';
-        tip.style.left = (e.clientX - r.left + 10) + 'px';
-        tip.style.top = (e.clientY - r.top - 20) + 'px';
+        tip.style.left = (mx + 10) + 'px';
+        tip.style.top = (my - 20) + 'px';
         var d = new Date(hit.point.time);
         tip.textContent = hit.keyword.name + ' L' + (hit.point.lineNumber + 1) + ' ' + d.toISOString().substr(11, 12);
       } else if (tip) {
@@ -1405,23 +1409,24 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     });
     app.addEventListener('click', function(e) {
       var cv = document.getElementById('tl-canvas');
-      if (!cv) return;
-      if (e.target !== cv && !cv.contains(e.target)) return;
+      if (!cv || !tlData) return;
       var r = cv.getBoundingClientRect();
-      var hit = tlPointAt(e.clientX - r.left, e.clientY - r.top);
+      var mx = e.clientX - r.left, my = e.clientY - r.top;
+      if (mx < 0 || my < 0 || mx > r.width || my > r.height) return;
+      var hit = tlPointAt(mx, my);
       if (hit) {
         vscode.postMessage({ type: 'timelineClick', lineNumber: hit.point.lineNumber });
       }
     });
     app.addEventListener('wheel', function(e) {
-      if (!e.target.closest('#tl-canvas')) return;
-      e.preventDefault();
-      if (!tlData) return;
       var cv = document.getElementById('tl-canvas');
-      if (!cv) return;
+      if (!cv || !tlData) return;
       var r = cv.getBoundingClientRect();
-      var cl = tlPad.left, cr = r.width - tlPad.right, cw = cr - cl;
-      var frac = Math.max(0, Math.min(1, (e.clientX - r.left - cl) / cw));
+      var mx = e.clientX - r.left, my = e.clientY - r.top;
+      if (mx < 0 || my < 0 || mx > r.width || my > r.height) return;
+      e.preventDefault();
+      var cl = tlPad.left, cr2 = r.width - tlPad.right, cw = cr2 - cl;
+      var frac = Math.max(0, Math.min(1, (mx - cl) / cw));
       var mt = (tlViewMin != null ? tlViewMin : tlData.timeMin) + frac * ((tlViewMax != null ? tlViewMax : tlData.timeMax) - (tlViewMin != null ? tlViewMin : tlData.timeMin));
       var factor = e.deltaY > 0 ? 1.5 : 0.67;
       var half = ((tlViewMax != null ? tlViewMax : tlData.timeMax) - (tlViewMin != null ? tlViewMin : tlData.timeMin)) * factor / 2;
