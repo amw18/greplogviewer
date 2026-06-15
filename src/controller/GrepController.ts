@@ -49,7 +49,7 @@ export class GrepController {
 
     const safePattern = pattern.replace(/'/g, "'\\''");
     const sep = '>>>';
-    let command = `echo "${sep}" && grep -Rn --color=always '${safePattern}' "${cwd}"`;
+    let command = `echo "${sep}" && grep -Rn --color=always '${safePattern}' .`;
     const homeDir = os.homedir();
     if (cwd.startsWith(homeDir)) {
       command += ` | sed "s|^${homeDir}/|~\/|"`;
@@ -66,7 +66,6 @@ export class GrepController {
 
   /** 获取搜索根路径：当前终端 cwd 或 workspace root */
   private getSearchPath(): string | undefined {
-    // 优先使用 workspace root
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
     if (workspaceFolder) {
       return workspaceFolder.uri.fsPath;
@@ -87,7 +86,7 @@ export class GrepController {
     const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const kwPattern = `\\b${escaped}\\s*\\(`;
     // grep -Erl: 只输出文件名（ERE 模式，\( = 字面括号）
-    const grepCmd = `grep -Erl '${kwPattern}' "${rootPath}"`;
+    const grepCmd = `grep -Erl '${kwPattern}' .`;
 
     const result = spawnSync('sh', ['-c', grepCmd], { cwd: rootPath, encoding: 'utf-8', timeout: 15000 });
     const files = (result.stdout || '').trim().split('\n').filter(Boolean);

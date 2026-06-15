@@ -1286,8 +1286,14 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     var emptyEl = document.getElementById('tl-empty');
     if (tlData && tlData.keywords && tlData.keywords.length) {
       if (emptyEl) emptyEl.style.display = 'none';
-      tlInitCtx();
-      tlDraw();
+      // 部分 Linux 机器上布局延迟，dimensions 为 0 时延迟一帧重试
+      if (!tlInitCtx()) {
+        requestAnimationFrame(function() {
+          if (tlInitCtx()) tlDraw();
+        });
+      } else {
+        tlDraw();
+      }
     } else {
       if (emptyEl) emptyEl.style.display = 'flex';
     }
