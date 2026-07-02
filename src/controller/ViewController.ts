@@ -538,13 +538,6 @@ export class ViewController {
     }
   }
 
-  /**
-   * 折叠所有未匹配行区间。
-   *
-   * 关键：先聚焦编辑器再执行 fold 命令（侧边栏点击 Go 后编辑器可能失焦），
-   * 然后移除所有旧手动折叠并从底向上创建新区间，避免上层折叠导致视口偏移
-   * 干扰后续 createFoldingRangeFromSelection 调用。
-   */
   /** 折叠由 FoldingRangeProvider 声明式处理，此处仅调整光标位置 */
   private async applyFolding(editor: vscode.TextEditor): Promise<void> {
     const editorId = editor.document.uri.toString();
