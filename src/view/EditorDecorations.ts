@@ -36,6 +36,9 @@ export class EditorDecorations {
     this.clear();
     this.editor = editor;
 
+    // 预取所有行文本（避免逐行 lineAt() 调用）
+    const lines = editor.document.getText().split('\n');
+
     // ── 1. 收集匹配行号，预计算关键字匹配 ──
     const matchedLineNums = matchedLinesOverride ?? (() => {
       const m = new Set<number>();
@@ -44,14 +47,15 @@ export class EditorDecorations {
       }
       return m;
     })();
-    const kwByLine = this.computeKeywordMatches(keywords, editor, scanStart, scanEnd, matchedLineNums);
+    const kwByLine = this.computeKeywordMatches(keywords, lines, scanStart, scanEnd, matchedLineNums);
 
     // ── 2. 按 groupId 分组匹配行，同时从行范围内挖掉关键字子串 ──
     const groupLines = new Map<string, vscode.Range[]>();
     const unmatchedLines: vscode.Range[] = [];
 
     for (const r of results) {
-      const fullRange = editor.document.lineAt(r.lineNumber).range;
+      const lineLen = r.lineNumber < lines.length ? lines[r.lineNumber].length : 0;
+      const fullRange = new vscode.Range(r.lineNumber, 0, r.lineNumber, lineLen);
       if (r.groupId && r.color) {
         if (!groupLines.has(r.groupId)) {
           groupLines.set(r.groupId, []);
@@ -219,7 +223,7 @@ export class EditorDecorations {
    */
   private computeKeywordMatches(
     keywords: KeywordConfig[] | undefined,
-    editor: vscode.TextEditor,
+    lines: string[],
     scanStart?: number,
     scanEnd?: number,
     matchedLineNums?: Set<number>
@@ -228,31 +232,34 @@ export class EditorDecorations {
     if (!keywords || keywords.length === 0) { return map; }
     if (scanStart === undefined || scanEnd === undefined || scanStart >= scanEnd) { return map; }
 
+    // 预编译 + 缓存 keyword 正则
+    const compiled: { regex: RegExp; color: string; isMatchedScope: boolean }[] = [];
     for (const kw of keywords) {
-      if (kw.enabled === false) { continue; }
-      let regex: RegExp;
+      if (kw.enabled === false || !kw.pattern) { continue; }
       try {
-        regex = new RegExp(kw.pattern, kw.flags.includes('g') ? kw.flags : kw.flags + 'g');
-      } catch {
-        continue;
-      }
+        const flags = (kw.flags || '').includes('g') ? kw.flags : (kw.flags || '') + 'g';
+        compiled.push({
+          regex: new RegExp(kw.pattern, flags),
+          color: kw.color,
+          isMatchedScope: !!(kw.matchScope === 'matched' && matchedLineNums && matchedLineNums.size > 0),
+        });
+      } catch { /* skip */ }
+    }
 
-      const isMatchedScope = kw.matchScope === 'matched' && matchedLineNums && matchedLineNums.size > 0;
-
+    for (const c of compiled) {
       for (let i = scanStart; i < scanEnd; i++) {
-        // matchScope='matched'：只扫描已匹配行
-        if (isMatchedScope && !matchedLineNums!.has(i)) { continue; }
+        if (c.isMatchedScope && !matchedLineNums!.has(i)) { continue; }
 
-        const line = editor.document.lineAt(i).text;
-        regex.lastIndex = 0;
+        const line = lines[i];
+        c.regex.lastIndex = 0;
         let match: RegExpExecArray | null;
-        while ((match = regex.exec(line)) !== null) {
-          if (match[0].length === 0) { regex.lastIndex++; continue; }
+        while ((match = c.regex.exec(line)) !== null) {
+          if (match[0].length === 0) { c.regex.lastIndex++; continue; }
           const startPos = new vscode.Position(i, match.index);
           const endPos = new vscode.Position(i, match.index + match[0].length);
           const range = new vscode.Range(startPos, endPos);
           if (!map.has(i)) { map.set(i, []); }
-          map.get(i)!.push({ range, color: kw.color });
+          map.get(i)!.push({ range, color: c.color });
         }
       }
     }
