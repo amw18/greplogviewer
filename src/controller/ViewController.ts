@@ -276,7 +276,7 @@ export class ViewController {
     this.markKeywordVisibleLines(results, lines, keywords, scanStart, scanEnd);
 
     this.filterResultModel.setResults(editorId, results);
-    this.decorations.apply(results, editor, keywords, scanStart, scanEnd);
+    this.decorations.apply(results, editor, keywords, scanStart, scanEnd, undefined, lines);
 
     // 折叠标注（含时间 + keyword 命中统计）
     this.applyFoldAnnotations(editor, editorId, lines, keywords);

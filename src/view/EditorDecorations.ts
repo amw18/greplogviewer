@@ -32,12 +32,12 @@ export class EditorDecorations {
    * @param scanStart 行范围起始（0-based），仅在此范围内扫描关键字
    * @param scanEnd 行范围结束（0-based, exclusive）
    */
-  apply(results: FilterResult[], editor: vscode.TextEditor, keywords?: KeywordConfig[], scanStart?: number, scanEnd?: number, matchedLinesOverride?: Set<number>): void {
+  apply(results: FilterResult[], editor: vscode.TextEditor, keywords?: KeywordConfig[], scanStart?: number, scanEnd?: number, matchedLinesOverride?: Set<number>, lines?: string[]): void {
     this.clear();
     this.editor = editor;
 
-    // 预取所有行文本（避免逐行 lineAt() 调用）
-    const lines = editor.document.getText().split('\n');
+    // 使用传入的 lines（避免重复 getText）或自行获取
+    const allLines = lines ?? editor.document.getText().split('\n');
 
     // ── 1. 收集匹配行号，预计算关键字匹配 ──
     const matchedLineNums = matchedLinesOverride ?? (() => {
@@ -47,14 +47,14 @@ export class EditorDecorations {
       }
       return m;
     })();
-    const kwByLine = this.computeKeywordMatches(keywords, lines, scanStart, scanEnd, matchedLineNums);
+    const kwByLine = this.computeKeywordMatches(keywords, allLines, scanStart, scanEnd, matchedLineNums);
 
     // ── 2. 按 groupId 分组匹配行，同时从行范围内挖掉关键字子串 ──
     const groupLines = new Map<string, vscode.Range[]>();
     const unmatchedLines: vscode.Range[] = [];
 
     for (const r of results) {
-      const lineLen = r.lineNumber < lines.length ? lines[r.lineNumber].length : 0;
+      const lineLen = r.lineNumber < allLines.length ? allLines[r.lineNumber].length : 0;
       const fullRange = new vscode.Range(r.lineNumber, 0, r.lineNumber, lineLen);
       if (r.groupId && r.color) {
         if (!groupLines.has(r.groupId)) {
