@@ -560,7 +560,9 @@ export class ViewController {
     // 移除所有旧的手动折叠（unfoldAll 仅展开而不移除，残留会影响新折叠）
     await vscode.commands.executeCommand('editor.unfoldAll');
     const lastLine = editor.document.lineCount - 1;
-    editor.selection = new vscode.Selection(0, 0, lastLine, editor.document.lineAt(lastLine).text.length);
+    // 预取所有行长度（避免循环中逐个 lineAt 调用）
+    const allLines = this.readLines(editor);
+    editor.selection = new vscode.Selection(0, 0, lastLine, allLines[lastLine]?.length ?? 0);
     await vscode.commands.executeCommand('editor.removeManualFoldingRanges');
 
     if (ranges.length === 0) {
@@ -568,11 +570,13 @@ export class ViewController {
       return;
     }
 
-    // 从底向上创建折叠区间：底部的折叠不会影响上方行号，避免视口偏移干扰
+    // 从底向上创建折叠区间（跳过 ≤2 行的小区间，省创建开销）
+    let foldCount = 0;
     for (let i = ranges.length - 1; i >= 0; i--) {
       const range = ranges[i];
-      if (range.start >= range.end) { continue; }
-      const endLen = editor.document.lineAt(range.end).text.length;
+      const lineCount = range.end - range.start + 1;
+      if (range.start >= range.end || lineCount <= 2) { continue; }
+      const endLen = allLines[range.end]?.length ?? 0;
       editor.selection = new vscode.Selection(range.start, 0, range.end, endLen);
       await vscode.commands.executeCommand('editor.createFoldingRangeFromSelection');
     }
