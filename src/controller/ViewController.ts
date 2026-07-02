@@ -155,6 +155,10 @@ export class ViewController {
         // 恢复时间标注
         this.applyFoldAnnotations(editor, editorId, lines, this.currentKeywords);
 
+        // 恢复折叠（FoldingRangeProvider 已定义区域，但切换编辑器时需重新 foldAll）
+        await new Promise(r => setTimeout(r, 80));
+        await vscode.commands.executeCommand('editor.foldAll');
+
         // Go 期间 attach 被 showTextDocument 触发时不重发 timeline/matchCounts
         if (!this.isApplyingGo) {
           this.sendTimelineData(editorId, lines, this.currentKeywords, scanStart, scanEnd);
@@ -538,15 +542,26 @@ export class ViewController {
     }
   }
 
-  /** 折叠由 FoldingRangeProvider 声明式处理，此处仅调整光标位置 */
+  /** FoldingRangeProvider 定义折叠区域，foldAll 执行实际折叠 */
   private async applyFolding(editor: vscode.TextEditor): Promise<void> {
     const editorId = editor.document.uri.toString();
     const ranges = this.filterResultModel.getUnmatchedRanges(editorId);
-    const savedSelection = editor.selection;
+    if (ranges.length === 0) { return; }
 
-    if (ranges.length > 0) {
-      editor.selection = this.adjustCursorOutOfFolds(savedSelection, ranges, editorId);
+    // 确保编辑器有焦点（侧边栏点击 Go 后编辑器可能失焦）
+    if (vscode.window.activeTextEditor !== editor) {
+      await vscode.window.showTextDocument(editor.document, {
+        viewColumn: editor.viewColumn,
+        preserveFocus: false,
+      });
     }
+
+    // 等待 VS Code 处理 FoldingRangeProvider 的 onDidChangeFoldingRanges 事件
+    await new Promise(r => setTimeout(r, 80));
+    await vscode.commands.executeCommand('editor.foldAll');
+
+    const savedSelection = editor.selection;
+    editor.selection = this.adjustCursorOutOfFolds(savedSelection, ranges, editorId);
   }
 
   /**
@@ -603,6 +618,9 @@ export class ViewController {
     this.filterResultModel.clearResults(editorId);
     this.decorations.clear();
     this.decorations.clearTimeAnnotations();
+
+    // 展开所有折叠区域
+    await vscode.commands.executeCommand('editor.unfoldAll');
   }
 
   /** Reset: 清除配置 + 显示效果 */
@@ -623,6 +641,9 @@ export class ViewController {
     this.filterResultModel.clearResults(editorId);
     this.decorations.clear();
     this.decorations.clearTimeAnnotations();
+
+    // 展开所有折叠区域
+    await vscode.commands.executeCommand('editor.unfoldAll');
   }
 
   /** 文档变更时重新过滤（仅已激活编辑器） */
