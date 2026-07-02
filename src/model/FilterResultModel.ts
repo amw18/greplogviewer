@@ -3,10 +3,17 @@ import { FilterResult } from '../types';
 
 export class FilterResultModel {
   private resultsMap = new Map<string, FilterResult[]>();
+  private changeListeners: Array<() => void> = [];
+
+  /** 注册变更监听（供 extension.ts 绑定 vscode.EventEmitter） */
+  onChange(listener: () => void): void {
+    this.changeListeners.push(listener);
+  }
 
   /** 设置过滤结果 */
   setResults(editorId: string, results: FilterResult[]): void {
     this.resultsMap.set(editorId, results);
+    this.fireChange();
   }
 
   /** 获取过滤结果 */
@@ -54,5 +61,10 @@ export class FilterResultModel {
   /** 清除结果 */
   clearResults(editorId: string): void {
     this.resultsMap.delete(editorId);
+    this.fireChange();
+  }
+
+  private fireChange(): void {
+    for (const l of this.changeListeners) { l(); }
   }
 }

@@ -84,6 +84,22 @@ export function activate(context: vscode.ExtensionContext) {
     if (editor) { viewController!.attach(editor); }
   });
 
+  // ── 折叠区间 Provider（声明式，比逐个 createFoldingRangeFromSelection 快 N 倍）──
+  const foldChangeEmitter = new vscode.EventEmitter<void>();
+  filterResultModel.onChange(() => foldChangeEmitter.fire());
+  const foldProvider = vscode.languages.registerFoldingRangeProvider(
+    { scheme: 'file' },
+    {
+      onDidChangeFoldingRanges: foldChangeEmitter.event,
+      provideFoldingRanges(document) {
+        const ranges = filterResultModel.getUnmatchedRanges(document.uri.toString());
+        // 无过滤结果时返回 undefined，让 VS Code 回退到默认折叠（不影响代码文件）
+        if (!ranges.length) { return undefined; }
+        return ranges.map(r => new vscode.FoldingRange(r.start, r.end));
+      },
+    }
+  );
+
   const docChangeListener = vscode.workspace.onDidChangeTextDocument(e => {
     viewController?.onDocumentChange(e.document);
   });
@@ -95,6 +111,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     sidebarView,
     timelineView,
+    foldProvider,
     grepKeywordCmd,
     grepFunctionCmd,
     addKeywordCmd,

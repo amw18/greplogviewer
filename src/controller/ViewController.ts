@@ -161,8 +161,8 @@ export class ViewController {
           this.sendMatchCounts(editorId, lines, this.currentKeywords, scanStart, scanEnd);
         }
       } else {
-        // 未激活但有旧配置：清除持久化的手动折叠残留
-        await this.removeAllManualFolds(editor);
+        // 未激活但有旧配置：清除折叠
+        this.filterResultModel.clearResults(editorId);
       }
     } else {
       this.regexGroupModel.setGroups([]);
@@ -545,44 +545,15 @@ export class ViewController {
    * 然后移除所有旧手动折叠并从底向上创建新区间，避免上层折叠导致视口偏移
    * 干扰后续 createFoldingRangeFromSelection 调用。
    */
+  /** 折叠由 FoldingRangeProvider 声明式处理，此处仅调整光标位置 */
   private async applyFolding(editor: vscode.TextEditor): Promise<void> {
     const editorId = editor.document.uri.toString();
     const ranges = this.filterResultModel.getUnmatchedRanges(editorId);
-
     const savedSelection = editor.selection;
 
-    // 确保编辑器有焦点（侧边栏点击可能使编辑器失焦，导致 fold 命令失效）
-    await vscode.window.showTextDocument(editor.document, {
-      viewColumn: editor.viewColumn,
-      preserveFocus: false,
-    });
-
-    // 移除所有旧的手动折叠（unfoldAll 仅展开而不移除，残留会影响新折叠）
-    await vscode.commands.executeCommand('editor.unfoldAll');
-    const lastLine = editor.document.lineCount - 1;
-    // 预取所有行长度（避免循环中逐个 lineAt 调用）
-    const allLines = this.readLines(editor);
-    editor.selection = new vscode.Selection(0, 0, lastLine, allLines[lastLine]?.length ?? 0);
-    await vscode.commands.executeCommand('editor.removeManualFoldingRanges');
-
-    if (ranges.length === 0) {
-      editor.selection = savedSelection;
-      return;
+    if (ranges.length > 0) {
+      editor.selection = this.adjustCursorOutOfFolds(savedSelection, ranges, editorId);
     }
-
-    // 从底向上创建折叠区间（跳过 ≤2 行的小区间，省创建开销）
-    let foldCount = 0;
-    for (let i = ranges.length - 1; i >= 0; i--) {
-      const range = ranges[i];
-      const lineCount = range.end - range.start + 1;
-      if (range.start >= range.end || lineCount <= 2) { continue; }
-      const endLen = allLines[range.end]?.length ?? 0;
-      editor.selection = new vscode.Selection(range.start, 0, range.end, endLen);
-      await vscode.commands.executeCommand('editor.createFoldingRangeFromSelection');
-    }
-
-    // 如果光标落在折叠区域内，将其移到折叠区前最后一个匹配行
-    editor.selection = this.adjustCursorOutOfFolds(savedSelection, ranges, editorId);
   }
 
   /**
@@ -639,7 +610,6 @@ export class ViewController {
     this.filterResultModel.clearResults(editorId);
     this.decorations.clear();
     this.decorations.clearTimeAnnotations();
-    await this.removeAllManualFolds(editor);
   }
 
   /** Reset: 清除配置 + 显示效果 */
@@ -660,17 +630,6 @@ export class ViewController {
     this.filterResultModel.clearResults(editorId);
     this.decorations.clear();
     this.decorations.clearTimeAnnotations();
-    await this.removeAllManualFolds(editor);
-  }
-
-  /** 使用 VS Code 原生 API 清除指定编辑器的所有手动折叠 */
-  private async removeAllManualFolds(editor: vscode.TextEditor): Promise<void> {
-    const savedSelection = editor.selection;
-    await vscode.commands.executeCommand('editor.unfoldAll');
-    const lastLine = editor.document.lineCount - 1;
-    editor.selection = new vscode.Selection(0, 0, lastLine, editor.document.lineAt(lastLine).text.length);
-    await vscode.commands.executeCommand('editor.removeManualFoldingRanges');
-    editor.selection = savedSelection;
   }
 
   /** 文档变更时重新过滤（仅已激活编辑器） */
