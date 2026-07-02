@@ -100,32 +100,45 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
     const frac = Math.max(0, Math.min(1, (mouseX - chartLeft) / chartW));
     const mouseTime = viewMin + frac * (viewMax - viewMin);
     const half = (viewMax - viewMin) * factor / 2;
-    let newMin = mouseTime - half;
-    let newMax = mouseTime + half;
-    if (newMax - newMin < MIN_ZOOM_MS) {
-      const mid = (newMin + newMax) / 2;
+    var newMin = mouseTime - half;
+    var newMax = mouseTime + half;
+    var span = newMax - newMin;
+    if (span < MIN_ZOOM_MS) {
+      var mid = (newMin + newMax) / 2;
       newMin = mid - MIN_ZOOM_MS / 2;
       newMax = mid + MIN_ZOOM_MS / 2;
+      span = MIN_ZOOM_MS;
     }
-    if (newMin < data.timeMin) { newMin = data.timeMin; newMax = newMin + (viewMax - viewMin); }
-    if (newMax > data.timeMax) { newMax = data.timeMax; newMin = newMax - (viewMax - viewMin); }
+    // 边界约束：超出时保持 span 不变
+    if (newMin < data.timeMin) { newMin = data.timeMin; newMax = newMin + span; }
+    if (newMax > data.timeMax) { newMax = data.timeMax; newMin = newMax - span; }
+    // 最终兜底
     viewMin = Math.max(data.timeMin, newMin);
     viewMax = Math.min(data.timeMax, Math.max(viewMin + MIN_ZOOM_MS, newMax));
     scheduleDraw();
   }
 
+  function fmtOffset(ms) {
+    if (ms < 0) return '0';
+    if (ms < 1000) return Math.round(ms) + 'ms';
+    var s = ms / 1000;
+    if (s < 60) return s.toFixed(1) + 's';
+    var m = Math.floor(s / 60);
+    var rs = Math.round(s % 60);
+    if (m < 60) return m + 'm ' + rs + 's';
+    var h = Math.floor(m / 60);
+    var rm = Math.round(m % 60);
+    if (h < 24) return h + 'h ' + rm + 'm';
+    var d = Math.floor(h / 24);
+    return d + 'd ' + Math.round(h % 24) + 'h';
+  }
+
   function fmtFull(ms) {
-    const d = new Date(ms);
-    const pad = (n, l) => String(n).padStart(l, '0');
-    return pad(d.getHours(), 2) + ':' + pad(d.getMinutes(), 2) + ':'
-      + pad(d.getSeconds(), 2) + '.' + pad(d.getMilliseconds(), 3);
+    return '+' + fmtOffset(ms);
   }
 
   function fmtTick(ms) {
-    const d = new Date(ms);
-    const pad = (n, l) => String(n).padStart(l, '0');
-    return pad(d.getHours(), 2) + ':' + pad(d.getMinutes(), 2) + ':'
-      + pad(d.getSeconds(), 2);
+    return fmtOffset(ms);
   }
 
   function smartTickCount(chartW) {
@@ -192,12 +205,12 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
         }
       }
 
-      // Label
+      // Label — 相对时间差
       const ts = viewMin + frac * timeRange;
       ctx.fillStyle = axisColor;
       ctx.textAlign = 'center';
       ctx.font = '8px var(--vscode-font-family, monospace)';
-      ctx.fillText(fmtTick(ts), x, chartBottom + 13);
+      ctx.fillText(fmtTick(ts - data.timeMin), x, chartBottom + 13);
     }
 
     // Keywords rows
@@ -287,7 +300,7 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
       if (ty < 4) { ty = e.clientY + 10; }
       tooltip.style.left = tx + 'px';
       tooltip.style.top = ty + 'px';
-      tooltip.textContent = hit.keyword.name + '  @  ' + fmtFull(hit.point.time)
+      tooltip.textContent = hit.keyword.name + '  +' + fmtOffset(hit.point.time - data.timeMin)
         + '  (L' + (hit.point.lineNumber + 1) + ')';
     } else {
       canvas.style.cursor = 'crosshair';

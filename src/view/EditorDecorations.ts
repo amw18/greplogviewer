@@ -6,6 +6,7 @@ import { FilterResult, FoldRange, KeywordConfig } from '../types';
 interface KeywordMatch {
   range: vscode.Range;
   color: string;
+  keywordId: string;
 }
 
 export class EditorDecorations {
@@ -174,18 +175,18 @@ export class EditorDecorations {
     const hintMap = new Map<string, string>();
     for (const kw of keywords) {
       if (kw.hint) {
-        hintMap.set(kw.color, kw.hint);
+        hintMap.set(kw.id, kw.hint);
       }
     }
     if (hintMap.size === 0) { return; }
 
-    // 按行聚合：每行的匹配关键字颜色去重后拼接 hints
+    // 按行聚合：每行的匹配关键字 id 去重后拼接 hints
     const lineHints = new Map<number, string>();
     for (const [lineNum, matches] of kwByLine) {
       const seenHints = new Set<string>();
       const hints: string[] = [];
       for (const m of matches) {
-        const hint = hintMap.get(m.color);
+        const hint = hintMap.get(m.keywordId);
         if (hint && !seenHints.has(hint)) {
           seenHints.add(hint);
           hints.push(hint);
@@ -233,12 +234,13 @@ export class EditorDecorations {
     if (scanStart === undefined || scanEnd === undefined || scanStart >= scanEnd) { return map; }
 
     // 预编译 + 缓存 keyword 正则
-    const compiled: { regex: RegExp; color: string; isMatchedScope: boolean }[] = [];
+    const compiled: { id: string; regex: RegExp; color: string; isMatchedScope: boolean }[] = [];
     for (const kw of keywords) {
       if (kw.enabled === false || !kw.pattern) { continue; }
       try {
         const flags = (kw.flags || '').includes('g') ? kw.flags : (kw.flags || '') + 'g';
         compiled.push({
+          id: kw.id,
           regex: new RegExp(kw.pattern, flags),
           color: kw.color,
           isMatchedScope: !!(kw.matchScope === 'matched' && matchedLineNums && matchedLineNums.size > 0),
@@ -259,7 +261,7 @@ export class EditorDecorations {
           const endPos = new vscode.Position(i, match.index + match[0].length);
           const range = new vscode.Range(startPos, endPos);
           if (!map.has(i)) { map.set(i, []); }
-          map.get(i)!.push({ range, color: c.color });
+          map.get(i)!.push({ range, color: c.color, keywordId: c.id });
         }
       }
     }

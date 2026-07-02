@@ -239,6 +239,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
                 margin-bottom: 4px; padding: 4px; cursor: grab; }
   .group-card.dragging { opacity: 0.4; cursor: grabbing; }
   .group-card.drag-over { border-color: var(--vscode-focusBorder); border-style: dashed; }
+  .group-card.drag-ready { cursor: grabbing; box-shadow: 0 0 4px var(--vscode-focusBorder); }
   .group-header { display: flex; align-items: center; gap: 3px; margin-bottom: 2px; flex-wrap: wrap; }
   .group-header input[type="checkbox"] { margin: 0; cursor: pointer; flex-shrink: 0; }
   .group-header input[type="text"] { background: var(--vscode-input-background);
@@ -646,7 +647,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
 
     for (var gi = 0; gi < groups.length; gi++) {
       var g = groups[gi];
-      html += '<div class="group-card" draggable="true" data-gi="' + gi + '">';
+      html += '<div class="group-card" draggable="true" data-gi="' + gi + '" data-drag-ready="false">';
       html += '<div class="group-header">';
       html += '<input type="checkbox" data-gi="' + gi + '" class="group-enabled"' + (g.enabled !== false ? ' checked' : '') + ' title="Enable/disable this group">';
       html += '<input type="text" value="' + esc(g.name) + '" data-gi="' + gi + '" class="group-name" placeholder="Name">';
@@ -804,11 +805,39 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     saveState();
   }
 
-  // ── Drag and Drop for Group Cards ──
+  // ── Drag and Drop for Group Cards (long-press 2s) ──
   var dragFromGi = -1;
+  var dragTimer = null, dragTimerCard = null;
+
+  document.getElementById('app').addEventListener('mousedown', function(e) {
+    var card = e.target.closest('.group-card');
+    if (!card) { return; }
+    // 仅左键触发长按计时
+    if (e.button !== 0) { return; }
+    dragTimerCard = card;
+    dragTimer = setTimeout(function() {
+      if (dragTimerCard) {
+        dragTimerCard.dataset.dragReady = 'true';
+        dragTimerCard.classList.add('drag-ready');
+      }
+    }, 2000);
+  });
+  document.getElementById('app').addEventListener('mouseup', function(e) {
+    clearDragTimer();
+  });
+  document.getElementById('app').addEventListener('mouseleave', function(e) {
+    // 只有离开 app 容器时才清理（避免在子元素间移动时误清除）
+    if (e.target === document.getElementById('app')) { clearDragTimer(); }
+  });
+  function clearDragTimer() {
+    if (dragTimer) { clearTimeout(dragTimer); dragTimer = null; }
+    if (dragTimerCard) { dragTimerCard.dataset.dragReady = 'false'; dragTimerCard.classList.remove('drag-ready'); dragTimerCard = null; }
+  }
+
   document.getElementById('app').addEventListener('dragstart', function(e) {
     var card = e.target.closest('.group-card');
     if (!card) { return; }
+    if (card.dataset.dragReady !== 'true') { e.preventDefault(); return; }
     dragFromGi = parseInt(card.dataset.gi);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', String(dragFromGi));
@@ -817,6 +846,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   document.getElementById('app').addEventListener('dragend', function(e) {
     var card = e.target.closest('.group-card');
     if (card) { card.classList.remove('dragging'); }
+    clearDragTimer();
     dragFromGi = -1;
     document.querySelectorAll('.group-card.drag-over').forEach(function(c) { c.classList.remove('drag-over'); });
   });
@@ -1271,6 +1301,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     tlCtx = cv.getContext('2d');
     if (!tlCtx) return;
     var dpr = window.devicePixelRatio || 1;
+    if (!cv.parentElement) return;
     var rect = cv.parentElement.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
     cv.width = rect.width * dpr;
@@ -1446,15 +1477,17 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       var mx = e.clientX - r.left, my = e.clientY - r.top;
       if (mx < 0 || my < 0 || mx > r.width || my > r.height) return;
       e.preventDefault();
-      var cl = tlPad.left, cr2 = r.width - tlPad.right, cw = cr2 - cl;
+      var cl = tlPad.left, cr = r.width - tlPad.right, cw = cr - cl;
       var frac = Math.max(0, Math.min(1, (mx - cl) / cw));
       var mt = (tlViewMin != null ? tlViewMin : tlData.timeMin) + frac * ((tlViewMax != null ? tlViewMax : tlData.timeMax) - (tlViewMin != null ? tlViewMin : tlData.timeMin));
       var factor = e.deltaY > 0 ? 1.5 : 0.67;
       var half = ((tlViewMax != null ? tlViewMax : tlData.timeMax) - (tlViewMin != null ? tlViewMin : tlData.timeMin)) * factor / 2;
       var nmin = mt - half, nmax = mt + half;
-      if (nmax - nmin < tlMinZoom) { var mid = (nmin + nmax) / 2; nmin = mid - tlMinZoom / 2; nmax = mid + tlMinZoom / 2; }
-      if (nmin < tlData.timeMin) { nmin = tlData.timeMin; nmax = nmin + (tlViewMax != null ? tlViewMax : tlData.timeMax) - (tlViewMin != null ? tlViewMin : tlData.timeMin); }
-      if (nmax > tlData.timeMax) { nmax = tlData.timeMax; nmin = nmax - (tlViewMax != null ? tlViewMax : tlData.timeMax) + (tlViewMin != null ? tlViewMin : tlData.timeMin); }
+      var span = nmax - nmin;
+      if (span < tlMinZoom) { var mid = (nmin + nmax) / 2; nmin = mid - tlMinZoom / 2; nmax = mid + tlMinZoom / 2; span = tlMinZoom; }
+      // 边界约束：超出时保持 span 不变
+      if (nmin < tlData.timeMin) { nmin = tlData.timeMin; nmax = nmin + span; }
+      if (nmax > tlData.timeMax) { nmax = tlData.timeMax; nmin = nmax - span; }
       tlViewMin = nmin; tlViewMax = nmax;
       var zoomEl = document.getElementById('tl-zoom');
       if (zoomEl) zoomEl.textContent = ((nmax - nmin) / 1000).toFixed(1) + 's';
@@ -1462,6 +1495,15 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     }, { passive: false });
   }
   tlSetupEvents();
+  // 监听容器尺寸变化，自动重绘 timeline
+  var tlContainer = document.getElementById('tl-container');
+  if (tlContainer && typeof ResizeObserver !== 'undefined') {
+    var tlResizeTimer = null;
+    new ResizeObserver(function() {
+      if (tlResizeTimer) clearTimeout(tlResizeTimer);
+      tlResizeTimer = setTimeout(function() { tlRefresh(); }, 100);
+    }).observe(tlContainer);
+  }
 })();
 </script>
 </body>
