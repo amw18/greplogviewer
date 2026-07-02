@@ -26,24 +26,58 @@ export class FilterController {
       results[i] = { lineNumber: i, groupId: null, color: undefined };
     }
 
+    // 预编译：每个 group 的表达式 regex 只创建一次
+    const compiled: { group: RegexGroup; exprs: { pattern: RegExp; operator: LogicOperator }[] }[] = [];
+    for (const g of groups) {
+      if (g.enabled === false) { continue; }
+      const exprs = g.expressions.filter(e => e.enabled !== false);
+      if (exprs.length === 0) { continue; }
+      const compiledExprs: { pattern: RegExp; operator: LogicOperator }[] = [];
+      for (const e of exprs) {
+        try {
+          compiledExprs.push({ pattern: new RegExp(e.pattern, e.flags), operator: e.operator });
+        } catch { /* skip invalid regex */ }
+      }
+      if (compiledExprs.length > 0) {
+        compiled.push({ group: g, exprs: compiledExprs });
+      }
+    }
+
     const matchedLines = new Set<number>();
 
     // 仅在 [scanStart, scanEnd) 范围内匹配
-    for (const group of groups) {
-      // 跳过禁用的组
-      if (group.enabled === false) { continue; }
-
+    for (const cg of compiled) {
       for (let i = scanStart; i < scanEnd; i++) {
         if (matchedLines.has(i)) { continue; }
 
-        if (this.matchGroup(lines[i], group)) {
-          results[i] = { lineNumber: i, groupId: group.id, color: group.color };
+        if (this.matchGroupCompiled(lines[i], cg.exprs)) {
+          results[i] = { lineNumber: i, groupId: cg.group.id, color: cg.group.color };
           matchedLines.add(i);
         }
       }
     }
 
     return results;
+  }
+
+  /** 用预编译的 regex 判定单行匹配（快速路径） */
+  private matchGroupCompiled(line: string, exprs: { pattern: RegExp; operator: LogicOperator }[]): boolean {
+    let result = exprs[0].pattern.test(line);
+    for (let i = 1; i < exprs.length; i++) {
+      const match = exprs[i].pattern.test(line);
+      switch (exprs[i].operator) {
+        case LogicOperator.AND:
+          result = result && match;
+          break;
+        case LogicOperator.OR:
+          result = result || match;
+          break;
+        case LogicOperator.NOT:
+          result = result && !match;
+          break;
+      }
+    }
+    return result;
   }
 
   /**

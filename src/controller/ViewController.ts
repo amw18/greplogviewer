@@ -1,7 +1,7 @@
 // ViewController — 协调 View 和 Controller，管理编辑器生命周期
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import { RegexGroup, TimePatternConfig, KeywordConfig, ConfigScope, FoldRange } from '../types';
+import { RegexGroup, TimePatternConfig, KeywordConfig, ConfigScope, FoldRange, FilterResult } from '../types';
 import { ConfigController } from './ConfigController';
 import { FilterController } from './FilterController';
 import { EditorStateModel } from '../model/EditorStateModel';
@@ -34,6 +34,42 @@ export class ViewController {
   private currentActiveRangeId?: string;
   private currentKeywords?: KeywordConfig[];
   private isApplyingGo = false;  // 防止 Go 期间的 attach 重入
+  private lastFilterFingerprint = '';  // 跳过重复过滤
+
+  /** 缓存：预编译的关键词正则 */
+  private compiledKwRegexes: Map<string, RegExp | null> = new Map();
+
+  /** 获取预编译的 keyword 正则列表（带缓存） */
+  private getCompiledKeywordRegexes(keywords?: KeywordConfig[]): { kw: KeywordConfig; regex: RegExp }[] {
+    if (!keywords) { return []; }
+    const result: { kw: KeywordConfig; regex: RegExp }[] = [];
+    for (const kw of keywords) {
+      if (kw.enabled === false || !kw.pattern) { continue; }
+      let regex = this.compiledKwRegexes.get(kw.id);
+      if (regex === undefined) {
+        regex = ViewController.buildKwRegex(kw);
+        this.compiledKwRegexes.set(kw.id, regex);
+      }
+      if (regex) { result.push({ kw, regex }); }
+    }
+    return result;
+  }
+
+  /** 计算会影响 filter 结果的配置指纹 */
+  private computeFilterFingerprint(groups: RegexGroup[], startPattern?: string, endPattern?: string): string {
+    const parts: string[] = [];
+    for (const g of groups) {
+      if (g.enabled === false) { continue; }
+      parts.push(g.id);
+      for (const e of g.expressions) {
+        if (e.enabled !== false) {
+          parts.push(e.pattern, e.flags, e.operator);
+        }
+      }
+    }
+    parts.push(startPattern || '', endPattern || '');
+    return parts.join('|');
+  }
 
   constructor(
     configController: ConfigController,
@@ -214,11 +250,27 @@ export class ViewController {
     this.editorStateModel.setActive(editorId, true);
 
     const lines = this.readLines(editor);
-    const results = this.filterController.filter(lines, groups, startPattern, endPattern);
 
-    // 计算扫描范围（与 filter 内部一致）
-    const scanStart = startPattern !== undefined ? this.filterController.findFirstMatchLine(lines, startPattern) : 0;
-    const scanEnd = endPattern !== undefined ? this.filterController.findFirstMatchLine(lines, endPattern, lines.length) : lines.length;
+    // 计算是否只需更新 keyword/时间层（filter config 未变）
+    const filterFp = this.computeFilterFingerprint(groups, startPattern, endPattern);
+    const filterChanged = filterFp !== this.lastFilterFingerprint;
+    this.lastFilterFingerprint = filterFp;
+
+    let results: FilterResult[];
+    let scanStart: number;
+    let scanEnd: number;
+
+    if (filterChanged) {
+      results = this.filterController.filter(lines, groups, startPattern, endPattern);
+      scanStart = startPattern !== undefined ? this.filterController.findFirstMatchLine(lines, startPattern) : 0;
+      scanEnd = endPattern !== undefined ? this.filterController.findFirstMatchLine(lines, endPattern, lines.length) : lines.length;
+    } else {
+      // 重用已有过滤结果
+      const existing = this.filterResultModel.getResults(editorId);
+      results = existing ?? [];
+      scanStart = startPattern !== undefined ? this.filterController.findFirstMatchLine(lines, startPattern) : 0;
+      scanEnd = endPattern !== undefined ? this.filterController.findFirstMatchLine(lines, endPattern, lines.length) : lines.length;
+    }
 
     // 范围内被 keyword 匹配但未被 group 匹配的行 → 标记为可见，不参与折叠
     this.markKeywordVisibleLines(results, lines, keywords, scanStart, scanEnd);
@@ -281,11 +333,8 @@ export class ViewController {
     let globalMin = Infinity;
     let globalMax = -Infinity;
 
-    for (const kw of keywords) {
-      if (kw.enabled === false) { continue; }
-      if (!kw.pattern) { continue; }
-      const regex = ViewController.buildKwRegex(kw);
-      if (!regex) { continue; }
+    const compiledKws = this.getCompiledKeywordRegexes(keywords);
+    for (const { kw, regex } of compiledKws) {
 
       const points: import('../types').TimelinePoint[] = [];
       const start = scanStart ?? 0;
@@ -357,9 +406,8 @@ export class ViewController {
     if (keywords && keywords.length > 0) {
       const start = scanStart ?? 0;
       const end = scanEnd ?? lines.length;
-      for (const kw of keywords) {
-        if (kw.enabled === false || !kw.pattern) { continue; }
-        const regex = ViewController.buildKwRegex(kw);
+      const compiledKws = this.getCompiledKeywordRegexes(keywords);
+      for (const { kw, regex } of compiledKws) {
         if (!regex) { continue; }
         let count = 0;
         for (let i = start; i < end; i++) {
@@ -433,10 +481,8 @@ export class ViewController {
   ): FoldRange[] {
     return foldRanges.map(fr => {
       const hitMap = new Map<string, { hint: string; count: number }>();
-      for (const kw of keywords) {
-        if (kw.enabled === false) { continue; }
-        const regex = ViewController.buildKwRegex(kw);
-        if (!regex) { continue; }
+      const compiledKws = this.getCompiledKeywordRegexes(keywords);
+      for (const { kw, regex } of compiledKws) {
         let count = 0;
         for (let i = fr.start; i <= fr.end; i++) {
           if (regex.test(lines[i])) { count++; }
@@ -467,20 +513,16 @@ export class ViewController {
     if (!keywords || keywords.length === 0 || scanStart === undefined || scanEnd === undefined) {
       return;
     }
-    // 预编译启用的 keyword 正则
-    const kwRegexes: RegExp[] = [];
-    // 分离 full 和 matched scope 的 keyword
+    // 使用缓存的预编译 keyword 正则，分离 full 和 matched scope
+    const compiledKws = this.getCompiledKeywordRegexes(keywords);
+    if (compiledKws.length === 0) { return; }
     const fullKwRegexes: RegExp[] = [];
     const matchedKwRegexes: RegExp[] = [];
-    for (const kw of keywords) {
-      if (kw.enabled === false) { continue; }
-      const re = ViewController.buildKwRegex(kw);
-      if (!re) { continue; }
-      if (kw.matchScope === 'matched') {
-        matchedKwRegexes.push(re);
+    for (const c of compiledKws) {
+      if (c.kw.matchScope === 'matched') {
+        matchedKwRegexes.push(c.regex);
       } else {
-        // 未设置 matchScope 时默认 'full'（向后兼容）
-        fullKwRegexes.push(re);
+        fullKwRegexes.push(c.regex);
       }
     }
 
@@ -858,10 +900,8 @@ export class ViewController {
   /** 计算所有包含关键字匹配的行号集合 */
   private computeKeywordMatchedLines(lines: string[], keywords: import('../types').KeywordConfig[]): Set<number> {
     const matchedLines = new Set<number>();
-    for (const kw of keywords) {
-      if (kw.enabled === false) { continue; }
-      const regex = ViewController.buildKwRegex(kw);
-      if (!regex) { continue; }
+    const compiledKws = this.getCompiledKeywordRegexes(keywords);
+    for (const { regex } of compiledKws) {
       for (let i = 0; i < lines.length; i++) {
         if (regex.test(lines[i])) {
           matchedLines.add(i);
