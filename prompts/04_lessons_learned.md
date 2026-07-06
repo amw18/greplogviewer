@@ -1,17 +1,19 @@
 # 踩坑记录 — 重要经验教训
 
-## 1. 自动折叠：最终方案（全标准 API）
-**结论**: 不使用 `FoldingRangeProvider`（会产生持久化残留），改用两个 VS Code 原生命令：
+## 1. 自动折叠：FoldingRangeProvider + 显式清除
+**结论**: 使用 `FoldingRangeProvider` 提供折叠区间以获得性能，但在更新过滤规则前必须显式清除旧折叠状态。
 
 | 操作 | 命令 | 说明 |
 |------|------|------|
-| Go 折叠 | `createFoldingRangeFromSelection` | 基于选区创建手动折叠区间（自动折叠） |
-| 清除折叠 | `editor.removeManualFoldingRanges` | 选中全文清除所有手动折叠（=`Ctrl+K Ctrl+,`） |
+| Go 折叠 | `FoldingRangeProvider` + `editor.foldAll` | 声明式提供区间后整体折叠 |
+| 清除旧折叠 | `editor.unfoldAll` | 在 `setResults()` 前调用，避免旧折叠残留 |
 
 **关键教训**:
-- `FoldingRangeProvider` 返回的区间会被 VS Code 持久化 → 重新打开文件自动恢复 → 违反"不点 Go 不生效"
-- `createFoldingRangeFromSelection` 创建的**手动折叠**同样会被持久化 → 需在 `attach()` 中调 `removeManualFoldingRanges` 清理
-- 折叠生效的前提是编辑器有焦点 → 侧边栏 `WebviewViewProvider` 不会抢焦点
+- `FoldingRangeProvider` 的折叠状态会被 VS Code 持久化，修改规则后若不清除，旧折叠会与新折叠叠加残留
+- 在 `handleGo()`/`addKeyword()` 更新 `FilterResultModel` 前，若当前已有折叠区间则先 `editor.unfoldAll`
+- 在 `attach()` 恢复已激活编辑器时，无条件 `editor.unfoldAll` 以清除上一会话恢复的折叠状态
+- 折叠命令生效的前提是编辑器有焦点 → 调用前用 `showTextDocument(preserveFocus: false)` 确保焦点
+- 旧方案 `createFoldingRangeFromSelection` 每区间一次命令，大文件极慢，已废弃
 
 ## 2. WebviewPanel vs WebviewViewProvider
 - `createWebviewPanel` 抢焦点 → 折叠命令、selection 赋值等全部失效

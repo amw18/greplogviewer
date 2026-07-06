@@ -11,3 +11,5 @@ AGENTS.md
 dev_doc/
 test/*.sh
 autotest/
+autotest_plugin/
+autotest_workspace/screenshots/

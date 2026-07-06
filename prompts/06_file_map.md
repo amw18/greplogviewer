@@ -23,7 +23,7 @@
 ### 入口
 | 文件 | 行数 | 作用 |
 |------|------|------|
-| `src/extension.ts` | ~50 | activate: 初始化 Model→Controller→View, 注册 WebviewViewProvider + 监听器（无 FoldingRangeProvider） |
+| `src/extension.ts` | ~50 | activate: 初始化 Model→Controller→View, 注册 WebviewViewProvider + FoldingRangeProvider + 监听器 |
 
 ### 类型 (src/types/)
 | 文件 | 行数 | 作用 |
@@ -46,7 +46,7 @@
 | `src/controller/ConfigController.ts` | ~60 | 封装 RegexGroupModel + EditorStateModel 操作 |
 | `src/controller/FilterController.ts` | ~70 | `filter()` 全文过滤 + `matchGroup()` 单组匹配（核心算法） |
 | `src/controller/GrepController.ts` | ~160 | 右键 grep 关键字/函数，支持 !排除、${VAR}、shell basename 提取，terminal 输出 |
-| `src/controller/ViewController.ts` | ~540 | `attach()` 切换编辑器, `handleGo()/handleClear()/handleReset()`, `applyFolding()`/`adjustCursorOutOfFolds()`, `removeAllManualFolds()`, `getCurrentEditor()`，配置 export/import/save/apply/delete 操作 |
+| `src/controller/ViewController.ts` | ~560 | `attach()` 切换编辑器, `handleGo()/handleClear()/handleReset()`, `applyFolding()`/`adjustCursorOutOfFolds()`, `clearFoldingState()`, `getCurrentEditor()`，配置 export/import/save/apply/delete 操作 |
 
 ### View (src/view/)
 | 文件 | 行数 | 作用 |

@@ -1,0 +1,71 @@
+name: "Fold persistence after filter change"
+description: "Verify fold ranges update correctly when filter rules change, without old folds persisting"
+plugin: "./.."
+workspace: "."
+timeout: 120000
+steps:
+  - description: "Open test log file"
+    command: "greplogviewer._testOpenFile"
+    args:
+      - "./test.log"
+    waitAfter: 1500
+
+  - description: "Focus editor and wait for activation"
+    command: "workbench.action.focusActiveEditorGroup"
+    waitAfter: 1500
+
+  - description: "Prime extension activation"
+    command: "greplogviewer._testGetState"
+    waitAfter: 1000
+
+  - description: "Apply filter A (match A lines)"
+    command: "greplogviewer._testGo"
+    args:
+      - groups:
+          - id: "group-a"
+            name: "Group A"
+            color: "#ff0000"
+            expressions:
+              - id: "expr-a"
+                pattern: "match A"
+                flags: ""
+                operator: "and"
+    waitAfter: 1500
+
+  - description: "Get fold state after filter A"
+    command: "greplogviewer._testGetState"
+    waitAfter: 1000
+    assert:
+      type: "return_value_contains"
+      expected: '"startLine":1'
+      message: "Filter A should fold lines 1-2"
+
+  - description: "Apply filter B (match B lines)"
+    command: "greplogviewer._testGo"
+    args:
+      - groups:
+          - id: "group-b"
+            name: "Group B"
+            color: "#00ff00"
+            expressions:
+              - id: "expr-b"
+                pattern: "match B"
+                flags: ""
+                operator: "and"
+    waitAfter: 1500
+
+  - description: "Get fold state after filter B"
+    command: "greplogviewer._testGetState"
+    waitAfter: 1000
+    assert:
+      type: "return_value_contains"
+      expected: '"startLine":0'
+      message: "Filter B should fold lines 0-3"
+
+  - description: "Verify old fold range from filter A is gone"
+    command: "greplogviewer._testGetState"
+    waitAfter: 500
+    assert:
+      type: "return_value_not_contains"
+      expected: '"startLine":1,"endLine":2'
+      message: "Old fold range from filter A must not persist"

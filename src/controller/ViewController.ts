@@ -33,7 +33,7 @@ export class ViewController {
   private currentNamedRanges?: import('../types').NamedRange[];
   private currentActiveRangeId?: string;
   private currentKeywords?: KeywordConfig[];
-  private isApplyingGo = false;  // 防止 Go 期间的 attach 重入
+  private isApplyingFilter = false;  // 防止 Go / keyword 更新期间的 attach 重入
   private lastFilterFingerprint = '';  // 跳过重复过滤
 
   /** 缓存：预编译的关键词正则 */
@@ -132,8 +132,11 @@ export class ViewController {
       // 恢复关键字配置
       this.currentKeywords = savedConfig.keywords;
 
-      if (this.editorStateModel.isActive(editorId)) {
-        // 已激活：恢复颜色装饰 + 关键字高亮 + 时间标注（折叠由 VS Code 自动保持）
+      if (this.editorStateModel.isActive(editorId) && !this.isApplyingFilter) {
+        // 已激活：先清除可能从上一会话恢复的折叠状态，再重新应用过滤
+        // （FoldingRangeProvider 的折叠状态会被 VS Code 持久化，重启后可能残留）
+        await this.clearFoldingState(editor);
+
         const lines = this.readLines(editor);
         const results = this.filterController.filter(
           lines, savedConfig.groups,
@@ -159,8 +162,8 @@ export class ViewController {
         await new Promise(r => setTimeout(r, 80));
         await vscode.commands.executeCommand('editor.foldAll');
 
-        // Go 期间 attach 被 showTextDocument 触发时不重发 timeline/matchCounts
-        if (!this.isApplyingGo) {
+        // Go / keyword 更新期间 attach 被 showTextDocument 触发时不重发 timeline/matchCounts
+        if (!this.isApplyingFilter) {
           this.sendTimelineData(editorId, lines, this.currentKeywords, scanStart, scanEnd);
           this.sendMatchCounts(editorId, lines, this.currentKeywords, scanStart, scanEnd);
         }
@@ -255,6 +258,9 @@ export class ViewController {
 
     const lines = this.readLines(editor);
 
+    // 当前已存在的折叠区间（用于判断是否需要先清除旧折叠）
+    const oldRanges = this.filterResultModel.getUnmatchedRanges(editorId);
+
     // 计算是否只需更新 keyword/时间层（filter config 未变）
     const filterFp = this.computeFilterFingerprint(groups, startPattern, endPattern);
     const filterChanged = filterFp !== this.lastFilterFingerprint;
@@ -279,15 +285,23 @@ export class ViewController {
     // 范围内被 keyword 匹配但未被 group 匹配的行 → 标记为可见，不参与折叠
     this.markKeywordVisibleLines(results, lines, keywords, scanStart, scanEnd);
 
-    this.filterResultModel.setResults(editorId, results);
-    this.decorations.apply(results, editor, keywords, scanStart, scanEnd, undefined, lines);
+    // 先清除旧折叠：避免 VS Code 保留上一次 filter 的折叠状态
+    this.isApplyingFilter = true;
+    try {
+      if (oldRanges.length > 0) {
+        await this.clearFoldingState(editor);
+      }
 
-    // 折叠标注（含时间 + keyword 命中统计）
-    this.applyFoldAnnotations(editor, editorId, lines, keywords);
+      this.filterResultModel.setResults(editorId, results);
+      this.decorations.apply(results, editor, keywords, scanStart, scanEnd, undefined, lines);
 
-    this.isApplyingGo = true;
-    await this.applyFolding(editor);
-    this.isApplyingGo = false;
+      // 折叠标注（含时间 + keyword 命中统计）
+      this.applyFoldAnnotations(editor, editorId, lines, keywords);
+
+      await this.applyFolding(editor);
+    } finally {
+      this.isApplyingFilter = false;
+    }
 
     // 发送范围时间信息到 webview
     this.sendRangeTimeInfo(editorId, lines);
@@ -540,6 +554,21 @@ export class ViewController {
         }
       }
     }
+  }
+
+  /**
+   * 清除当前编辑器的折叠状态，避免旧折叠在规则变更后残留。
+   * 保持 FoldingRangeProvider 方案，不回到逐个 createFoldingRangeFromSelection 的旧路径。
+   */
+  private async clearFoldingState(editor: vscode.TextEditor): Promise<void> {
+    // 确保编辑器有焦点（侧边栏点击 Go 后编辑器可能失焦，fold 命令会静默失败）
+    if (vscode.window.activeTextEditor !== editor) {
+      await vscode.window.showTextDocument(editor.document, {
+        viewColumn: editor.viewColumn,
+        preserveFocus: false,
+      });
+    }
+    await vscode.commands.executeCommand('editor.unfoldAll');
   }
 
   /** FoldingRangeProvider 定义折叠区域，foldAll 执行实际折叠 */
@@ -929,12 +958,24 @@ export class ViewController {
         ? this.filterController.findFirstMatchLine(lines, this.currentEndPattern, lines.length) : lines.length;
 
       this.markKeywordVisibleLines(results, lines, this.currentKeywords, scanStart, scanEnd);
-      this.filterResultModel.setResults(editorId, results);
-      this.decorations.apply(results, editor, this.currentKeywords, scanStart, scanEnd);
-      this.applyFoldAnnotations(editor, editorId, lines, this.currentKeywords);
 
+      // keyword 变更可能改变折叠区间，先清除旧折叠避免残留
       const savedLine = editor.selection.active.line;
-      await this.applyFolding(editor);
+      this.isApplyingFilter = true;
+      try {
+        const oldRanges = this.filterResultModel.getUnmatchedRanges(editorId);
+        if (oldRanges.length > 0) {
+          await this.clearFoldingState(editor);
+        }
+
+        this.filterResultModel.setResults(editorId, results);
+        this.decorations.apply(results, editor, this.currentKeywords, scanStart, scanEnd);
+        this.applyFoldAnnotations(editor, editorId, lines, this.currentKeywords);
+
+        await this.applyFolding(editor);
+      } finally {
+        this.isApplyingFilter = false;
+      }
 
       // 更新时间线图表和匹配统计
       this.sendTimelineData(editorId, lines, this.currentKeywords, scanStart, scanEnd);

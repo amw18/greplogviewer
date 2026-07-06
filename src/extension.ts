@@ -1,4 +1,5 @@
 // extension.ts — 插件入口
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { RegexGroupModel } from './model/RegexGroupModel';
 import { EditorStateModel } from './model/EditorStateModel';
@@ -79,6 +80,21 @@ export function activate(context: vscode.ExtensionContext) {
       timeInfo: viewController?.testGetTimeInfo() || {},
     };
   });
+  const testOpenFileCmd = vscode.commands.registerCommand('greplogviewer._testOpenFile', async (filePath: string) => {
+    const uri = path.isAbsolute(filePath)
+      ? vscode.Uri.file(filePath)
+      : vscode.Uri.file(path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '', filePath));
+    const doc = await vscode.workspace.openTextDocument(uri);
+    await vscode.window.showTextDocument(doc);
+  });
+  const testGetVisibleRangesCmd = vscode.commands.registerCommand('greplogviewer._testGetVisibleRanges', (): any => {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) { return []; }
+    return editor.visibleRanges.map(r => ({
+      start: { line: r.start.line, character: r.start.character },
+      end: { line: r.end.line, character: r.end.character },
+    }));
+  });
 
   const editorChangeListener = vscode.window.onDidChangeActiveTextEditor(editor => {
     if (editor) { viewController!.attach(editor); }
@@ -119,6 +135,8 @@ export function activate(context: vscode.ExtensionContext) {
     testClearCmd,
     testResetCmd,
     testGetStateCmd,
+    testOpenFileCmd,
+    testGetVisibleRangesCmd,
     editorChangeListener,
     docChangeListener,
     { dispose: () => viewController?.dispose() }

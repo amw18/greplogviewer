@@ -1,0 +1,9 @@
+line0 match A
+line1 unmatched A
+line2 unmatched A
+line3 match A
+line4 match B
+line5 unmatched B
+line6 unmatched B
+line7 match B
+line8 unmatched end
