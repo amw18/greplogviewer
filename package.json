@@ -57,14 +57,6 @@
       {
         "command": "greplogviewer.addKeyword",
         "title": "Add as Keyword"
-      },
-      {
-        "command": "greplogviewer._testOpenFile",
-        "title": "Test Open File"
-      },
-      {
-        "command": "greplogviewer._testGetVisibleRanges",
-        "title": "Test Get Visible Ranges"
       }
     ],
     "menus": {
