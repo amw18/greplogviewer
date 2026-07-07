@@ -114,6 +114,9 @@ export class ViewController {
     this.decorations.clear();
     this.currentEditor = editor;
 
+    // 切换编辑器后过滤指纹失效，必须重置，否则新编辑器上 Go 可能复用旧编辑器缓存
+    this.lastFilterFingerprint = '';
+
     const editorId = editor.document.uri.toString();
     const savedConfig = this.editorStateModel.loadConfig(editorId);
 
@@ -659,6 +662,7 @@ export class ViewController {
 
     this.editorStateModel.setActive(editorId, false);
     this.filterResultModel.clearResults(editorId);
+    this.lastFilterFingerprint = '';  // 清除后必须重置指纹，否则再次 Go 会误判为未变更
     this.decorations.clear();
     this.decorations.clearTimeAnnotations();
 
@@ -682,6 +686,7 @@ export class ViewController {
     this.timeMatchModel.setConfig({ format: '' });
     this.editorStateModel.clearEditor(editorId);
     this.filterResultModel.clearResults(editorId);
+    this.lastFilterFingerprint = '';  // 重置后必须清空指纹缓存
     this.decorations.clear();
     this.decorations.clearTimeAnnotations();
 
