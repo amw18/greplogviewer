@@ -41,10 +41,11 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
 <meta charset="UTF-8">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; }
   body { font-family: var(--vscode-font-family, monospace); font-size: 10px;
          color: var(--vscode-foreground); background: var(--vscode-editor-background);
          overflow: hidden; user-select: none; }
-  canvas { display: block; cursor: crosshair; }
+  canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
   .tooltip { display: none; position: fixed; z-index: 9999;
     background: var(--vscode-editorHoverWidget-background);
     color: var(--vscode-editorHoverWidget-foreground);
@@ -75,21 +76,52 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
   let viewMax = null;
   let drawRAF = null;  // requestAnimationFrame 节流，合并同帧多次 draw
   const MIN_ZOOM_MS = 1000;
-  const PAD = { top: 4, right: 50, bottom: 20, left: 105 };
+  let PAD = { top: 4, right: 50, bottom: 20, left: 105 };
   const DOT_R = 3.5;
   const ROW_H = 14;
   const ROW_GAP = 1;
 
+  let lastW = 0, lastH = 0;
+
   function resize() {
     const dpr = window.devicePixelRatio || 1;
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    canvas.width = w * dpr;
-    canvas.height = h * dpr;
-    canvas.style.width = w + 'px';
-    canvas.style.height = h + 'px';
+    // 让 CSS 决定 canvas 在容器中的大小，我们只同步 drawing buffer 分辨率
+    const w = Math.max(1, canvas.clientWidth || document.documentElement.clientWidth);
+    const h = Math.max(1, canvas.clientHeight || document.documentElement.clientHeight);
+    lastW = w;
+    lastH = h;
+    canvas.width = Math.floor(w * dpr);
+    canvas.height = Math.floor(h * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (data && data.keywords.length > 0) { scheduleDraw(); }
+  }
+
+  // VS Code webview 在面板拖动时不会稳定触发 resize/ResizeObserver，使用轮询兜底
+  function pollSize() {
+    const w = canvas.clientWidth || document.documentElement.clientWidth;
+    const h = canvas.clientHeight || document.documentElement.clientHeight;
+    if (w !== lastW || h !== lastH) { resize(); }
+  }
+  setInterval(pollSize, 100);
+
+  /** 解析 VS Code CSS 变量为实际字体，供 Canvas 使用 */
+  function getCanvasFont(size, fallback) {
+    const family = getComputedStyle(document.body).getPropertyValue('--vscode-font-family').trim() || fallback || 'monospace';
+    return size + ' ' + family;
+  }
+
+  /** 根据当前 keyword 标签的最大宽度动态计算左侧第 0 列宽度 */
+  function updateLabelColumnWidth() {
+    if (!data || data.keywords.length === 0) { return; }
+    ctx.font = getCanvasFont('9px', 'monospace');
+    let maxW = 0;
+    for (const kw of data.keywords) {
+      const labelText = kw.name.length > 16 ? kw.name.slice(0, 15) + '…' : kw.name;
+      const w = ctx.measureText(labelText).width;
+      if (w > maxW) { maxW = w; }
+    }
+    // 标签右对齐在 chartLeft - 6，因此需要预留 maxW + 6，再加 10px 边距
+    PAD.left = Math.max(60, Math.ceil(maxW + 6 + 10));
   }
 
   // ── Zoom ──
@@ -102,7 +134,7 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
   function zoomAt(mouseX, factor) {
     if (!data) { return; }
     const chartLeft = PAD.left;
-    const chartRight = window.innerWidth - PAD.right;
+    const chartRight = canvas.clientWidth - PAD.right;
     const chartW = chartRight - chartLeft;
     const frac = Math.max(0, Math.min(1, (mouseX - chartLeft) / chartW));
     const mouseTime = viewMin + frac * (viewMax - viewMin);
@@ -165,8 +197,9 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
   function draw() {
     if (!data || data.keywords.length === 0) { return; }
     if (viewMin === null) { resetView(); }
-    const W = window.innerWidth;
-    const H = window.innerHeight;
+    updateLabelColumnWidth();
+    const W = canvas.clientWidth;
+    const H = canvas.clientHeight;
     ctx.clearRect(0, 0, W, H);
 
     empty.style.display = 'none';
@@ -216,7 +249,7 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
       const ts = viewMin + frac * timeRange;
       ctx.fillStyle = axisColor;
       ctx.textAlign = 'center';
-      ctx.font = '8px var(--vscode-font-family, monospace)';
+      ctx.font = getCanvasFont('8px', 'monospace');
       ctx.fillText(fmtTick(ts - data.timeMin), x, chartBottom + 13);
     }
 
@@ -229,7 +262,7 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
       // Label (truncated)
       ctx.fillStyle = kw.color;
       ctx.textAlign = 'right';
-      ctx.font = '9px var(--vscode-font-family, monospace)';
+      ctx.font = getCanvasFont('9px', 'monospace');
       const labelText = kw.name.length > 16 ? kw.name.slice(0, 15) + '…' : kw.name;
       ctx.fillText(labelText, chartLeft - 6, yMid + 3);
 
@@ -269,7 +302,7 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
 
   function pointAt(px, py) {
     if (!data) { return null; }
-    const W = window.innerWidth;
+    const W = canvas.clientWidth;
     const kwCount = data.keywords.length;
     const chartLeft = PAD.left;
     const chartRight = W - PAD.right;
@@ -303,7 +336,7 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
       var ty = e.clientY - 28;
       // 边界约束：不超出视口
       var tw = tooltip.offsetWidth || 220;
-      if (tx + tw > window.innerWidth - 4) { tx = window.innerWidth - tw - 4; }
+      if (tx + tw > canvas.clientWidth - 4) { tx = canvas.clientWidth - tw - 4; }
       if (ty < 4) { ty = e.clientY + 10; }
       tooltip.style.left = tx + 'px';
       tooltip.style.top = ty + 'px';
@@ -335,10 +368,10 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
   }, { passive: false });
 
   window.addEventListener('resize', resize);
-  // 某些面板拖动不会触发 window resize，使用 ResizeObserver 监听 body 尺寸变化
+  // canvas 由 CSS 控制大小，监听 canvas 尺寸变化比 window/根元素更可靠
   if (typeof ResizeObserver !== 'undefined') {
     const ro = new ResizeObserver(function() { resize(); });
-    ro.observe(document.body);
+    ro.observe(canvas);
   }
 
   window.addEventListener('message', function(event) {
