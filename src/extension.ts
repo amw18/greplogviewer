@@ -26,10 +26,36 @@ export function activate(context: vscode.ExtensionContext) {
 
   const timeline = new KeywordTimeline();
 
+  // ── 折叠区间 Provider（声明式，比逐个 createFoldingRangeFromSelection 快 N 倍）──
+  const foldChangeEmitter = new vscode.EventEmitter<void>();
+  filterResultModel.onChange(() => foldChangeEmitter.fire());
+
+  let foldProvider: vscode.Disposable | undefined;
+  const registerFoldProvider = () => {
+    foldProvider?.dispose();
+    foldProvider = vscode.languages.registerFoldingRangeProvider(
+      { scheme: 'file' },
+      {
+        onDidChangeFoldingRanges: foldChangeEmitter.event,
+        provideFoldingRanges(document) {
+          const editorId = document.uri.toString();
+          const results = filterResultModel.getResults(editorId);
+          // 未过滤：返回 undefined，让 VS Code 回退到默认折叠（不影响代码文件）
+          if (results === undefined) { return undefined; }
+          // 已过滤（包括主动清空）：返回实际区间或空数组，强制 VS Code 使用本插件的区间
+          const ranges = filterResultModel.getUnmatchedRanges(editorId);
+          return ranges.map(r => new vscode.FoldingRange(r.start, r.end));
+        },
+      }
+    );
+  };
+  registerFoldProvider();
+
   viewController = new ViewController(
     configController, filterController,
     editorStateModel, filterResultModel, regexGroupModel, timeMatchModel,
-    configStorageModel, timeline
+    configStorageModel, timeline,
+    registerFoldProvider
   );
 
   grepController = new GrepController(viewController);
@@ -100,25 +126,6 @@ export function activate(context: vscode.ExtensionContext) {
     if (editor) { viewController!.attach(editor); }
   });
 
-  // ── 折叠区间 Provider（声明式，比逐个 createFoldingRangeFromSelection 快 N 倍）──
-  const foldChangeEmitter = new vscode.EventEmitter<void>();
-  filterResultModel.onChange(() => foldChangeEmitter.fire());
-  const foldProvider = vscode.languages.registerFoldingRangeProvider(
-    { scheme: 'file' },
-    {
-      onDidChangeFoldingRanges: foldChangeEmitter.event,
-      provideFoldingRanges(document) {
-        const editorId = document.uri.toString();
-        const results = filterResultModel.getResults(editorId);
-        // 未过滤：返回 undefined，让 VS Code 回退到默认折叠（不影响代码文件）
-        if (results === undefined) { return undefined; }
-        // 已过滤（包括主动清空）：返回实际区间或空数组，强制 VS Code 使用本插件的区间
-        const ranges = filterResultModel.getUnmatchedRanges(editorId);
-        return ranges.map(r => new vscode.FoldingRange(r.start, r.end));
-      },
-    }
-  );
-
   const docChangeListener = vscode.workspace.onDidChangeTextDocument(e => {
     viewController?.onDocumentChange(e.document);
   });
@@ -130,7 +137,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     sidebarView,
     timelineView,
-    foldProvider,
+    { dispose: () => foldProvider?.dispose() },
     grepKeywordCmd,
     grepFunctionCmd,
     addKeywordCmd,

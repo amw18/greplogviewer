@@ -79,7 +79,8 @@ export class ViewController {
     private regexGroupModel: RegexGroupModel,
     private timeMatchModel: TimeMatchModel,
     private configStorageModel: ConfigStorageModel,
-    private timeline: KeywordTimeline
+    private timeline: KeywordTimeline,
+    private reRegisterFoldProvider?: () => void
   ) {
     this.configPanel = new ConfigPanel();
     this.decorations = new EditorDecorations();
@@ -139,8 +140,10 @@ export class ViewController {
 
         const lines = this.readLines(editor);
 
-        // 强制 FoldingRangeProvider 先返回空区间，彻底移除旧的 provider 折叠
+        // 强制 FoldingRangeProvider 先返回空区间并重新注册 provider，
+        // 彻底移除旧的 provider 折叠和 gutter 折叠图标
         this.filterResultModel.setEmptyResults(editorId);
+        this.reRegisterFoldProvider?.();
         await new Promise(r => setTimeout(r, 100));
 
         const results = this.filterController.filter(
@@ -297,9 +300,10 @@ export class ViewController {
         await this.clearFoldingState(editor);
       }
 
-      // 强制 FoldingRangeProvider 先返回空区间，让 VS Code 彻底移除旧的 provider 折叠
-      // （大文件下仅 unfoldAll 不够，VS Code 仍可能保留折叠状态）
+      // 强制 FoldingRangeProvider 先返回空区间并重新注册 provider，
+      // 彻底移除旧的 provider 折叠和 gutter 折叠图标
       this.filterResultModel.setEmptyResults(editorId);
+      this.reRegisterFoldProvider?.();
       await new Promise(r => setTimeout(r, 100));
 
       this.filterResultModel.setResults(editorId, results);
@@ -978,8 +982,10 @@ export class ViewController {
           await this.clearFoldingState(editor);
         }
 
-        // 强制 FoldingRangeProvider 先返回空区间，彻底移除旧的 provider 折叠
+        // 强制 FoldingRangeProvider 先返回空区间并重新注册 provider，
+        // 彻底移除旧的 provider 折叠和 gutter 折叠图标
         this.filterResultModel.setEmptyResults(editorId);
+        this.reRegisterFoldProvider?.();
         await new Promise(r => setTimeout(r, 100));
 
         this.filterResultModel.setResults(editorId, results);
