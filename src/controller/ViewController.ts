@@ -270,6 +270,9 @@ export class ViewController {
 
     this.decorations.apply(results, editor, this.currentKeywords, scanStart, scanEnd, undefined, lines);
     this.applyFoldAnnotations(editor, editorId, lines, this.currentKeywords);
+
+    // 颜色变化时 timeline 也要重新上色
+    this.sendTimelineData(editorId, lines, this.currentKeywords, scanStart, scanEnd);
   }
 
   /** Go: 应用过滤 + 颜色高亮 + 创建折叠 + 时间标注 */
@@ -1147,6 +1150,11 @@ export class ViewController {
 
     // Format summaries
     return foldRanges.map(fr => this.decorations.formatFoldSummary(fr).trim());
+  }
+
+  /** Test: get last timeline data sent to the timeline webview */
+  testGetTimelineData(): import('../types').TimelineDataMessage | undefined {
+    return this.timeline.getLastTimelineData();
   }
 
   /** Test: get time info for the matched range */

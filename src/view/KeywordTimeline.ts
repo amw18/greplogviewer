@@ -5,6 +5,7 @@ import { TimelineDataMessage, TimelineClickMessage } from '../types';
 export class KeywordTimeline implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
   private clickCallback: ((lineNumber: number) => void) | undefined;
+  private lastData: import('../types').TimelineDataMessage | undefined;
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.view = webviewView;
@@ -24,7 +25,13 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
 
   /** 发送时间线数据到 webview */
   sendTimelineData(data: TimelineDataMessage): void {
+    this.lastData = data;
     this.view?.webview.postMessage(data);
+  }
+
+  /** 获取最近一次发送的时间线数据（供测试使用） */
+  getLastTimelineData(): import('../types').TimelineDataMessage | undefined {
+    return this.lastData;
   }
 
   private buildHtml(): string {
@@ -328,6 +335,11 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
   }, { passive: false });
 
   window.addEventListener('resize', resize);
+  // 某些面板拖动不会触发 window resize，使用 ResizeObserver 监听 body 尺寸变化
+  if (typeof ResizeObserver !== 'undefined') {
+    const ro = new ResizeObserver(function() { resize(); });
+    ro.observe(document.body);
+  }
 
   window.addEventListener('message', function(event) {
     const msg = event.data;

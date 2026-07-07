@@ -124,6 +124,9 @@ export function activate(context: vscode.ExtensionContext) {
       end: { line: r.end.line, character: r.end.character },
     }));
   });
+  const testGetTimelineDataCmd = vscode.commands.registerCommand('greplogviewer._testGetTimelineData', (): any => {
+    return viewController?.testGetTimelineData() || {};
+  });
 
   const editorChangeListener = vscode.window.onDidChangeActiveTextEditor(editor => {
     if (editor) { viewController!.attach(editor); }
@@ -151,6 +154,7 @@ export function activate(context: vscode.ExtensionContext) {
     testGetStateCmd,
     testOpenFileCmd,
     testGetVisibleRangesCmd,
+    testGetTimelineDataCmd,
     editorChangeListener,
     docChangeListener,
     { dispose: () => viewController?.dispose() }

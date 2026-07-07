@@ -4,10 +4,10 @@ plugin: "./.."
 workspace: "."
 timeout: 120000
 steps:
-  - description: "Open test log file"
+  - description: "Open test log file with timestamps"
     command: "greplogviewer._testOpenFile"
     args:
-      - "./test.log"
+      - "./test_timeline.log"
     waitAfter: 2000
 
   - description: "Focus editor and wait for activation"
@@ -18,7 +18,7 @@ steps:
     command: "greplogviewer._testGetState"
     waitAfter: 1500
 
-  - description: "Apply filter A with red color"
+  - description: "Apply filter A with red color + keyword + time pattern"
     command: "greplogviewer._testGo"
     args:
       - groups:
@@ -30,6 +30,15 @@ steps:
                 pattern: "match A"
                 flags: ""
                 operator: "and"
+        timePattern:
+          format: "YYYY-MM-DD HH:mm:ss.SSS"
+        keywords:
+          - id: "kw-a"
+            pattern: "match A"
+            color: "#ff0000"
+            flags: ""
+            matchScope: "matched"
+            enabled: true
     waitAfter: 2500
 
   - description: "Verify filter A produced matches"
@@ -39,18 +48,32 @@ steps:
       expected: '"startLine":1'
     waitAfter: 1000
 
-  - description: "Sync config with green color only (no Go)"
+  - description: "Verify timeline keyword color is red"
+    command: "greplogviewer._testGetTimelineData"
+    assert:
+      type: "return_value_contains"
+      expected: '"color":"#ff0000"'
+    waitAfter: 1000
+
+  - description: "Sync config with green keyword color only (no Go)"
     command: "greplogviewer._testSyncConfig"
     args:
       - groups:
           - id: "group-a"
             name: "Group A"
-            color: "#00ff00"
+            color: "#ff0000"
             expressions:
               - id: "expr-a"
                 pattern: "match A"
                 flags: ""
                 operator: "and"
+        keywords:
+          - id: "kw-a"
+            pattern: "match A"
+            color: "#00ff00"
+            flags: ""
+            matchScope: "matched"
+            enabled: true
     waitAfter: 1000
 
   - description: "Verify results remain active after color-only sync"
@@ -58,4 +81,11 @@ steps:
     assert:
       type: "return_value_contains"
       expected: '"startLine":1'
+    waitAfter: 1000
+
+  - description: "Verify timeline keyword color updated to green"
+    command: "greplogviewer._testGetTimelineData"
+    assert:
+      type: "return_value_contains"
+      expected: '"color":"#00ff00"'
     waitAfter: 1000
