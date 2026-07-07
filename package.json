@@ -23,6 +23,7 @@
     "onCommand:greplogviewer.grepFunction",
     "onCommand:greplogviewer.addKeyword",
     "onCommand:greplogviewer._testGo",
+    "onCommand:greplogviewer._testSyncConfig",
     "onCommand:greplogviewer._testClear",
     "onCommand:greplogviewer._testReset",
     "onCommand:greplogviewer._testGetState",

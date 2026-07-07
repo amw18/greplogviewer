@@ -83,7 +83,9 @@ export class ViewController {
     private reRegisterFoldProvider?: () => void
   ) {
     this.configPanel = new ConfigPanel();
-    this.decorations = new EditorDecorations();
+    this.decorations = new EditorDecorations(
+      (groupId) => this.regexGroupModel.getGroups().find(g => g.id === groupId)?.color
+    );
 
     this.configPanel.onGo((g, sp, ep, rd, nr, ar, tp, kw) => this.handleGo(g, sp, ep, rd, nr, ar, tp, kw));
     this.configPanel.onReset(() => this.handleReset());
@@ -215,7 +217,12 @@ export class ViewController {
   /** 实时同步配置（不触发过滤），供 grep 等无需 Go 的功能使用 */
   private handleSyncConfig(groups: RegexGroup[], startPattern?: string, endPattern?: string, rangeDescription?: string, namedRanges?: import('../types').NamedRange[], activeRangeId?: string, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): void {
     if (!this.currentEditor) { return; }
-    const editorId = this.currentEditor.document.uri.toString();
+    const editor = this.currentEditor;
+    const editorId = editor.document.uri.toString();
+
+    // 检测是否只有颜色等纯视觉属性变化（无需重新过滤）
+    const oldGroupColors = new Map(this.regexGroupModel.getGroups().map(g => [g.id, g.color]));
+    const oldKeywordColors = new Map((this.currentKeywords || []).map(k => [k.id, k.color]));
 
     this.regexGroupModel.setGroups(groups);
     this.currentStartPattern = startPattern;
@@ -236,6 +243,33 @@ export class ViewController {
       timePattern: this.timeMatchModel.isConfigured() ? this.timeMatchModel.getConfig() : undefined,
       keywords,
     });
+
+    // 若当前有激活的过滤结果，且颜色发生变化，则刷新装饰（无需重新过滤）
+    if (this.editorStateModel.isActive(editorId)) {
+      const colorChanged =
+        groups.some(g => oldGroupColors.get(g.id) !== g.color) ||
+        (keywords || []).some(k => oldKeywordColors.get(k.id) !== k.color);
+
+      if (colorChanged) {
+        this.refreshDecorationsForCurrentResults(editor);
+      }
+    }
+  }
+
+  /** 使用当前 group/keyword 颜色重新应用装饰，不改变过滤结果 */
+  private refreshDecorationsForCurrentResults(editor: vscode.TextEditor): void {
+    const editorId = editor.document.uri.toString();
+    const results = this.filterResultModel.getResults(editorId);
+    if (!results || results.length === 0) { return; }
+
+    const lines = this.readLines(editor);
+    const scanStart = this.currentStartPattern !== undefined
+      ? this.filterController.findFirstMatchLine(lines, this.currentStartPattern) : 0;
+    const scanEnd = this.currentEndPattern !== undefined
+      ? this.filterController.findFirstMatchLine(lines, this.currentEndPattern, lines.length) : lines.length;
+
+    this.decorations.apply(results, editor, this.currentKeywords, scanStart, scanEnd, undefined, lines);
+    this.applyFoldAnnotations(editor, editorId, lines, this.currentKeywords);
   }
 
   /** Go: 应用过滤 + 颜色高亮 + 创建折叠 + 时间标注 */
@@ -1055,6 +1089,20 @@ export class ViewController {
       undefined,          // activeRangeId
       config.timePattern,
       config.keywords
+    );
+  }
+
+  /** Test: trigger syncConfig with color-only changes (mimics webview color picker). */
+  testSyncConfig(config: { groups?: RegexGroup[]; keywords?: KeywordConfig[] }): void {
+    this.handleSyncConfig(
+      config.groups || this.regexGroupModel.getGroups(),
+      this.currentStartPattern,
+      this.currentEndPattern,
+      this.currentRangeDescription,
+      this.currentNamedRanges,
+      this.currentActiveRangeId,
+      this.timeMatchModel.isConfigured() ? this.timeMatchModel.getConfig() : undefined,
+      config.keywords || this.currentKeywords
     );
   }
 

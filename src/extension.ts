@@ -93,6 +93,9 @@ export function activate(context: vscode.ExtensionContext) {
   const testGoCmd = vscode.commands.registerCommand('greplogviewer._testGo', async (config: any) => {
     await viewController?.testGo(config || {});
   });
+  const testSyncConfigCmd = vscode.commands.registerCommand('greplogviewer._testSyncConfig', (config: any) => {
+    viewController?.testSyncConfig(config || {});
+  });
   const testClearCmd = vscode.commands.registerCommand('greplogviewer._testClear', async () => {
     await viewController?.testClear();
   });
@@ -142,6 +145,7 @@ export function activate(context: vscode.ExtensionContext) {
     grepFunctionCmd,
     addKeywordCmd,
     testGoCmd,
+    testSyncConfigCmd,
     testClearCmd,
     testResetCmd,
     testGetStateCmd,

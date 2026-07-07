@@ -1,0 +1,61 @@
+name: "Color change syncs without Go"
+description: "Verify that changing a group color via syncConfig keeps results active and re-applies decorations"
+plugin: "./.."
+workspace: "."
+timeout: 120000
+steps:
+  - description: "Open test log file"
+    command: "greplogviewer._testOpenFile"
+    args:
+      - "./test.log"
+    waitAfter: 2000
+
+  - description: "Focus editor and wait for activation"
+    command: "workbench.action.focusActiveEditorGroup"
+    waitAfter: 2000
+
+  - description: "Prime extension activation"
+    command: "greplogviewer._testGetState"
+    waitAfter: 1500
+
+  - description: "Apply filter A with red color"
+    command: "greplogviewer._testGo"
+    args:
+      - groups:
+          - id: "group-a"
+            name: "Group A"
+            color: "#ff0000"
+            expressions:
+              - id: "expr-a"
+                pattern: "match A"
+                flags: ""
+                operator: "and"
+    waitAfter: 2500
+
+  - description: "Verify filter A produced matches"
+    command: "greplogviewer._testGetState"
+    assert:
+      type: "return_value_contains"
+      expected: '"startLine":1'
+    waitAfter: 1000
+
+  - description: "Sync config with green color only (no Go)"
+    command: "greplogviewer._testSyncConfig"
+    args:
+      - groups:
+          - id: "group-a"
+            name: "Group A"
+            color: "#00ff00"
+            expressions:
+              - id: "expr-a"
+                pattern: "match A"
+                flags: ""
+                operator: "and"
+    waitAfter: 1000
+
+  - description: "Verify results remain active after color-only sync"
+    command: "greplogviewer._testGetState"
+    assert:
+      type: "return_value_contains"
+      expected: '"startLine":1'
+    waitAfter: 1000

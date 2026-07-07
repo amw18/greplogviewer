@@ -16,11 +16,13 @@ export class EditorDecorations {
   /** 关键字高亮装饰类型 */
   private keywordDecoTypes: vscode.TextEditorDecorationType[] = [];
   private editor: vscode.TextEditor | undefined;
+  private getGroupColor?: (groupId: string) => string | undefined;
 
-  constructor() {
+  constructor(getGroupColor?: (groupId: string) => string | undefined) {
     this.dimDecoration = vscode.window.createTextEditorDecorationType({
       opacity: '0.3',
     });
+    this.getGroupColor = getGroupColor;
   }
 
   /**
@@ -83,7 +85,7 @@ export class EditorDecorations {
     for (const [groupId, ranges] of groupLines) {
       if (ranges.length === 0) { continue; }
       const result = results.find(r => r.groupId === groupId);
-      const color = result?.color ?? '#ffffff';
+      const color = this.getGroupColor?.(groupId) ?? result?.color ?? '#ffffff';
 
       const key = `${groupId}_${color}`;
       if (!this.decorationTypes.has(key)) {

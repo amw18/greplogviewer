@@ -803,6 +803,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     if (kind === 'gi') { groups[idx].color = color; }
     else if (kind === 'ki') { keywords[idx].color = color; }
     saveState();
+    syncToExtension();
   }
 
   // ── Drag and Drop for Group Cards (long-press 2s) ──
