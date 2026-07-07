@@ -16,6 +16,16 @@ export class FilterResultModel {
     this.fireChange();
   }
 
+  /**
+   * 设置空结果（表示文件已被过滤但无折叠区间）。
+   * 与 clearResults 不同：空结果会让 FoldingRangeProvider 返回 []，
+   * 强制 VS Code 移除该文件上由本插件提供的折叠，而不是回退到默认折叠。
+   */
+  setEmptyResults(editorId: string): void {
+    this.resultsMap.set(editorId, []);
+    this.fireChange();
+  }
+
   /** 获取过滤结果 */
   getResults(editorId: string): FilterResult[] | undefined {
     return this.resultsMap.get(editorId);

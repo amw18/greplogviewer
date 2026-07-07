@@ -1,0 +1,75 @@
+name: "Fold persistence on large file"
+description: "Verify fold ranges update correctly on a large log file when filter rules change"
+plugin: "./.."
+workspace: "../../picture_your_book/logviewer"
+timeout: 180000
+steps:
+  - description: "Open large log file"
+    command: "greplogviewer._testOpenFile"
+    args:
+      - "./random_log copy 3.txt"
+    waitAfter: 2000
+
+  - description: "Focus editor and wait for activation"
+    command: "workbench.action.focusActiveEditorGroup"
+    waitAfter: 2000
+
+  - description: "Prime extension activation"
+    command: "greplogviewer._testGetState"
+    waitAfter: 1500
+
+  - description: "Apply filter A (ERROR/FATAL lines)"
+    command: "greplogviewer._testGo"
+    args:
+      - groups:
+          - id: "group-a"
+            name: "Errors and Fatals"
+            color: "#ff0000"
+            expressions:
+              - id: "expr-a"
+                pattern: "ERROR|FATAL"
+                flags: ""
+                operator: "and"
+    waitAfter: 3000
+
+  - description: "Get fold state after filter A"
+    command: "greplogviewer._testGetState"
+    waitAfter: 1500
+
+  - description: "Apply filter B (WARN lines)"
+    command: "greplogviewer._testGo"
+    args:
+      - groups:
+          - id: "group-b"
+            name: "Warnings"
+            color: "#00ff00"
+            expressions:
+              - id: "expr-b"
+                pattern: "WARN"
+                flags: ""
+                operator: "and"
+    waitAfter: 3000
+
+  - description: "Get fold state after filter B"
+    command: "greplogviewer._testGetState"
+    waitAfter: 1500
+
+  - description: "Scroll to top to inspect visible ranges"
+    command: "autotest.setCursor"
+    args:
+      - line: 0
+        character: 0
+    waitAfter: 500
+
+  - description: "Get visible ranges after filter B"
+    command: "greplogviewer._testGetVisibleRanges"
+    waitAfter: 500
+
+  - description: "Capture screenshot after filter B"
+    command: "autotest.takeScreenshot"
+    args:
+      - name: "large-after-filter-b"
+    waitAfter: 1000
+    assert:
+      type: "screenshot_saved"
+      expected: true

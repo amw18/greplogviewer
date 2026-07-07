@@ -57,6 +57,14 @@ describe('FilterResultModel', () => {
     assert.deepStrictEqual(model.getMatchedLines('doc1'), []);
   });
 
+  it('设置空结果表示已过滤但无折叠区间', () => {
+    makeResults('doc1', [1]);
+    model.setEmptyResults('doc1');
+    assert.deepStrictEqual(model.getResults('doc1'), []);
+    assert.deepStrictEqual(model.getUnmatchedRanges('doc1'), []);
+    assert.deepStrictEqual(model.getMatchedLines('doc1'), []);
+  });
+
   it('单行未匹配区间', () => {
     makeResults('doc1', [0, 2, 4]); // 匹配 0,2,4, 未匹配 1,3
     const ranges = model.getUnmatchedRanges('doc1');

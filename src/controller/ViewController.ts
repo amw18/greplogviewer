@@ -138,6 +138,11 @@ export class ViewController {
         await this.clearFoldingState(editor);
 
         const lines = this.readLines(editor);
+
+        // 强制 FoldingRangeProvider 先返回空区间，彻底移除旧的 provider 折叠
+        this.filterResultModel.setEmptyResults(editorId);
+        await new Promise(r => setTimeout(r, 100));
+
         const results = this.filterController.filter(
           lines, savedConfig.groups,
           savedConfig.startPattern, savedConfig.endPattern
@@ -291,6 +296,11 @@ export class ViewController {
       if (oldRanges.length > 0) {
         await this.clearFoldingState(editor);
       }
+
+      // 强制 FoldingRangeProvider 先返回空区间，让 VS Code 彻底移除旧的 provider 折叠
+      // （大文件下仅 unfoldAll 不够，VS Code 仍可能保留折叠状态）
+      this.filterResultModel.setEmptyResults(editorId);
+      await new Promise(r => setTimeout(r, 100));
 
       this.filterResultModel.setResults(editorId, results);
       this.decorations.apply(results, editor, keywords, scanStart, scanEnd, undefined, lines);
@@ -967,6 +977,10 @@ export class ViewController {
         if (oldRanges.length > 0) {
           await this.clearFoldingState(editor);
         }
+
+        // 强制 FoldingRangeProvider 先返回空区间，彻底移除旧的 provider 折叠
+        this.filterResultModel.setEmptyResults(editorId);
+        await new Promise(r => setTimeout(r, 100));
 
         this.filterResultModel.setResults(editorId, results);
         this.decorations.apply(results, editor, this.currentKeywords, scanStart, scanEnd);

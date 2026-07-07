@@ -108,9 +108,12 @@ export function activate(context: vscode.ExtensionContext) {
     {
       onDidChangeFoldingRanges: foldChangeEmitter.event,
       provideFoldingRanges(document) {
-        const ranges = filterResultModel.getUnmatchedRanges(document.uri.toString());
-        // 无过滤结果时返回 undefined，让 VS Code 回退到默认折叠（不影响代码文件）
-        if (!ranges.length) { return undefined; }
+        const editorId = document.uri.toString();
+        const results = filterResultModel.getResults(editorId);
+        // 未过滤：返回 undefined，让 VS Code 回退到默认折叠（不影响代码文件）
+        if (results === undefined) { return undefined; }
+        // 已过滤（包括主动清空）：返回实际区间或空数组，强制 VS Code 使用本插件的区间
+        const ranges = filterResultModel.getUnmatchedRanges(editorId);
         return ranges.map(r => new vscode.FoldingRange(r.start, r.end));
       },
     }
