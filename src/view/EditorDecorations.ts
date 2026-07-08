@@ -140,15 +140,11 @@ export class EditorDecorations {
     }
   }
 
-  /** 在指定行 gutter 显示红旗图标（悬停显示可点击切换链接） */
+  /** 在指定行 gutter 显示红旗图标（纯视觉指示，无点击交互） */
   showRingBufferFlag(startLine: number, editor: vscode.TextEditor): void {
     if (!this.ringBufferFlagDecoration) { return; }
     const range = new vscode.Range(startLine, 0, startLine, 0);
-    const hoverMessage = new vscode.MarkdownString(
-      `[Toggle Ring Buffer Fold](command:greplogviewer.toggleStartLineFold)`
-    );
-    hoverMessage.isTrusted = true;
-    editor.setDecorations(this.ringBufferFlagDecoration, [{ range, hoverMessage }]);
+    editor.setDecorations(this.ringBufferFlagDecoration, [range]);
   }
 
   /** 清除红旗图标 */

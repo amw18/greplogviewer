@@ -11,7 +11,6 @@ import { RegexGroupModel } from '../model/RegexGroupModel';
 import { TimeMatchModel } from '../model/TimeMatchModel';
 import { ConfigStorageModel } from '../model/ConfigStorageModel';
 import { RingBufferModel } from '../model/RingBufferModel';
-import { StartLineFoldModel } from '../model/StartLineFoldModel';
 import { uuid } from '../model/uuid';
 import { ConfigPanel } from '../view/ConfigPanel';
 import { EditorDecorations } from '../view/EditorDecorations';
@@ -80,7 +79,6 @@ export class ViewController {
     private timeline: KeywordTimeline,
     context: vscode.ExtensionContext,
     private ringBufferModel: RingBufferModel,
-    private startLineFoldModel: StartLineFoldModel,
     private reRegisterFoldProvider?: () => void
   ) {
     this.context = context;
@@ -104,13 +102,6 @@ export class ViewController {
     this.configPanel.onDelete((n, sc) => this.handleDelete(n, sc));
     this.configPanel.onSyncConfig((g, tp, kw) => this.handleSyncConfig(g, tp, kw));
     this.configPanel.onTimelineClick((line) => this.handleTimelineClick(line));
-
-    // 监听选择变更，用于检测红旗行点击
-    vscode.window.onDidChangeTextEditorSelection(e => {
-      if (e.textEditor === this.currentEditor) {
-        this.onSelectionChange(e.textEditor);
-      }
-    });
   }
 
   getPanelProvider(): ConfigPanel {
@@ -277,9 +268,6 @@ export class ViewController {
 
     // 关键字配置
     this.currentKeywords = keywords;
-
-    // 每次 Go 重置 ring buffer 起点折叠状态
-    this.startLineFoldModel.setState(editorId, 'none');
 
     this.editorStateModel.saveConfig(editorId, {
       groups,
@@ -635,32 +623,6 @@ export class ViewController {
     this.decorations.showRingBufferFlag(startLine, editor);
   }
 
-  /** 处理编辑器选择变更：若点击了红旗行则循环切换折叠状态 */
-  private onSelectionChange(editor: vscode.TextEditor): void {
-    const editorId = editor.document.uri.toString();
-    const startLine = this.ringBufferModel.getStartLine(editorId);
-    if (startLine === undefined) { return; }
-
-    const activeLine = editor.selection.active.line;
-    if (activeLine !== startLine) { return; }
-
-    this.toggleStartLineFold(editor);
-  }
-
-  /** 切换起点行折叠状态并刷新折叠（public：供命令/测试调用） */
-  async toggleStartLineFold(editor: vscode.TextEditor): Promise<void> {
-    const editorId = editor.document.uri.toString();
-    const startLine = this.ringBufferModel.getStartLine(editorId);
-    if (startLine === undefined) { return; }
-
-    this.startLineFoldModel.cycleState(editorId);
-
-    // 触发 FoldingRangeProvider 刷新
-    this.filterResultModel.notifyChange();
-    await new Promise(r => setTimeout(r, 80));
-    await vscode.commands.executeCommand('editor.foldAll');
-  }
-
   /**
    * 若光标落在折叠区间内，则将其移到该区间前最后一个匹配行；
    * 若前面无匹配行则移到区间后第一个匹配行；若仍无匹配行则保持原位。
@@ -714,7 +676,6 @@ export class ViewController {
     this.editorStateModel.setActive(editorId, false);
     this.filterResultModel.clearResults(editorId);
     this.ringBufferModel.clear(editorId);
-    this.startLineFoldModel.clear(editorId);
     this.filterResultModel.clearProtectedLines(editorId);
     this.lastFilterFingerprint = '';  // 清除后必须重置指纹，否则再次 Go 会误判为未变更
     this.decorations.clear();
@@ -737,7 +698,6 @@ export class ViewController {
     this.filterResultModel.clearResults(editorId);
     this.filterResultModel.clearProtectedLines(editorId);
     this.ringBufferModel.clear(editorId);
-    this.startLineFoldModel.clear(editorId);
     this.lastFilterFingerprint = '';  // 重置后必须清空指纹缓存
     this.decorations.clear();
     this.decorations.clearTimeAnnotations();
@@ -1147,13 +1107,12 @@ export class ViewController {
     return this.timeline.getLastTimelineData();
   }
 
-  /** Test: get ring buffer detection/fold state for assertion */
+  /** Test: get detected ring buffer start line for assertion */
   testGetRingBufferState(): Record<string, any> {
     if (!this.currentEditor) { return {}; }
     const editorId = this.currentEditor.document.uri.toString();
     return {
       startLine: this.ringBufferModel.getStartLine(editorId),
-      foldState: this.startLineFoldModel.getState(editorId),
     };
   }
 
@@ -1209,18 +1168,6 @@ export class ViewController {
 
     if (this.currentKeywords && this.currentKeywords.length > 0) {
       foldRanges = this.enrichWithKeywordHits(foldRanges, lines, this.currentKeywords);
-    }
-
-    // 追加 ring buffer 起点折叠区间（如有）
-    const rbStart = this.ringBufferModel.getStartLine(editorId);
-    const foldState = this.startLineFoldModel.getState(editorId);
-    const lineCount = editor.document.lineCount;
-    if (rbStart !== undefined && foldState && foldState !== 'none') {
-      if (foldState === 'foldBelow' && rbStart + 1 <= lineCount - 1) {
-        foldRanges.push({ start: rbStart + 1, end: lineCount - 1, lineCount: lineCount - rbStart - 1 });
-      } else if (foldState === 'foldAbove' && rbStart > 0) {
-        foldRanges.push({ start: 0, end: rbStart - 1, lineCount: rbStart });
-      }
     }
 
     return foldRanges.map(fr => {

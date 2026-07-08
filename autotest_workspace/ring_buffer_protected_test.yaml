@@ -42,22 +42,18 @@ steps:
       expected: '"startLine":4'
       message: "Start line should be detected at line 4"
 
-  - description: "Toggle foldBelow via command"
-    command: "greplogviewer.toggleStartLineFold"
-    waitAfter: 1000
-
-  - description: "Verify foldBelow range starts at startLine+1, not startLine"
+  - description: "Verify no fold range starts at line 4"
     command: "greplogviewer._testGetState"
     waitAfter: 800
-    assert:
-      type: "return_value_contains"
-      expected: '"startLine":5,"endLine":7'
-      message: "Start line 4 must remain visible; fold below should be 5-7"
-
-  - description: "Verify no range starts at line 4"
-    command: "greplogviewer._testGetState"
-    waitAfter: 500
     assert:
       type: "return_value_not_contains"
       expected: '"startLine":4,"endLine":'
       message: "Line 4 must not be included in any unmatched fold range"
+
+  - description: "Verify fold range below start line is 5-7"
+    command: "greplogviewer._testGetState"
+    waitAfter: 500
+    assert:
+      type: "return_value_contains"
+      expected: '"startLine":5,"endLine":7'
+      message: "Unmatched range below start line should be 5-7, leaving line 4 visible"

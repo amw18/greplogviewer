@@ -1,5 +1,5 @@
-name: "Ring buffer start detection and fold toggle"
-description: "Verify ring buffer time wraparound is detected and red flag fold cycle works"
+name: "Ring buffer start detection and red flag"
+description: "Verify ring buffer time wraparound is detected and marked with a red flag gutter icon"
 plugin: "./.."
 workspace: "."
 timeout: 120000
@@ -34,45 +34,10 @@ steps:
           format: "YYYY-MM-DD HH:mm:ss"
     waitAfter: 1500
 
-  - description: "Click red flag start line (line 4) to toggle foldBelow"
-    command: "autotest.setCursor"
-    args:
-      - line: 4
-        character: 0
-    waitAfter: 1000
-
-  - description: "Check ring buffer state before asserting fold ranges"
+  - description: "Verify ring buffer start line is detected"
     command: "greplogviewer._testGetRingBufferState"
     waitAfter: 500
-
-  - description: "Verify foldBelow range is present"
-    command: "greplogviewer._testGetState"
-    waitAfter: 800
     assert:
       type: "return_value_contains"
-      expected: '"startLine":5,"endLine":7'
-      message: "foldBelow should fold lines 5-7 (start line 4 remains visible)"
-
-  - description: "Toggle to foldAbove via command"
-    command: "greplogviewer.toggleStartLineFold"
-    waitAfter: 1000
-
-  - description: "Verify foldAbove range is present"
-    command: "greplogviewer._testGetState"
-    waitAfter: 800
-    assert:
-      type: "return_value_contains"
-      expected: '"startLine":0,"endLine":3'
-      message: "foldAbove should fold lines 0-3"
-
-  - description: "Toggle to none via command"
-    command: "greplogviewer.toggleStartLineFold"
-    waitAfter: 1000
-
-  - description: "Verify no ring buffer fold range remains"
-    command: "greplogviewer._testGetState"
-    waitAfter: 800
-    assert:
-      type: "return_value_not_contains"
-      expected: '"startLine":5,"endLine":7'
-      message: "After toggling to none, foldBelow range should be gone"
+      expected: '"startLine":4'
+      message: "Ring buffer start line should be detected at line 4"

@@ -12,7 +12,6 @@ import { ViewController } from './controller/ViewController';
 import { GrepController } from './controller/GrepController';
 import { KeywordTimeline } from './view/KeywordTimeline';
 import { RingBufferModel } from './model/RingBufferModel';
-import { StartLineFoldModel } from './model/StartLineFoldModel';
 
 let viewController: ViewController | undefined;
 let grepController: GrepController | undefined;
@@ -26,14 +25,12 @@ export function activate(context: vscode.ExtensionContext) {
   const filterController = new FilterController();
   const configStorageModel = new ConfigStorageModel(context);
   const ringBufferModel = new RingBufferModel();
-  const startLineFoldModel = new StartLineFoldModel();
 
   const timeline = new KeywordTimeline();
 
   // ── 折叠区间 Provider（声明式，比逐个 createFoldingRangeFromSelection 快 N 倍）──
   const foldChangeEmitter = new vscode.EventEmitter<void>();
   filterResultModel.onChange(() => foldChangeEmitter.fire());
-  startLineFoldModel.onChange(() => foldChangeEmitter.fire());
 
   let foldProvider: vscode.Disposable | undefined;
   const registerFoldProvider = () => {
@@ -49,20 +46,7 @@ export function activate(context: vscode.ExtensionContext) {
           if (results === undefined) { return undefined; }
           // 已过滤（包括主动清空）：返回实际区间或空数组，强制 VS Code 使用本插件的区间
           const ranges = filterResultModel.getUnmatchedRanges(editorId);
-          const folds = ranges.map(r => new vscode.FoldingRange(r.start, r.end));
-
-          // 叠加 ring-buffer 起点折叠状态
-          const rbStart = ringBufferModel.getStartLine(editorId);
-          const foldState = startLineFoldModel.getState(editorId);
-          const lineCount = document.lineCount;
-          if (rbStart !== undefined && foldState) {
-            if (foldState === 'foldBelow' && rbStart + 1 <= lineCount - 1) {
-              folds.push(new vscode.FoldingRange(rbStart + 1, lineCount - 1, vscode.FoldingRangeKind.Region));
-            } else if (foldState === 'foldAbove' && rbStart > 0) {
-              folds.push(new vscode.FoldingRange(0, rbStart - 1, vscode.FoldingRangeKind.Region));
-            }
-          }
-          return folds;
+          return ranges.map(r => new vscode.FoldingRange(r.start, r.end));
         },
       }
     );
@@ -75,7 +59,6 @@ export function activate(context: vscode.ExtensionContext) {
     configStorageModel, timeline,
     context,
     ringBufferModel,
-    startLineFoldModel,
     registerFoldProvider
   );
 
@@ -108,11 +91,6 @@ export function activate(context: vscode.ExtensionContext) {
     if (!text) { return; }
     await viewController?.addKeyword(text);
   });
-  const toggleStartLineFoldCmd = vscode.commands.registerCommand('greplogviewer.toggleStartLineFold', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (editor) { await viewController?.toggleStartLineFold(editor); }
-  });
-
 
   // ── Test-only commands for autotest automation ──
   const testGoCmd = vscode.commands.registerCommand('greplogviewer._testGo', async (config: any) => {
@@ -175,7 +153,6 @@ export function activate(context: vscode.ExtensionContext) {
     grepKeywordCmd,
     grepFunctionCmd,
     addKeywordCmd,
-    toggleStartLineFoldCmd,
     testGoCmd,
     testSyncConfigCmd,
     testClearCmd,

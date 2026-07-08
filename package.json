@@ -22,7 +22,6 @@
     "onCommand:greplogviewer.grepKeyword",
     "onCommand:greplogviewer.grepFunction",
     "onCommand:greplogviewer.addKeyword",
-    "onCommand:greplogviewer.toggleStartLineFold",
     "onCommand:greplogviewer._testGo",
     "onCommand:greplogviewer._testSyncConfig",
     "onCommand:greplogviewer._testClear",
@@ -61,10 +60,6 @@
       {
         "command": "greplogviewer.addKeyword",
         "title": "Add as Keyword"
-      },
-      {
-        "command": "greplogviewer.toggleStartLineFold",
-        "title": "Toggle Ring Buffer Fold"
       }
     ],
     "menus": {
@@ -83,10 +78,6 @@
           "command": "greplogviewer.addKeyword",
           "when": "editorHasSelection",
           "group": "greplogviewer@3"
-        },
-        {
-          "command": "greplogviewer.toggleStartLineFold",
-          "group": "greplogviewer@4"
         }
       ]
     }
