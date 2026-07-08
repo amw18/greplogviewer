@@ -1212,8 +1212,8 @@ export class ViewController {
     const foldState = this.startLineFoldModel.getState(editorId);
     const lineCount = editor.document.lineCount;
     if (rbStart !== undefined && foldState && foldState !== 'none') {
-      if (foldState === 'foldBelow' && rbStart < lineCount - 1) {
-        foldRanges.push({ start: rbStart, end: lineCount - 1, lineCount: lineCount - rbStart });
+      if (foldState === 'foldBelow' && rbStart + 1 <= lineCount - 1) {
+        foldRanges.push({ start: rbStart + 1, end: lineCount - 1, lineCount: lineCount - rbStart - 1 });
       } else if (foldState === 'foldAbove' && rbStart > 0) {
         foldRanges.push({ start: 0, end: rbStart - 1, lineCount: rbStart });
       }

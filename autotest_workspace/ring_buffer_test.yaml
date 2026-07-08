@@ -7,7 +7,7 @@ steps:
   - description: "Open ring buffer test log file"
     command: "greplogviewer._testOpenFile"
     args:
-      - "./autotest_workspace/ring_buffer_test.log"
+      - "./ring_buffer_test.log"
     waitAfter: 1500
 
   - description: "Focus editor and wait for activation"
@@ -50,8 +50,8 @@ steps:
     waitAfter: 800
     assert:
       type: "return_value_contains"
-      expected: '"startLine":4,"endLine":7'
-      message: "foldBelow should fold lines 4-7"
+      expected: '"startLine":5,"endLine":7'
+      message: "foldBelow should fold lines 5-7 (start line 4 remains visible)"
 
   - description: "Toggle to foldAbove via command"
     command: "greplogviewer.toggleStartLineFold"
@@ -74,5 +74,5 @@ steps:
     waitAfter: 800
     assert:
       type: "return_value_not_contains"
-      expected: '"startLine":4,"endLine":7'
+      expected: '"startLine":5,"endLine":7'
       message: "After toggling to none, foldBelow range should be gone"

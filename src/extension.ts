@@ -56,8 +56,8 @@ export function activate(context: vscode.ExtensionContext) {
           const foldState = startLineFoldModel.getState(editorId);
           const lineCount = document.lineCount;
           if (rbStart !== undefined && foldState) {
-            if (foldState === 'foldBelow' && rbStart < lineCount - 1) {
-              folds.push(new vscode.FoldingRange(rbStart, lineCount - 1, vscode.FoldingRangeKind.Region));
+            if (foldState === 'foldBelow' && rbStart + 1 <= lineCount - 1) {
+              folds.push(new vscode.FoldingRange(rbStart + 1, lineCount - 1, vscode.FoldingRangeKind.Region));
             } else if (foldState === 'foldAbove' && rbStart > 0) {
               folds.push(new vscode.FoldingRange(0, rbStart - 1, vscode.FoldingRangeKind.Region));
             }
