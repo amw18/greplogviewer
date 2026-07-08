@@ -83,37 +83,22 @@ export interface KeywordConfig {
   matchScope?: 'matched' | 'full';
 }
 
-/** 命名的行范围 */
-export interface NamedRange {
-  id: string;
-  name: string;
-  description?: string;
-  /** 开始行匹配的正则表达式，第一个匹配行作为范围起始 */
-  startPattern: string;
-  /** 结束行匹配的正则表达式，第一个匹配行作为范围结束 */
-  endPattern: string;
-}
-
-/** 编辑器级别的配置（正则组 + 行范围 + 时间模式 + 关键字） */
+/** 编辑器级别的配置（正则组 + 时间模式 + 关键字） */
 export interface EditorConfig {
   groups: RegexGroup[];
-  /** 开始行正则匹配模式，第一个匹配行作为范围起始。
-   * @deprecated 推荐使用 namedRanges + activeRangeId */
-  startPattern?: string;
-  /** 结束行正则匹配模式，第一个匹配行作为范围结束。
-   * @deprecated 推荐使用 namedRanges + activeRangeId */
-  endPattern?: string;
-  /** 用户对当前行范围的备注描述。
-   * @deprecated 推荐使用 namedRanges */
-  rangeDescription?: string;
-  /** 多个命名的行范围配置（新格式） */
-  namedRanges?: NamedRange[];
-  /** 当前激活的行范围 ID（单选），为空时回退到 startPattern/endPattern */
-  activeRangeId?: string;
   /** 时间匹配模式，未配置时不提取时间信息 */
   timePattern?: TimePatternConfig;
   /** 关键字高亮配置，未配置时不启用 */
   keywords?: KeywordConfig[];
+}
+
+/** Ring Buffer 起点行折叠状态 */
+export type StartLineFoldState = 'none' | 'foldBelow' | 'foldAbove';
+
+/** RingBufferModel 对外暴露的只读信息 */
+export interface RingBufferInfo {
+  startLine?: number;
+  foldState: StartLineFoldState;
 }
 
 // ===== Config Storage =====
@@ -132,11 +117,6 @@ export type ConfigScope = 'workspace' | 'user';
 export interface UpdateConfigMessage {
   type: 'updateConfig';
   groups: RegexGroup[];
-  startPattern?: string;
-  endPattern?: string;
-  rangeDescription?: string;
-  namedRanges?: NamedRange[];
-  activeRangeId?: string;
   timePattern?: TimePatternConfig;
   keywords?: KeywordConfig[];
 }
@@ -144,11 +124,6 @@ export interface UpdateConfigMessage {
 export interface GoMessage {
   type: 'go';
   groups: RegexGroup[];
-  startPattern?: string;
-  endPattern?: string;
-  rangeDescription?: string;
-  namedRanges?: NamedRange[];
-  activeRangeId?: string;
   timePattern?: TimePatternConfig;
   keywords?: KeywordConfig[];
 }
@@ -166,11 +141,6 @@ export interface ClearMessage {
 export interface ExportConfigMessage {
   type: 'exportConfig';
   groups: RegexGroup[];
-  startPattern?: string;
-  endPattern?: string;
-  rangeDescription?: string;
-  namedRanges?: NamedRange[];
-  activeRangeId?: string;
   timePattern?: TimePatternConfig;
   keywords?: KeywordConfig[];
 }
@@ -184,11 +154,6 @@ export interface SaveConfigMessage {
   name: string;
   scope: ConfigScope;
   groups: RegexGroup[];
-  startPattern?: string;
-  endPattern?: string;
-  rangeDescription?: string;
-  namedRanges?: NamedRange[];
-  activeRangeId?: string;
   timePattern?: TimePatternConfig;
   keywords?: KeywordConfig[];
 }
@@ -213,7 +178,7 @@ export interface DeleteSavedConfigMessage {
 
 export interface ConfigImportedMessage {
   type: 'configImported';
-  config?: { groups: RegexGroup[]; startPattern?: string; endPattern?: string; rangeDescription?: string; namedRanges?: NamedRange[]; activeRangeId?: string; timePattern?: TimePatternConfig; keywords?: KeywordConfig[] };
+  config?: { groups: RegexGroup[]; timePattern?: TimePatternConfig; keywords?: KeywordConfig[] };
   error?: string;
 }
 
@@ -225,24 +190,8 @@ export interface SavedConfigsListMessage {
 export interface ConfigAppliedMessage {
   type: 'configApplied';
   groups: RegexGroup[];
-  startPattern?: string;
-  endPattern?: string;
-  rangeDescription?: string;
-  namedRanges?: NamedRange[];
-  activeRangeId?: string;
   timePattern?: TimePatternConfig;
   keywords?: KeywordConfig[];
-}
-
-/** 范围时间信息（Extension → Webview，Go 后发回） */
-export interface RangeTimeInfoMessage {
-  type: 'rangeTimeInfo';
-  /** 范围内首个匹配行的时间（格式化字符串） */
-  startTime?: string;
-  /** 范围内最后一个匹配行的时间（格式化字符串） */
-  endTime?: string;
-  /** 范围时间跨度（格式化字符串，如 "5m 30s"） */
-  duration?: string;
 }
 
 export interface GotoKeywordMatchMessage {
@@ -282,11 +231,6 @@ export interface TimelineClickMessage {
 export interface SyncConfigMessage {
   type: 'syncConfig';
   groups: RegexGroup[];
-  startPattern?: string;
-  endPattern?: string;
-  rangeDescription?: string;
-  namedRanges?: NamedRange[];
-  activeRangeId?: string;
   timePattern?: TimePatternConfig;
   keywords?: KeywordConfig[];
 }
@@ -313,4 +257,4 @@ export type WebviewMessage = GoMessage | ResetMessage | ClearMessage
 
 export type ExtensionMessage = UpdateConfigMessage
   | ConfigImportedMessage | SavedConfigsListMessage | ConfigAppliedMessage
-  | RangeTimeInfoMessage | TimelineDataMessage | MatchCountsMessage;
+  | TimelineDataMessage | MatchCountsMessage;

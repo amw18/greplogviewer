@@ -180,6 +180,40 @@ export class TimeMatchModel {
     return buildDate(result.values);
   }
 
+  /**
+   * 检测 ring buffer 日志的时间起点行。
+   * 从第一行（或第一个可解析时间戳的行）开始作为时间原点，
+   * 向下扫描，返回第一个时间戳小于上一可解析行时间戳的行号。
+   * @param lines 文档所有行
+   * @returns 起点行号（0-based），未识别返回 undefined
+   */
+  detectRingBufferStartLine(lines: string[]): number | undefined {
+    if (!this.isConfigured() || lines.length === 0) { return undefined; }
+
+    let previousTime: Date | null = null;
+    let previousLine = -1;
+
+    // Step 1: 确定默认时间原点（第一行或可解析时间戳的第一行）
+    for (let i = 0; i < lines.length; i++) {
+      const t = this.parseLineTimestamp(lines[i]);
+      if (t) { previousTime = t; previousLine = i; break; }
+    }
+    if (!previousTime) { return undefined; }
+
+    // Step 2: 从原点继续向下扫描，寻找第一个相对时间为负值的行
+    for (let i = previousLine + 1; i < lines.length; i++) {
+      const t = this.parseLineTimestamp(lines[i]);
+      if (!t) { continue; }
+      if (t.getTime() < previousTime.getTime()) {
+        return i;
+      }
+      previousTime = t;
+      previousLine = i;
+    }
+
+    return undefined;
+  }
+
   // ===== 格式字符串解析 =====
 
   /** 解析格式字符串为结构化的 segment 树 */

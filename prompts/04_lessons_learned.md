@@ -1,17 +1,25 @@
 # 踩坑记录 — 重要经验教训
 
 ## 1. 自动折叠：FoldingRangeProvider + 显式清除
-**结论**: 使用 `FoldingRangeProvider` 提供折叠区间以获得性能，但在更新过滤规则前必须显式清除旧折叠状态。
+**结论**: 使用 `FoldingRangeProvider` 提供折叠区间以获得性能，但在更新过滤规则前必须显式让 Provider 返回空区间，彻底移除旧折叠状态。
 
-| 操作 | 命令 | 说明 |
+| 操作 | 命令/方式 | 说明 |
 |------|------|------|
 | Go 折叠 | `FoldingRangeProvider` + `editor.foldAll` | 声明式提供区间后整体折叠 |
-| 清除旧折叠 | `editor.unfoldAll` | 在 `setResults()` 前调用，避免旧折叠残留 |
+| 清除旧折叠 | `editor.unfoldAll` + `FilterResultModel.setEmptyResults()` | 先展开当前折叠，再让 Provider 返回 `[]`，强制 VS Code 移除 provider 折叠 |
 
 **关键教训**:
 - `FoldingRangeProvider` 的折叠状态会被 VS Code 持久化，修改规则后若不清除，旧折叠会与新折叠叠加残留
-- 在 `handleGo()`/`addKeyword()` 更新 `FilterResultModel` 前，若当前已有折叠区间则先 `editor.unfoldAll`
-- 在 `attach()` 恢复已激活编辑器时，无条件 `editor.unfoldAll` 以清除上一会话恢复的折叠状态
+- 仅 `editor.unfoldAll` 不够：大文件或跨会话时 VS Code 仍可能保留折叠状态
+- 正确顺序：`unfoldAll` → `setEmptyResults()` + 重新注册 Provider → 等待 → `setResults()`（Provider 返回新区间）→ `foldAll`
+- 仅让 Provider 返回 `[]` 可以更新折叠内容，但 VS Code 仍可能在 gutter 保留旧的折叠图标；通过 `dispose` + `registerFoldingRangeProvider` 重新注册 Provider，让 VS Code 把该 Provider 视为全新的来源，才能彻底刷新 gutter 折叠图标
+- `FilterResultModel.setEmptyResults()` 与 `clearResults()` 语义不同：前者保留“已过滤”状态让 Provider 返回 `[]`，后者删除记录让 Provider 返回 `undefined`（回退默认折叠）
+- 在 `handleGo()`/`addKeyword()`/`attach()` 更新过滤结果前都执行完整清除流程
+- `Clear` / `Reset` / `attach()`（编辑器切换）都必须重置 `lastFilterFingerprint`，否则再次点击 `Go` 时若配置未变，会误判为“无需重新过滤”而直接复用已被清空的结果或上一编辑器的缓存
+- Group/Keyword 颜色属于纯视觉属性，修改后通过 `syncConfig` 实时同步并刷新装饰，无需点 Go；装饰渲染时优先从 `RegexGroupModel` 读取当前颜色，而不是依赖过滤结果里缓存的旧颜色
+- Keyword Timeline 的颜色也要同步刷新：`handleSyncConfig` 检测到颜色变化后，除了重新应用编辑器装饰，还要重新调用 `sendTimelineData()` 下发新的 keyword 颜色
+- Webview 中的 Canvas/图表应让 CSS 控制 canvas 容器大小（`width:100%; height:100%`），同步 drawing buffer 时使用 `canvas.clientWidth/Height`，并同时监听 `window.resize`、`ResizeObserver(canvas)` 和轮询兜底，因为 VS Code 面板拖动不一定会触发 window resize 事件
+- Timeline 左侧 keyword 标签列宽度应动态计算：在绘制前用 `ctx.measureText()` 测量所有 keyword 标签宽度，取最大值 + margin 作为第 0 列宽度，避免固定宽度导致标签截断或留白过多
 - 折叠命令生效的前提是编辑器有焦点 → 调用前用 `showTextDocument(preserveFocus: false)` 确保焦点
 - 旧方案 `createFoldingRangeFromSelection` 每区间一次命令，大文件极慢，已废弃
 

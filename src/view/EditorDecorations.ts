@@ -17,12 +17,21 @@ export class EditorDecorations {
   private keywordDecoTypes: vscode.TextEditorDecorationType[] = [];
   private editor: vscode.TextEditor | undefined;
   private getGroupColor?: (groupId: string) => string | undefined;
+  private ringBufferFlagDecoration?: vscode.TextEditorDecorationType;
 
-  constructor(getGroupColor?: (groupId: string) => string | undefined) {
+  constructor(getGroupColor?: (groupId: string) => string | undefined, flagIconUri?: vscode.Uri) {
     this.dimDecoration = vscode.window.createTextEditorDecorationType({
       opacity: '0.3',
     });
     this.getGroupColor = getGroupColor;
+    if (flagIconUri) {
+      this.ringBufferFlagDecoration = vscode.window.createTextEditorDecorationType({
+        gutterIconPath: flagIconUri,
+        gutterIconSize: 'contain',
+        overviewRulerColor: 'red',
+        overviewRulerLane: vscode.OverviewRulerLane.Left,
+      });
+    }
   }
 
   /**
@@ -131,6 +140,19 @@ export class EditorDecorations {
     }
   }
 
+  /** 在指定行 gutter 显示红旗图标 */
+  showRingBufferFlag(startLine: number, editor: vscode.TextEditor): void {
+    if (!this.ringBufferFlagDecoration) { return; }
+    const range = new vscode.Range(startLine, 0, startLine, 0);
+    editor.setDecorations(this.ringBufferFlagDecoration, [range]);
+  }
+
+  /** 清除红旗图标 */
+  clearRingBufferFlag(): void {
+    if (!this.ringBufferFlagDecoration || !this.editor) { return; }
+    this.editor.setDecorations(this.ringBufferFlagDecoration, []);
+  }
+
   /** 清除所有装饰（含关键字） */
   clear(): void {
     if (this.editor) {
@@ -139,6 +161,7 @@ export class EditorDecorations {
       }
       this.editor.setDecorations(this.dimDecoration, []);
       this.clearKeywordHighlights();
+      this.clearRingBufferFlag();
     }
   }
 

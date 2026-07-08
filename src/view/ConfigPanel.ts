@@ -4,22 +4,17 @@ import { RegexGroup, RegexExpression, LogicOperator, TimePatternConfig, KeywordC
 
 export class ConfigPanel implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
-  private goCallback: ((groups: RegexGroup[], startPattern?: string, endPattern?: string, rangeDescription?: string, namedRanges?: import('../types').NamedRange[], activeRangeId?: string, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void) | undefined;
+  private goCallback: ((groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void) | undefined;
   private resetCallback: (() => void) | undefined;
   private clearCallback: (() => void) | undefined;
-  private exportCallback: ((groups: RegexGroup[], startPattern?: string, endPattern?: string, rangeDescription?: string, namedRanges?: import('../types').NamedRange[], activeRangeId?: string, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void) | undefined;
+  private exportCallback: ((groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void) | undefined;
   private importCallback: (() => void) | undefined;
-  private saveCallback: ((name: string, scope: ConfigScope, groups: RegexGroup[], startPattern?: string, endPattern?: string, rangeDescription?: string, namedRanges?: import('../types').NamedRange[], activeRangeId?: string, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void) | undefined;
+  private saveCallback: ((name: string, scope: ConfigScope, groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void) | undefined;
   private listSavedCallback: (() => void) | undefined;
   private applyCallback: ((name: string, scope: ConfigScope) => void) | undefined;
   private deleteCallback: ((name: string, scope: ConfigScope) => void) | undefined;
   /** 缓存最近一次 groups 和行范围用于 webview 尚未就绪时 */
   private pendingGroups: RegexGroup[] = [];
-  private pendingStartPattern?: string;
-  private pendingEndPattern?: string;
-  private pendingRangeDescription?: string;
-  private pendingNamedRanges?: import('../types').NamedRange[];
-  private pendingActiveRangeId?: string;
   private pendingKeywords?: KeywordConfig[];
 
   /** WebviewViewProvider 接口：VS Code 创建/重建 webview 时调用 */
@@ -32,7 +27,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     webviewView.webview.onDidReceiveMessage((msg: WebviewMessage) => {
       switch (msg.type) {
         case 'go':
-          this.goCallback?.(msg.groups, msg.startPattern, msg.endPattern, msg.rangeDescription, msg.namedRanges, msg.activeRangeId, msg.timePattern, msg.keywords);
+          this.goCallback?.(msg.groups, msg.timePattern, msg.keywords);
           break;
         case 'reset':
           this.resetCallback?.();
@@ -41,13 +36,13 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
           this.clearCallback?.();
           break;
         case 'exportConfig':
-          this.exportCallback?.(msg.groups, msg.startPattern, msg.endPattern, msg.rangeDescription, msg.namedRanges, msg.activeRangeId, msg.timePattern, msg.keywords);
+          this.exportCallback?.(msg.groups, msg.timePattern, msg.keywords);
           break;
         case 'importConfig':
           this.importCallback?.();
           break;
         case 'saveConfig':
-          this.saveCallback?.(msg.name, msg.scope, msg.groups, msg.startPattern, msg.endPattern, msg.rangeDescription, msg.namedRanges, msg.activeRangeId, msg.timePattern, msg.keywords);
+          this.saveCallback?.(msg.name, msg.scope, msg.groups, msg.timePattern, msg.keywords);
           break;
         case 'listSavedConfigs':
           this.listSavedCallback?.();
@@ -59,7 +54,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
           this.deleteCallback?.(msg.name, msg.scope);
           break;
         case 'syncConfig':
-          this.syncConfigCallback?.(msg.groups, msg.startPattern, msg.endPattern, msg.rangeDescription, msg.namedRanges, msg.activeRangeId, msg.timePattern, msg.keywords);
+          this.syncConfigCallback?.(msg.groups, msg.timePattern, msg.keywords);
           break;
         case 'timelineClick':
           this.timelineClickCallback?.(msg.lineNumber);
@@ -68,27 +63,22 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     });
 
     if (this.pendingGroups.length > 0 || this.pendingTimePattern || this.pendingKeywords) {
-      this.sendUpdate(this.pendingGroups, this.pendingStartPattern, this.pendingEndPattern, this.pendingRangeDescription, this.pendingNamedRanges, this.pendingActiveRangeId, this.pendingTimePattern, this.pendingKeywords);
+      this.sendUpdate(this.pendingGroups, this.pendingTimePattern, this.pendingKeywords);
     }
   }
 
   private pendingTimePattern?: TimePatternConfig;
 
-  render(groups: RegexGroup[], startPattern?: string, endPattern?: string, rangeDescription?: string, namedRanges?: import('../types').NamedRange[], activeRangeId?: string, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): void {
+  render(groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): void {
     this.pendingGroups = groups;
-    this.pendingStartPattern = startPattern;
-    this.pendingEndPattern = endPattern;
-    this.pendingRangeDescription = rangeDescription;
-    this.pendingNamedRanges = namedRanges;
-    this.pendingActiveRangeId = activeRangeId;
     this.pendingTimePattern = timePattern;
     this.pendingKeywords = keywords;
     if (this.view) {
-      this.sendUpdate(groups, startPattern, endPattern, rangeDescription, namedRanges, activeRangeId, timePattern, keywords);
+      this.sendUpdate(groups, timePattern, keywords);
     }
   }
 
-  onGo(callback: (groups: RegexGroup[], startPattern?: string, endPattern?: string, rangeDescription?: string, namedRanges?: import('../types').NamedRange[], activeRangeId?: string, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void): void {
+  onGo(callback: (groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void): void {
     this.goCallback = callback;
   }
 
@@ -100,7 +90,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     this.clearCallback = callback;
   }
 
-  onExport(callback: (groups: RegexGroup[], startPattern?: string, endPattern?: string, rangeDescription?: string, namedRanges?: import('../types').NamedRange[], activeRangeId?: string, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void): void {
+  onExport(callback: (groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void): void {
     this.exportCallback = callback;
   }
 
@@ -108,7 +98,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     this.importCallback = callback;
   }
 
-  onSave(callback: (name: string, scope: ConfigScope, groups: RegexGroup[], startPattern?: string, endPattern?: string, rangeDescription?: string, namedRanges?: import('../types').NamedRange[], activeRangeId?: string, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void): void {
+  onSave(callback: (name: string, scope: ConfigScope, groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void): void {
     this.saveCallback = callback;
   }
 
@@ -124,7 +114,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     this.deleteCallback = callback;
   }
 
-  onSyncConfig(callback: (groups: RegexGroup[], startPattern?: string, endPattern?: string, rangeDescription?: string, namedRanges?: import('../types').NamedRange[], activeRangeId?: string, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void): void {
+  onSyncConfig(callback: (groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void): void {
     this.syncConfigCallback = callback;
   }
 
@@ -140,7 +130,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     this.view?.webview.postMessage(data);
   }
 
-  private syncConfigCallback: ((groups: RegexGroup[], startPattern?: string, endPattern?: string, rangeDescription?: string, namedRanges?: import('../types').NamedRange[], activeRangeId?: string, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void) | undefined;
+  private syncConfigCallback: ((groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void) | undefined;
   private timelineClickCallback: ((lineNumber: number) => void) | undefined;
 
   /** 向 webview 发送已保存配置列表 */
@@ -152,72 +142,28 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   }
 
   /** 向 webview 发送指定配置数据（apply/import 结果） */
-  sendConfigApplied(groups: RegexGroup[], startPattern?: string, endPattern?: string, rangeDescription?: string, namedRanges?: import('../types').NamedRange[], activeRangeId?: string, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): void {
+  sendConfigApplied(groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): void {
     this.view?.webview.postMessage({
       type: 'configApplied' as const,
       groups,
-      startPattern,
-      endPattern,
-      rangeDescription,
-      namedRanges,
-      activeRangeId,
       timePattern,
       keywords,
     } satisfies ExtensionMessage);
   }
 
   /** 向 webview 发送导入结果（含错误信息） */
-  sendConfigImported(config?: { groups: RegexGroup[]; startPattern?: string; endPattern?: string; rangeDescription?: string; namedRanges?: import('../types').NamedRange[]; activeRangeId?: string; timePattern?: TimePatternConfig; keywords?: KeywordConfig[] }, error?: string): void {
+  sendConfigImported(config?: { groups: RegexGroup[]; timePattern?: TimePatternConfig; keywords?: KeywordConfig[] }, error?: string): void {
     this.view?.webview.postMessage({
       type: 'configImported' as const,
-      config: config ? { groups: config.groups, startPattern: config.startPattern, endPattern: config.endPattern, rangeDescription: config.rangeDescription, namedRanges: config.namedRanges, activeRangeId: config.activeRangeId, timePattern: config.timePattern, keywords: config.keywords } : undefined,
+      config: config ? { groups: config.groups, timePattern: config.timePattern, keywords: config.keywords } : undefined,
       error,
     } satisfies ExtensionMessage);
   }
 
-  /** 向 webview 发送范围时间信息 */
-  sendRangeTimeInfo(info?: { startTime?: Date; endTime?: Date; durationMs?: number }): void {
-    if (!info) {
-      this.view?.webview.postMessage({ type: 'rangeTimeInfo' as const } satisfies ExtensionMessage);
-      return;
-    }
-    const pad = (n: number, len: number) => String(n).padStart(len, '0');
-    const fmtTs = (d: Date) =>
-      `${pad(d.getFullYear(), 4)}-${pad(d.getMonth() + 1, 2)}-${pad(d.getDate(), 2)} ` +
-      `${pad(d.getHours(), 2)}:${pad(d.getMinutes(), 2)}:${pad(d.getSeconds(), 2)}` +
-      (d.getMilliseconds() > 0 ? `.${pad(d.getMilliseconds(), 3)}` : '');
-    const fmtDur = (ms: number): string => {
-      if (ms < 0) { ms = -ms; }
-      if (ms < 1000) { return `${ms}ms`; }
-      if (ms < 60000) { return `${(ms / 1000).toFixed(1)}s`; }
-      const h = Math.floor(ms / 3600000);
-      const m = Math.floor((ms % 3600000) / 60000);
-      const s = Math.floor((ms % 60000) / 1000);
-      const millis = ms % 1000;
-      const parts: string[] = [];
-      if (h > 0) { parts.push(`${h}h`); }
-      if (m > 0) { parts.push(`${m}m`); }
-      if (s > 0 || parts.length === 0) { parts.push(`${s}s`); }
-      if (millis > 0 && h === 0) { parts[parts.length - 1] = `${s}.${String(millis).padStart(3, '0')}s`; }
-      return parts.join(' ');
-    };
-    this.view?.webview.postMessage({
-      type: 'rangeTimeInfo' as const,
-      startTime: info.startTime ? fmtTs(info.startTime) : undefined,
-      endTime: info.endTime ? fmtTs(info.endTime) : undefined,
-      duration: info.durationMs !== undefined ? fmtDur(info.durationMs) : undefined,
-    } satisfies ExtensionMessage);
-  }
-
-  private sendUpdate(groups: RegexGroup[], startPattern?: string, endPattern?: string, rangeDescription?: string, namedRanges?: import('../types').NamedRange[], activeRangeId?: string, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): void {
+  private sendUpdate(groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): void {
     this.view?.webview.postMessage({
       type: 'updateConfig' as const,
       groups,
-      startPattern,
-      endPattern,
-      rangeDescription,
-      namedRanges,
-      activeRangeId,
       timePattern,
       keywords,
     } satisfies ExtensionMessage);
@@ -288,28 +234,6 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   .section.collapsible .section-header { cursor: pointer; }
   .section.collapsible.auto-open .section-body { display: block; }
   .section.collapsible.auto-open .section-toggle { transform: rotate(90deg); }
-
-  .line-range { display: flex; align-items: center; gap: 4px; padding: 4px; flex-wrap: wrap; }
-  .line-range label { font-size: 11px; color: var(--vscode-descriptionForeground); }
-  .line-range input[type="text"] { background: var(--vscode-input-background);
-        color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border);
-        padding: 1px 4px; border-radius: 2px; font-size: 11px; flex: 1; min-width: 60px; }
-  .line-range .hint { font-size: 10px; color: var(--vscode-descriptionForeground); }
-  .range-time-info { font-size: 10px; color: var(--vscode-descriptionForeground);
-                     padding: 2px 4px 4px 4px; font-style: italic; }
-  .range-card { border: 1px solid var(--vscode-panel-border); border-radius: 3px;
-                margin-bottom: 4px; padding: 3px 4px; }
-  .range-card.active { border-color: var(--vscode-focusBorder); }
-  .range-card-row { display: flex; align-items: center; gap: 3px; }
-  .range-card-row input[type="radio"] { margin: 0; cursor: pointer; accent-color: var(--vscode-focusBorder); flex-shrink: 0; }
-  .range-card-row .range-name { flex: 1; min-width: 50px; background: var(--vscode-input-background);
-        color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border);
-        padding: 1px 3px; border-radius: 2px; font-size: 10px; }
-  .range-card-row .range-from,
-  .range-card-row .range-to { flex: 1; min-width: 55px; background: var(--vscode-input-background);
-        color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border);
-        padding: 1px 4px; border-radius: 2px; font-size: 11px; }
-  .range-card-row .range-lbl { font-size: 10px; color: var(--vscode-descriptionForeground); flex-shrink: 0; }
 
   .keyword-row { display: flex; align-items: center; gap: 3px; margin-bottom: 3px;
                  padding: 3px; background: var(--vscode-input-background); border-radius: 2px; }
@@ -403,70 +327,22 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
 <script>
 (function() {
   const vscode = acquireVsCodeApi();
-  let state = vscode.getState() || { groups: [], startPattern: undefined, endPattern: undefined, rangeDescription: undefined, namedRanges: undefined, activeRangeId: undefined, timePattern: undefined, keywords: [] };
-  let groups = state.groups;
-  let startPattern = state.startPattern;
-  let endPattern = state.endPattern;
-  let rangeDescription = state.rangeDescription;
-  let namedRanges = state.namedRanges || [];
-  let activeRangeId = state.activeRangeId;
+  let state = vscode.getState() || { groups: [], timePattern: undefined, keywords: [] };
+  let groups = state.groups || [];
   let keywords = state.keywords || [];
   let timePattern = state.timePattern || { format: '' };
   var savedConfigsList = [];
-  var rangeTimeInfoHtml = '';
   var matchCounts = null;  // { totalLines, totalMatched, groupCounts, keywordCounts }
 
-  // 向后兼容：旧配置有 startLine/endLine（数字）或 startPattern/endPattern 是数字时自动迁移
-  function migrateOldRanges() {
-    if (namedRanges.length === 0 && (startPattern || endPattern)) {
-      var r = {
-        id: uuid(),
-        name: rangeDescription || 'Range 1',
-        startPattern: String(startPattern || ''),
-        endPattern: String(endPattern || '')
-      };
-      namedRanges = [r];
-      activeRangeId = r.id;
-      startPattern = undefined;
-      endPattern = undefined;
-      rangeDescription = undefined;
-    }
-    // 兼容：旧 namedRanges 中 startLine/endLine 是数字
-    for (var ri = 0; ri < namedRanges.length; ri++) {
-      var nr = namedRanges[ri];
-      if (nr.startLine !== undefined) { nr.startPattern = String(nr.startLine || ''); delete nr.startLine; }
-      if (nr.endLine !== undefined) { nr.endPattern = String(nr.endLine || ''); delete nr.endLine; }
-      if (!nr.startPattern && !nr.endPattern && nr.startLine !== undefined) {
-        nr.startPattern = String(nr.startLine || '');
-        delete nr.startLine;
-      }
-    }
-  }
-  migrateOldRanges();
-
-  function ensureDefaultRange() {
-    if (namedRanges.length === 0) {
-      var r = { id: uuid(), name: 'All lines', startPattern: '', endPattern: '' };
-      namedRanges = [r];
-      activeRangeId = r.id;
-    }
-  }
-
-  function saveState() { vscode.setState({ groups, startPattern, endPattern, rangeDescription, namedRanges, activeRangeId, keywords }); }
+  function saveState() { vscode.setState({ groups, timePattern, keywords }); }
 
   var syncTimer = null;
   function syncToExtension() {
     clearTimeout(syncTimer);
     syncTimer = setTimeout(function() {
-      var tf = document.getElementById('time-format');
       vscode.postMessage({
         type: 'syncConfig',
         groups: groups,
-        startPattern: startPattern,
-        endPattern: endPattern,
-        rangeDescription: rangeDescription,
-        namedRanges: namedRanges,
-        activeRangeId: activeRangeId,
         timePattern: timePattern,
         keywords: keywords
       });
@@ -602,32 +478,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   }
 
   function render() {
-    ensureDefaultRange();
     var html = '';
-
-    // ── Section: Line Ranges (collapsible, default collapsed) ──
-    html += '<div class="section collapsible" id="section-lineRanges">';
-    html += '<button class="section-header" data-action="toggleSection" data-section="lineRanges">';
-    html += '<span class="section-toggle">▶</span><span>Line Ranges</span></button>';
-    html += '<div class="section-body collapsed">';
-    for (var ri = 0; ri < namedRanges.length; ri++) {
-      var rng = namedRanges[ri];
-      var isActive = rng.id === activeRangeId;
-      html += '<div class="range-card' + (isActive ? ' active' : '') + '">';
-      html += '<div class="range-card-row">';
-      html += '<input type="radio" name="active-range" value="' + rng.id + '"' + (isActive ? ' checked' : '') + ' data-action="activateRange" data-ri="' + ri + '" title="Select this range">';
-      html += '<input type="text" class="range-name" value="' + esc(rng.name) + '" data-ri="' + ri + '" placeholder="Range name">';
-      html += '<span class="range-lbl">From</span>';
-      html += '<input type="text" class="range-from" value="' + esc(rng.startPattern || '') + '" data-ri="' + ri + '" placeholder="regex (start)">';
-      html += '<span class="range-lbl">To</span>';
-      html += '<input type="text" class="range-to" value="' + esc(rng.endPattern || '') + '" data-ri="' + ri + '" placeholder="regex (end)">';
-      html += '<button class="remove-btn" data-action="removeRange" data-ri="' + ri + '">&times;</button>';
-      html += '</div>';
-      html += '</div>';
-    }
-    html += '<button class="add-btn" data-action="addRange" style="display:block;width:100%">+ Add Range</button>';
-    html += '<div id="range-time-info" class="range-time-info">' + (rangeTimeInfoHtml || '') + '</div>';
-    html += '</div></div>';  // close section-body and section for Line Ranges
 
     // ── Section: Time Pattern (collapsible, default collapsed) ──
     html += '<div class="section collapsible" id="section-timePattern">';
@@ -756,37 +607,6 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     vscode.postMessage({ type: 'listSavedConfigs' });
     // 重绘 timeline（render 重建了 DOM）
     tlRefresh();
-  }
-
-  function collectStartEnd() {
-    // 从 DOM 收集 namedRanges 数据并解析激活项
-    collectRangeData();
-    var active = null;
-    for (var i = 0; i < namedRanges.length; i++) {
-      if (namedRanges[i].id === activeRangeId) { active = namedRanges[i]; break; }
-    }
-    return {
-      startPattern: active ? active.startPattern : undefined,
-      endPattern: active ? active.endPattern : undefined,
-      rangeDescription: active ? active.name : undefined,
-      namedRanges: namedRanges,
-      activeRangeId: activeRangeId
-    };
-  }
-
-  function collectRangeData() {
-    document.querySelectorAll('.range-name').forEach(function(el) {
-      var ri = parseInt(el.dataset.ri);
-      if (!isNaN(ri) && namedRanges[ri]) namedRanges[ri].name = el.value;
-    });
-    document.querySelectorAll('.range-from').forEach(function(el) {
-      var ri = parseInt(el.dataset.ri);
-      if (!isNaN(ri) && namedRanges[ri]) namedRanges[ri].startPattern = el.value;
-    });
-    document.querySelectorAll('.range-to').forEach(function(el) {
-      var ri = parseInt(el.dataset.ri);
-      if (!isNaN(ri) && namedRanges[ri]) namedRanges[ri].endPattern = el.value;
-    });
   }
 
   // ── 关闭所有颜色弹出面板 ──
@@ -949,49 +769,36 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     var action = btn.dataset.action;
     var gi = parseInt(btn.dataset.gi), ei = parseInt(btn.dataset.ei);
     if (btn.id === 'go-btn') {
-      collectData(); var se = collectStartEnd();
-      startPattern = se.startPattern; endPattern = se.endPattern;
-      rangeDescription = se.rangeDescription;
-      namedRanges = se.namedRanges; activeRangeId = se.activeRangeId;
+      collectData();
       var tf = document.getElementById('time-format');
       timePattern = { format: tf ? tf.value : '' };
       saveState();
-      vscode.postMessage({ type: 'go', groups: groups, startPattern: startPattern, endPattern: endPattern, rangeDescription: rangeDescription, namedRanges: namedRanges, activeRangeId: activeRangeId, timePattern: timePattern, keywords: keywords });
+      vscode.postMessage({ type: 'go', groups: groups, timePattern: timePattern, keywords: keywords });
     } else if (btn.id === 'clear-btn') {
       vscode.postMessage({ type: 'clear' });
     } else if (btn.id === 'reset-btn') {
       groups = []; keywords = [];
       matchCounts = null;
-      startPattern = undefined; endPattern = undefined;
-      rangeDescription = undefined;
-      namedRanges = []; activeRangeId = undefined;
-      rangeTimeInfoHtml = '';
       timePattern = { format: '' }; saveState();
       vscode.postMessage({ type: 'reset' });
       render();
     } else if (btn.id === 'cfg-export-btn') {
-      collectData(); var se2 = collectStartEnd();
-      startPattern = se2.startPattern; endPattern = se2.endPattern;
-      rangeDescription = se2.rangeDescription;
-      namedRanges = se2.namedRanges; activeRangeId = se2.activeRangeId;
+      collectData();
       var tf2 = document.getElementById('time-format');
       timePattern = { format: tf2 ? tf2.value : '' };
       saveState();
-      vscode.postMessage({ type: 'exportConfig', groups: groups, startPattern: startPattern, endPattern: endPattern, rangeDescription: rangeDescription, namedRanges: namedRanges, activeRangeId: activeRangeId, timePattern: timePattern, keywords: keywords });
+      vscode.postMessage({ type: 'exportConfig', groups: groups, timePattern: timePattern, keywords: keywords });
     } else if (btn.id === 'cfg-import-btn') {
       vscode.postMessage({ type: 'importConfig' });
     } else if (btn.id === 'cfg-save-btn') {
-      collectData(); var se3 = collectStartEnd();
-      startPattern = se3.startPattern; endPattern = se3.endPattern;
-      rangeDescription = se3.rangeDescription;
-      namedRanges = se3.namedRanges; activeRangeId = se3.activeRangeId;
+      collectData();
       var tf3 = document.getElementById('time-format');
       timePattern = { format: tf3 ? tf3.value : '' };
       saveState();
       var saveName = document.getElementById('cfg-save-name').value.trim();
       var saveScope = document.getElementById('cfg-save-scope').value;
       if (!saveName) { alert('Please enter a config name.'); return; }
-      vscode.postMessage({ type: 'saveConfig', name: saveName, scope: saveScope, groups: groups, startPattern: startPattern, endPattern: endPattern, rangeDescription: rangeDescription, namedRanges: namedRanges, activeRangeId: activeRangeId, timePattern: timePattern, keywords: keywords });
+      vscode.postMessage({ type: 'saveConfig', name: saveName, scope: saveScope, groups: groups, timePattern: timePattern, keywords: keywords });
     } else if (btn.id === 'cfg-apply-btn') {
       var applySel = document.getElementById('cfg-apply-select');
       var applyVal = applySel ? applySel.value : '';
@@ -1032,24 +839,6 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       var ki = parseInt(btn.dataset.ki);
       keywords.splice(ki, 1); saveState(); render();
     }
-    else if (action === 'addRange') {
-      collectRangeData();
-      var nr = { id: uuid(), name: 'Range ' + (namedRanges.length + 1), startPattern: '', endPattern: '' };
-      namedRanges.push(nr);
-      if (!activeRangeId) { activeRangeId = nr.id; }
-      saveState(); render();
-    } else if (action === 'removeRange') {
-      var ri = parseInt(btn.dataset.ri);
-      var removed = namedRanges[ri];
-      namedRanges.splice(ri, 1);
-      if (activeRangeId === removed.id) {
-        activeRangeId = namedRanges.length > 0 ? namedRanges[0].id : undefined;
-      }
-      saveState(); render();
-    } else if (action === 'activateRange') {
-      var ri = parseInt(btn.dataset.ri);
-      if (namedRanges[ri]) { activeRangeId = namedRanges[ri].id; saveState(); render(); }
-    }
     else if (action === 'toggleSection') {
       var secId = btn.dataset.section;
       var body = document.querySelector('#section-' + secId + ' .section-body');
@@ -1073,16 +862,6 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     var el = e.target, gi = parseInt(el.dataset.gi), ei = parseInt(el.dataset.ei);
     var ki = parseInt(el.dataset.ki);
     if (el.id === 'time-format') { timePattern.format = el.value; saveState(); return; }
-    // Range inputs
-    if (el.classList.contains('range-name') || el.classList.contains('range-from') || el.classList.contains('range-to')) {
-      var ri = parseInt(el.dataset.ri);
-      if (!isNaN(ri) && namedRanges[ri]) {
-        if (el.classList.contains('range-name')) namedRanges[ri].name = el.value;
-        else if (el.classList.contains('range-from')) namedRanges[ri].startPattern = el.value;
-        else if (el.classList.contains('range-to')) namedRanges[ri].endPattern = el.value;
-        saveState(); return;
-      }
-    }
     // Keyword inputs
     if (!isNaN(ki)) {
       if (el.classList.contains('pattern')) { keywords[ki].pattern = el.value; syncToExtension(); }
@@ -1190,29 +969,15 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     var msg = event.data;
     if (msg.type === 'updateConfig') {
       groups = msg.groups;
-      startPattern = msg.startPattern;
-      endPattern = msg.endPattern;
-      rangeDescription = msg.rangeDescription;
-      namedRanges = msg.namedRanges || [];
-      activeRangeId = msg.activeRangeId;
       keywords = msg.keywords || [];
       timePattern = msg.timePattern || { format: '' };
-      rangeTimeInfoHtml = '';
-      migrateOldRanges();
       saveState();
       render();
     } else if (msg.type === 'configApplied') {
       // Apply: load the saved config into the panel (user still needs to click Go)
       groups = msg.groups || [];
-      startPattern = msg.startPattern;
-      endPattern = msg.endPattern;
-      rangeDescription = msg.rangeDescription;
-      namedRanges = msg.namedRanges || [];
-      activeRangeId = msg.activeRangeId;
       keywords = msg.keywords || [];
       timePattern = msg.timePattern || { format: '' };
-      rangeTimeInfoHtml = '';
-      migrateOldRanges();
       saveState();
       render();
     } else if (msg.type === 'configImported') {
@@ -1220,30 +985,11 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
         alert('Import failed: ' + msg.error);
       } else if (msg.config) {
         groups = msg.config.groups || [];
-        startPattern = msg.config.startPattern;
-        endPattern = msg.config.endPattern;
-        rangeDescription = msg.config.rangeDescription;
-        namedRanges = msg.config.namedRanges || [];
-        activeRangeId = msg.config.activeRangeId;
         keywords = msg.config.keywords || [];
         timePattern = msg.config.timePattern || { format: '' };
-        rangeTimeInfoHtml = '';
-        migrateOldRanges();
         saveState();
         render();
       }
-    } else if (msg.type === 'rangeTimeInfo') {
-      var info = msg;
-      if (info.startTime) {
-        var parts = [];
-        if (info.startTime) { parts.push('⏱ ' + info.startTime); }
-        if (info.endTime && info.endTime !== info.startTime) { parts.push(' → ' + info.endTime); }
-        if (info.duration) { parts.push('  (' + info.duration + ')'); }
-        rangeTimeInfoHtml = parts.join('');
-      } else {
-        rangeTimeInfoHtml = '';
-      }
-      render();
     } else if (msg.type === 'timelineData') {
       tlData = msg;
       tlViewMin = null; tlViewMax = null;

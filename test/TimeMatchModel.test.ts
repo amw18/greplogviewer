@@ -501,4 +501,55 @@ describe('TimeMatchModel', () => {
       assert.deepStrictEqual(segs[3], { type: 'literal', value: '/' });
     });
   });
+
+  describe('detectRingBufferStartLine — 环形缓冲区起点检测', () => {
+    it('时间递增时返回 undefined', () => {
+      model.setConfig({ format: 'HH:mm:ss' });
+      const lines = [
+        '10:00:00 line 1',
+        '10:00:01 line 2',
+        '10:00:02 line 3',
+      ];
+      assert.strictEqual(model.detectRingBufferStartLine(lines), undefined);
+    });
+
+    it('检测到时间倒流时返回该行行号', () => {
+      model.setConfig({ format: 'HH:mm:ss' });
+      const lines = [
+        '10:00:00 line 1',
+        '10:00:01 line 2',
+        '09:59:50 line 3',
+        '09:59:51 line 4',
+      ];
+      assert.strictEqual(model.detectRingBufferStartLine(lines), 2);
+    });
+
+    it('跳过开头不可解析的行', () => {
+      model.setConfig({ format: 'HH:mm:ss' });
+      const lines = [
+        'header',
+        '10:00:00 line 1',
+        '10:00:01 line 2',
+        '09:59:50 line 3',
+      ];
+      assert.strictEqual(model.detectRingBufferStartLine(lines), 3);
+    });
+
+    it('中间存在不可解析行时不影响检测', () => {
+      model.setConfig({ format: 'HH:mm:ss' });
+      const lines = [
+        '10:00:00 line 1',
+        'no timestamp',
+        '10:00:02 line 3',
+        '09:59:50 line 4',
+      ];
+      assert.strictEqual(model.detectRingBufferStartLine(lines), 3);
+    });
+
+    it('未配置时间格式时返回 undefined', () => {
+      model.setConfig({ format: '' });
+      const lines = ['10:00:00 line 1', '09:59:50 line 2'];
+      assert.strictEqual(model.detectRingBufferStartLine(lines), undefined);
+    });
+  });
 });

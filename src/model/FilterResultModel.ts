@@ -74,6 +74,11 @@ export class FilterResultModel {
     this.fireChange();
   }
 
+  /** 手动触发变更事件（例如 ring buffer 折叠状态变化时） */
+  notifyChange(): void {
+    this.fireChange();
+  }
+
   private fireChange(): void {
     for (const l of this.changeListeners) { l(); }
   }

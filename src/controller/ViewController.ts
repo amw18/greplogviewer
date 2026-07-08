@@ -1,6 +1,7 @@
 // ViewController — 协调 View 和 Controller，管理编辑器生命周期
 import * as vscode from 'vscode';
 import * as fs from 'fs';
+import * as path from 'path';
 import { RegexGroup, TimePatternConfig, KeywordConfig, ConfigScope, FoldRange, FilterResult } from '../types';
 import { ConfigController } from './ConfigController';
 import { FilterController } from './FilterController';
@@ -9,6 +10,8 @@ import { FilterResultModel } from '../model/FilterResultModel';
 import { RegexGroupModel } from '../model/RegexGroupModel';
 import { TimeMatchModel } from '../model/TimeMatchModel';
 import { ConfigStorageModel } from '../model/ConfigStorageModel';
+import { RingBufferModel } from '../model/RingBufferModel';
+import { StartLineFoldModel } from '../model/StartLineFoldModel';
 import { uuid } from '../model/uuid';
 import { ConfigPanel } from '../view/ConfigPanel';
 import { EditorDecorations } from '../view/EditorDecorations';
@@ -27,14 +30,10 @@ export class ViewController {
   private configPanel: ConfigPanel;
   private decorations: EditorDecorations;
   private currentEditor: vscode.TextEditor | undefined;
-  private currentStartPattern?: string;
-  private currentEndPattern?: string;
-  private currentRangeDescription?: string;
-  private currentNamedRanges?: import('../types').NamedRange[];
-  private currentActiveRangeId?: string;
   private currentKeywords?: KeywordConfig[];
   private isApplyingFilter = false;  // 防止 Go / keyword 更新期间的 attach 重入
   private lastFilterFingerprint = '';  // 跳过重复过滤
+  private context: vscode.ExtensionContext;
 
   /** 缓存：预编译的关键词正则 */
   private compiledKwRegexes: Map<string, RegExp | null> = new Map();
@@ -56,7 +55,7 @@ export class ViewController {
   }
 
   /** 计算会影响 filter 结果的配置指纹 */
-  private computeFilterFingerprint(groups: RegexGroup[], startPattern?: string, endPattern?: string): string {
+  private computeFilterFingerprint(groups: RegexGroup[]): string {
     const parts: string[] = [];
     for (const g of groups) {
       if (g.enabled === false) { continue; }
@@ -67,7 +66,6 @@ export class ViewController {
         }
       }
     }
-    parts.push(startPattern || '', endPattern || '');
     return parts.join('|');
   }
 
@@ -80,26 +78,39 @@ export class ViewController {
     private timeMatchModel: TimeMatchModel,
     private configStorageModel: ConfigStorageModel,
     private timeline: KeywordTimeline,
+    context: vscode.ExtensionContext,
+    private ringBufferModel: RingBufferModel,
+    private startLineFoldModel: StartLineFoldModel,
     private reRegisterFoldProvider?: () => void
   ) {
+    this.context = context;
     this.configPanel = new ConfigPanel();
+    const flagIconUri = vscode.Uri.file(path.join(context.extensionPath, 'assets', 'flag-red.svg'));
     this.decorations = new EditorDecorations(
-      (groupId) => this.regexGroupModel.getGroups().find(g => g.id === groupId)?.color
+      (groupId) => this.regexGroupModel.getGroups().find(g => g.id === groupId)?.color,
+      flagIconUri
     );
 
-    this.configPanel.onGo((g, sp, ep, rd, nr, ar, tp, kw) => this.handleGo(g, sp, ep, rd, nr, ar, tp, kw));
+    this.configPanel.onGo((g, tp, kw) => this.handleGo(g, tp, kw));
     this.configPanel.onReset(() => this.handleReset());
     this.configPanel.onClear(() => this.handleClear());
 
     // Config management callbacks
-    this.configPanel.onExport((g, sp, ep, rd, nr, ar, tp, kw) => this.handleExport(g, sp, ep, rd, nr, ar, tp, kw));
+    this.configPanel.onExport((g, tp, kw) => this.handleExport(g, tp, kw));
     this.configPanel.onImport(() => this.handleImport());
-    this.configPanel.onSave((n, sc, g, sp, ep, rd, nr, ar, tp, kw) => this.handleSave(n, sc, g, sp, ep, rd, nr, ar, tp, kw));
+    this.configPanel.onSave((n, sc, g, tp, kw) => this.handleSave(n, sc, g, tp, kw));
     this.configPanel.onListSaved(() => this.handleListSaved());
     this.configPanel.onApply((n, sc) => this.handleApply(n, sc));
     this.configPanel.onDelete((n, sc) => this.handleDelete(n, sc));
-    this.configPanel.onSyncConfig((g, sp, ep, rd, nr, ar, tp, kw) => this.handleSyncConfig(g, sp, ep, rd, nr, ar, tp, kw));
+    this.configPanel.onSyncConfig((g, tp, kw) => this.handleSyncConfig(g, tp, kw));
     this.configPanel.onTimelineClick((line) => this.handleTimelineClick(line));
+
+    // 监听选择变更，用于检测红旗行点击
+    vscode.window.onDidChangeTextEditorSelection(e => {
+      if (e.textEditor === this.currentEditor) {
+        this.onSelectionChange(e.textEditor);
+      }
+    });
   }
 
   getPanelProvider(): ConfigPanel {
@@ -124,11 +135,6 @@ export class ViewController {
 
     if (savedConfig) {
       this.regexGroupModel.setGroups(savedConfig.groups);
-      this.currentStartPattern = savedConfig.startPattern;
-      this.currentEndPattern = savedConfig.endPattern;
-      this.currentRangeDescription = savedConfig.rangeDescription;
-      this.currentNamedRanges = savedConfig.namedRanges;
-      this.currentActiveRangeId = savedConfig.activeRangeId;
 
       // 恢复时间匹配配置
       if (savedConfig.timePattern) {
@@ -151,17 +157,11 @@ export class ViewController {
         this.reRegisterFoldProvider?.();
         await new Promise(r => setTimeout(r, 100));
 
-        const results = this.filterController.filter(
-          lines, savedConfig.groups,
-          savedConfig.startPattern, savedConfig.endPattern
-        );
+        const results = this.filterController.filter(lines, savedConfig.groups);
         this.filterResultModel.setResults(editorId, results);
 
-        // 计算扫描范围（与 filter 内部一致）
-        const scanStart = savedConfig.startPattern !== undefined
-          ? this.filterController.findFirstMatchLine(lines, savedConfig.startPattern) : 0;
-        const scanEnd = savedConfig.endPattern !== undefined
-          ? this.filterController.findFirstMatchLine(lines, savedConfig.endPattern, lines.length) : lines.length;
+        const scanStart = 0;
+        const scanEnd = lines.length;
 
         // 范围内被 keyword 匹配但未被 group 匹配的行 → 标记为可见
         this.markKeywordVisibleLines(results, lines, this.currentKeywords, scanStart, scanEnd);
@@ -170,6 +170,9 @@ export class ViewController {
 
         // 恢复时间标注
         this.applyFoldAnnotations(editor, editorId, lines, this.currentKeywords);
+
+        // 检测并应用 ring buffer 起点行红旗
+        this.applyRingBufferStart(editor, lines);
 
         // 恢复折叠（FoldingRangeProvider 已定义区域，但切换编辑器时需重新 foldAll）
         await new Promise(r => setTimeout(r, 80));
@@ -186,11 +189,7 @@ export class ViewController {
       }
     } else {
       this.regexGroupModel.setGroups([]);
-      this.currentStartPattern = undefined;
-      this.currentEndPattern = undefined;
-      this.currentRangeDescription = undefined;
-      this.currentNamedRanges = undefined;
-      this.currentActiveRangeId = undefined;
+      this.currentKeywords = undefined;
     }
 
     // 自动检测时间格式（仅在未配置时）
@@ -205,17 +204,13 @@ export class ViewController {
     const tp = this.timeMatchModel.getConfig();
     this.configPanel.render(
       this.regexGroupModel.getGroups(),
-      this.currentStartPattern, this.currentEndPattern,
-      this.currentRangeDescription,
-      this.currentNamedRanges,
-      this.currentActiveRangeId,
       tp.format ? tp : undefined,
       this.currentKeywords
     );
   }
 
   /** 实时同步配置（不触发过滤），供 grep 等无需 Go 的功能使用 */
-  private handleSyncConfig(groups: RegexGroup[], startPattern?: string, endPattern?: string, rangeDescription?: string, namedRanges?: import('../types').NamedRange[], activeRangeId?: string, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): void {
+  private handleSyncConfig(groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): void {
     if (!this.currentEditor) { return; }
     const editor = this.currentEditor;
     const editorId = editor.document.uri.toString();
@@ -225,11 +220,6 @@ export class ViewController {
     const oldKeywordColors = new Map((this.currentKeywords || []).map(k => [k.id, k.color]));
 
     this.regexGroupModel.setGroups(groups);
-    this.currentStartPattern = startPattern;
-    this.currentEndPattern = endPattern;
-    this.currentRangeDescription = rangeDescription;
-    this.currentNamedRanges = namedRanges;
-    this.currentActiveRangeId = activeRangeId;
     this.currentKeywords = keywords;
 
     if (timePattern && timePattern.format) {
@@ -238,8 +228,7 @@ export class ViewController {
 
     // 持久化到 workspaceState（grepKeyword/grepFunction 从此读取）
     this.editorStateModel.saveConfig(editorId, {
-      groups, startPattern, endPattern, rangeDescription,
-      namedRanges, activeRangeId,
+      groups,
       timePattern: this.timeMatchModel.isConfigured() ? this.timeMatchModel.getConfig() : undefined,
       keywords,
     });
@@ -263,10 +252,8 @@ export class ViewController {
     if (!results || results.length === 0) { return; }
 
     const lines = this.readLines(editor);
-    const scanStart = this.currentStartPattern !== undefined
-      ? this.filterController.findFirstMatchLine(lines, this.currentStartPattern) : 0;
-    const scanEnd = this.currentEndPattern !== undefined
-      ? this.filterController.findFirstMatchLine(lines, this.currentEndPattern, lines.length) : lines.length;
+    const scanStart = 0;
+    const scanEnd = lines.length;
 
     this.decorations.apply(results, editor, this.currentKeywords, scanStart, scanEnd, undefined, lines);
     this.applyFoldAnnotations(editor, editorId, lines, this.currentKeywords);
@@ -276,17 +263,12 @@ export class ViewController {
   }
 
   /** Go: 应用过滤 + 颜色高亮 + 创建折叠 + 时间标注 */
-  private async handleGo(groups: RegexGroup[], startPattern?: string, endPattern?: string, rangeDescription?: string, namedRanges?: import('../types').NamedRange[], activeRangeId?: string, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): Promise<void> {
+  private async handleGo(groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): Promise<void> {
     if (!this.currentEditor) { return; }
     const editor = this.currentEditor;
     const editorId = editor.document.uri.toString();
 
     this.regexGroupModel.setGroups(groups);
-    this.currentStartPattern = startPattern;
-    this.currentEndPattern = endPattern;
-    this.currentRangeDescription = rangeDescription;
-    this.currentNamedRanges = namedRanges;
-    this.currentActiveRangeId = activeRangeId;
 
     // 时间匹配配置
     if (timePattern && timePattern.format) {
@@ -296,9 +278,11 @@ export class ViewController {
     // 关键字配置
     this.currentKeywords = keywords;
 
+    // 每次 Go 重置 ring buffer 起点折叠状态
+    this.startLineFoldModel.setState(editorId, 'none');
+
     this.editorStateModel.saveConfig(editorId, {
-      groups, startPattern, endPattern, rangeDescription,
-      namedRanges, activeRangeId,
+      groups,
       timePattern: this.timeMatchModel.isConfigured() ? this.timeMatchModel.getConfig() : undefined,
       keywords,
     });
@@ -310,25 +294,22 @@ export class ViewController {
     const oldRanges = this.filterResultModel.getUnmatchedRanges(editorId);
 
     // 计算是否只需更新 keyword/时间层（filter config 未变）
-    const filterFp = this.computeFilterFingerprint(groups, startPattern, endPattern);
+    const filterFp = this.computeFilterFingerprint(groups);
     const filterChanged = filterFp !== this.lastFilterFingerprint;
     this.lastFilterFingerprint = filterFp;
 
     let results: FilterResult[];
-    let scanStart: number;
-    let scanEnd: number;
 
     if (filterChanged) {
-      results = this.filterController.filter(lines, groups, startPattern, endPattern);
-      scanStart = startPattern !== undefined ? this.filterController.findFirstMatchLine(lines, startPattern) : 0;
-      scanEnd = endPattern !== undefined ? this.filterController.findFirstMatchLine(lines, endPattern, lines.length) : lines.length;
+      results = this.filterController.filter(lines, groups);
     } else {
       // 重用已有过滤结果
       const existing = this.filterResultModel.getResults(editorId);
       results = existing ?? [];
-      scanStart = startPattern !== undefined ? this.filterController.findFirstMatchLine(lines, startPattern) : 0;
-      scanEnd = endPattern !== undefined ? this.filterController.findFirstMatchLine(lines, endPattern, lines.length) : lines.length;
     }
+
+    const scanStart = 0;
+    const scanEnd = lines.length;
 
     // 范围内被 keyword 匹配但未被 group 匹配的行 → 标记为可见，不参与折叠
     this.markKeywordVisibleLines(results, lines, keywords, scanStart, scanEnd);
@@ -352,29 +333,19 @@ export class ViewController {
       // 折叠标注（含时间 + keyword 命中统计）
       this.applyFoldAnnotations(editor, editorId, lines, keywords);
 
+      // 检测并应用 ring buffer 起点行红旗
+      this.applyRingBufferStart(editor, lines);
+
       await this.applyFolding(editor);
     } finally {
       this.isApplyingFilter = false;
     }
-
-    // 发送范围时间信息到 webview
-    this.sendRangeTimeInfo(editorId, lines);
 
     // 发送时间线图表数据
     this.sendTimelineData(editorId, lines, keywords, scanStart, scanEnd);
 
     // 发送匹配行数统计
     this.sendMatchCounts(editorId, lines, keywords, scanStart, scanEnd);
-  }
-
-  /** 计算范围时间信息并发送到 webview */
-  private sendRangeTimeInfo(editorId: string, lines: string[]): void {
-    if (!this.timeMatchModel.isConfigured()) { return; }
-    const matchedLines = this.filterResultModel.getMatchedLines(editorId);
-    if (matchedLines.length === 0) { return; }
-
-    const info = this.timeMatchModel.computeRangeTimeInfo(matchedLines, lines);
-    this.configPanel.sendRangeTimeInfo(info);
   }
 
   /** 计算时间线数据并发送到 KeywordTimeline webview */
@@ -647,6 +618,47 @@ export class ViewController {
     editor.selection = this.adjustCursorOutOfFolds(savedSelection, ranges, editorId);
   }
 
+  /** 检测 ring buffer 时间起点行并绘制红旗图标 */
+  private applyRingBufferStart(editor: vscode.TextEditor, lines: string[]): void {
+    const editorId = editor.document.uri.toString();
+    this.ringBufferModel.clear(editorId);
+    this.decorations.clearRingBufferFlag();
+
+    if (!this.timeMatchModel.isConfigured()) { return; }
+
+    const startLine = this.timeMatchModel.detectRingBufferStartLine(lines);
+    if (startLine === undefined) { return; }
+
+    this.ringBufferModel.setStartLine(editorId, startLine);
+    this.decorations.showRingBufferFlag(startLine, editor);
+  }
+
+  /** 处理编辑器选择变更：若点击了红旗行则循环切换折叠状态 */
+  private onSelectionChange(editor: vscode.TextEditor): void {
+    const editorId = editor.document.uri.toString();
+    const startLine = this.ringBufferModel.getStartLine(editorId);
+    if (startLine === undefined) { return; }
+
+    const activeLine = editor.selection.active.line;
+    if (activeLine !== startLine) { return; }
+
+    this.toggleStartLineFold(editor);
+  }
+
+  /** 切换起点行折叠状态并刷新折叠（public：供命令/测试调用） */
+  async toggleStartLineFold(editor: vscode.TextEditor): Promise<void> {
+    const editorId = editor.document.uri.toString();
+    const startLine = this.ringBufferModel.getStartLine(editorId);
+    if (startLine === undefined) { return; }
+
+    this.startLineFoldModel.cycleState(editorId);
+
+    // 触发 FoldingRangeProvider 刷新
+    this.filterResultModel.notifyChange();
+    await new Promise(r => setTimeout(r, 80));
+    await vscode.commands.executeCommand('editor.foldAll');
+  }
+
   /**
    * 若光标落在折叠区间内，则将其移到该区间前最后一个匹配行；
    * 若前面无匹配行则移到区间后第一个匹配行；若仍无匹配行则保持原位。
@@ -699,6 +711,8 @@ export class ViewController {
 
     this.editorStateModel.setActive(editorId, false);
     this.filterResultModel.clearResults(editorId);
+    this.ringBufferModel.clear(editorId);
+    this.startLineFoldModel.clear(editorId);
     this.lastFilterFingerprint = '';  // 清除后必须重置指纹，否则再次 Go 会误判为未变更
     this.decorations.clear();
     this.decorations.clearTimeAnnotations();
@@ -714,15 +728,12 @@ export class ViewController {
     const editorId = editor.document.uri.toString();
 
     this.regexGroupModel.setGroups([]);
-    this.currentStartPattern = undefined;
-    this.currentEndPattern = undefined;
-    this.currentRangeDescription = undefined;
-    this.currentNamedRanges = undefined;
-    this.currentActiveRangeId = undefined;
     this.currentKeywords = undefined;
     this.timeMatchModel.setConfig({ format: '' });
     this.editorStateModel.clearEditor(editorId);
     this.filterResultModel.clearResults(editorId);
+    this.ringBufferModel.clear(editorId);
+    this.startLineFoldModel.clear(editorId);
     this.lastFilterFingerprint = '';  // 重置后必须清空指纹缓存
     this.decorations.clear();
     this.decorations.clearTimeAnnotations();
@@ -744,12 +755,15 @@ export class ViewController {
     if (groups.length === 0) { return; }
 
     const lines = this.readLines(editor);
-    const results = this.filterController.filter(lines, groups, this.currentStartPattern, this.currentEndPattern);
+    const results = this.filterController.filter(lines, groups);
     this.filterResultModel.setResults(editorId, results);
     this.decorations.apply(results, editor, this.currentKeywords);
 
     // 重新计算折叠标注
     this.applyFoldAnnotations(editor, editorId, lines, this.currentKeywords);
+
+    // 文档编辑后重新检测 ring buffer 起点
+    this.applyRingBufferStart(editor, lines);
   }
 
   private readLines(editor: vscode.TextEditor): string[] {
@@ -763,14 +777,14 @@ export class ViewController {
   // ── Config Management Handlers ──
 
   /** Export: 将当前配置写入用户指定的本地 JSON 文件 */
-  private async handleExport(groups: RegexGroup[], startPattern?: string, endPattern?: string, rangeDescription?: string, namedRanges?: import('../types').NamedRange[], activeRangeId?: string, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): Promise<void> {
+  private async handleExport(groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): Promise<void> {
     const uri = await vscode.window.showSaveDialog({
       defaultUri: vscode.Uri.file('greplogviewer-config.json'),
       filters: { 'JSON Files': ['json'] },
     });
     if (!uri) { return; }
 
-    const content = JSON.stringify({ groups, startPattern, endPattern, rangeDescription, namedRanges, activeRangeId, timePattern, keywords }, null, 2);
+    const content = JSON.stringify({ groups, timePattern, keywords }, null, 2);
     try {
       fs.writeFileSync(uri.fsPath, content, 'utf-8');
       vscode.window.showInformationMessage(`Config exported to ${uri.fsPath}`);
@@ -798,11 +812,6 @@ export class ViewController {
       }
       this.configPanel.sendConfigImported({
         groups,
-        startPattern: data.startPattern,
-        endPattern: data.endPattern,
-        rangeDescription: data.rangeDescription,
-        namedRanges: data.namedRanges,
-        activeRangeId: data.activeRangeId,
         timePattern: data.timePattern,
         keywords: data.keywords,
       });
@@ -814,7 +823,7 @@ export class ViewController {
   }
 
   /** Save: 将当前配置保存到 workspaceState 或 globalState（命名） */
-  private async handleSave(name: string, scope: ConfigScope, groups: RegexGroup[], startPattern?: string, endPattern?: string, rangeDescription?: string, namedRanges?: import('../types').NamedRange[], activeRangeId?: string, timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): Promise<void> {
+  private async handleSave(name: string, scope: ConfigScope, groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): Promise<void> {
     if (this.configStorageModel.exists(name, scope)) {
       const answer = await vscode.window.showWarningMessage(
         `Config "${name}" already exists in ${scope}. Overwrite?`,
@@ -824,9 +833,7 @@ export class ViewController {
       if (answer !== 'Overwrite') { return; }
     }
 
-    await this.configStorageModel.save(name, {
-      groups, startPattern, endPattern, rangeDescription, namedRanges, activeRangeId, timePattern, keywords,
-    }, scope);
+    await this.configStorageModel.save(name, { groups, timePattern, keywords }, scope);
 
     vscode.window.showInformationMessage(`Config "${name}" saved to ${scope}.`);
     // Refresh the webview dropdown
@@ -849,11 +856,6 @@ export class ViewController {
 
     this.configPanel.sendConfigApplied(
       entry.config.groups,
-      entry.config.startPattern,
-      entry.config.endPattern,
-      entry.config.rangeDescription,
-      entry.config.namedRanges,
-      entry.config.activeRangeId,
       entry.config.timePattern,
       entry.config.keywords,
     );
@@ -995,8 +997,6 @@ export class ViewController {
     const tp = this.timeMatchModel.getConfig();
     this.configPanel.render(
       this.regexGroupModel.getGroups(),
-      this.currentStartPattern, this.currentEndPattern,
-      this.currentRangeDescription, this.currentNamedRanges, this.currentActiveRangeId,
       tp.format ? tp : undefined,
       this.currentKeywords
     );
@@ -1006,12 +1006,10 @@ export class ViewController {
     if (this.editorStateModel.isActive(editorId)) {
       const lines = this.readLines(editor);
       const groups = this.regexGroupModel.getGroups();
-      const results = this.filterController.filter(lines, groups, this.currentStartPattern, this.currentEndPattern);
+      const results = this.filterController.filter(lines, groups);
 
-      const scanStart = this.currentStartPattern !== undefined
-        ? this.filterController.findFirstMatchLine(lines, this.currentStartPattern) : 0;
-      const scanEnd = this.currentEndPattern !== undefined
-        ? this.filterController.findFirstMatchLine(lines, this.currentEndPattern, lines.length) : lines.length;
+      const scanStart = 0;
+      const scanEnd = lines.length;
 
       this.markKeywordVisibleLines(results, lines, this.currentKeywords, scanStart, scanEnd);
 
@@ -1077,19 +1075,12 @@ export class ViewController {
    */
   async testGo(config: {
     groups?: RegexGroup[];
-    startPattern?: string;
-    endPattern?: string;
     timePattern?: TimePatternConfig;
     keywords?: KeywordConfig[];
   }): Promise<void> {
     const g = config.groups || [];
     await this.handleGo(
       g,
-      config.startPattern,
-      config.endPattern,
-      undefined,          // rangeDescription
-      undefined,          // namedRanges
-      undefined,          // activeRangeId
       config.timePattern,
       config.keywords
     );
@@ -1099,11 +1090,6 @@ export class ViewController {
   testSyncConfig(config: { groups?: RegexGroup[]; keywords?: KeywordConfig[] }): void {
     this.handleSyncConfig(
       config.groups || this.regexGroupModel.getGroups(),
-      this.currentStartPattern,
-      this.currentEndPattern,
-      this.currentRangeDescription,
-      this.currentNamedRanges,
-      this.currentActiveRangeId,
       this.timeMatchModel.isConfigured() ? this.timeMatchModel.getConfig() : undefined,
       config.keywords || this.currentKeywords
     );
@@ -1157,6 +1143,16 @@ export class ViewController {
     return this.timeline.getLastTimelineData();
   }
 
+  /** Test: get ring buffer detection/fold state for assertion */
+  testGetRingBufferState(): Record<string, any> {
+    if (!this.currentEditor) { return {}; }
+    const editorId = this.currentEditor.document.uri.toString();
+    return {
+      startLine: this.ringBufferModel.getStartLine(editorId),
+      foldState: this.startLineFoldModel.getState(editorId),
+    };
+  }
+
   /** Test: get time info for the matched range */
   testGetTimeInfo(): Record<string, any> {
     if (!this.currentEditor) { return {}; }
@@ -1193,7 +1189,6 @@ export class ViewController {
     const lines = this.readLines(editor);
 
     const rawRanges = this.filterResultModel.getUnmatchedRanges(editorId);
-    if (rawRanges.length === 0) { return []; }
 
     let foldRanges: FoldRange[];
     if (this.timeMatchModel.isConfigured()) {
@@ -1210,6 +1205,18 @@ export class ViewController {
 
     if (this.currentKeywords && this.currentKeywords.length > 0) {
       foldRanges = this.enrichWithKeywordHits(foldRanges, lines, this.currentKeywords);
+    }
+
+    // 追加 ring buffer 起点折叠区间（如有）
+    const rbStart = this.ringBufferModel.getStartLine(editorId);
+    const foldState = this.startLineFoldModel.getState(editorId);
+    const lineCount = editor.document.lineCount;
+    if (rbStart !== undefined && foldState && foldState !== 'none') {
+      if (foldState === 'foldBelow' && rbStart < lineCount - 1) {
+        foldRanges.push({ start: rbStart, end: lineCount - 1, lineCount: lineCount - rbStart });
+      } else if (foldState === 'foldAbove' && rbStart > 0) {
+        foldRanges.push({ start: 0, end: rbStart - 1, lineCount: rbStart });
+      }
     }
 
     return foldRanges.map(fr => {

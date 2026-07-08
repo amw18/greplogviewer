@@ -2,7 +2,7 @@
   "name": "greplogviewer",
   "displayName": "Grep Log Viewer",
   "description": "Regex-based text file viewer with color highlighting and auto-folding",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "publisher": "any-tool",
   "license": "MIT",
   "repository": {
@@ -22,6 +22,7 @@
     "onCommand:greplogviewer.grepKeyword",
     "onCommand:greplogviewer.grepFunction",
     "onCommand:greplogviewer.addKeyword",
+    "onCommand:greplogviewer.toggleStartLineFold",
     "onCommand:greplogviewer._testGo",
     "onCommand:greplogviewer._testSyncConfig",
     "onCommand:greplogviewer._testClear",
@@ -29,7 +30,8 @@
     "onCommand:greplogviewer._testGetState",
     "onCommand:greplogviewer._testOpenFile",
     "onCommand:greplogviewer._testGetVisibleRanges",
-    "onCommand:greplogviewer._testGetTimelineData"
+    "onCommand:greplogviewer._testGetTimelineData",
+    "onCommand:greplogviewer._testGetRingBufferState"
   ],
   "main": "./out/extension.js",
   "contributes": {

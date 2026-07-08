@@ -3,34 +3,11 @@ import * as vscode from 'vscode';
 import { RegexGroup, EditorConfig } from '../types';
 
 export class EditorStateModel {
-  private configMap = new Map<string, RegexGroup[]>();
   private activeSet = new Set<string>();
   private context: vscode.ExtensionContext;
-  /** 编辑器级别的行范围配置 */
-  private lineRangeMap = new Map<string, { startPattern?: string; endPattern?: string }>();
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
-  }
-
-  /** 获取编辑器配置 */
-  getConfig(editorId: string): RegexGroup[] | undefined {
-    return this.configMap.get(editorId);
-  }
-
-  /** 设置编辑器配置并持久化 */
-  setConfig(editorId: string, groups: RegexGroup[]): void {
-    this.configMap.set(editorId, groups);
-  }
-
-  /** 获取行范围配置 */
-  getLineRange(editorId: string): { startPattern?: string; endPattern?: string } {
-    return this.lineRangeMap.get(editorId) || {};
-  }
-
-  /** 设置行范围配置 */
-  setLineRange(editorId: string, startPattern?: string, endPattern?: string): void {
-    this.lineRangeMap.set(editorId, { startPattern, endPattern });
   }
 
   /** 是否已激活过滤 */
@@ -49,8 +26,6 @@ export class EditorStateModel {
 
   /** 清除编辑器状态 */
   clearEditor(editorId: string): void {
-    this.configMap.delete(editorId);
-    this.lineRangeMap.delete(editorId);
     this.activeSet.delete(editorId);
   }
 
