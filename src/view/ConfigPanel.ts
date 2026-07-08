@@ -322,10 +322,10 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   .cfg-mgmt-row input[type="text"] { flex: 1; min-width: 0;
         background: var(--vscode-input-background);
         color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border);
-        padding: 1px 4px; border-radius: 2px; font-size: 11px; }
+        padding: 1px 2px; border-radius: 2px; font-size: 10px; height: 18px; box-sizing: border-box; }
   .cfg-mgmt-row select { background: var(--vscode-dropdown-background);
         color: var(--vscode-dropdown-foreground); border: 1px solid var(--vscode-dropdown-border);
-        padding: 1px 2px; border-radius: 2px; font-size: 10px; }
+        padding: 1px 2px; border-radius: 2px; font-size: 10px; height: 18px; box-sizing: border-box; }
   .cfg-mgmt-row .cfg-btn { background: var(--vscode-button-secondaryBackground);
         color: var(--vscode-button-secondaryForeground); border: none;
         padding: 2px 6px; border-radius: 2px; cursor: pointer; font-size: 10px;
@@ -504,13 +504,13 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     html += '<span class="section-toggle ' + (advanceOpen ? 'open' : '') + '">' + (advanceOpen ? '▼' : '▶') + '</span><span>Advance</span></button>';
     html += '<div class="section-body ' + (advanceOpen ? '' : 'collapsed') + '">';
 
-    // Time Pattern sub-item
+    // Time Pattern sub-item (single row, input matches Solution dropdown style)
     html += '<div class="advance-sub-item">';
-    html += '<div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">';
-    html += '<label style="font-size:11px;color:var(--vscode-descriptionForeground)">Time Pattern</label>';
+    html += '<div class="cfg-mgmt-row">';
+    html += '<label style="font-size:11px;color:var(--vscode-descriptionForeground);white-space:nowrap">Time Pattern</label>';
     html += '<span class="info-icon" title="Write the timestamp exactly as it appears in your log. Tokens: YYYY YY MM DD HH mm ss SSS. Optional parts: {...}. Example: [YYYY-MM-DD HH:mm:ss{.SSS}]">?</span>';
+    html += '<input type="text" id="time-format" value="' + esc(timePattern?.format || '') + '" placeholder="e.g. [YYYY-MM-DD HH:mm:ss{.SSS}]">';
     html += '</div>';
-    html += '<input type="text" id="time-format" value="' + esc(timePattern?.format || '') + '" placeholder="e.g. [YYYY-MM-DD HH:mm:ss{.SSS}]" style="width:100%">';
     html += '</div>';
 
     // Solution sub-item
