@@ -91,6 +91,12 @@ export function activate(context: vscode.ExtensionContext) {
     if (!text) { return; }
     await viewController?.addKeyword(text);
   });
+  const gotoPrevHitCmd = vscode.commands.registerCommand('greplogviewer.gotoPrevHit', () => {
+    return viewController?.gotoPrevNextHit('prev');
+  });
+  const gotoNextHitCmd = vscode.commands.registerCommand('greplogviewer.gotoNextHit', () => {
+    return viewController?.gotoPrevNextHit('next');
+  });
 
   // ── Test-only commands for autotest automation ──
   const testGoCmd = vscode.commands.registerCommand('greplogviewer._testGo', async (config: any) => {
@@ -153,6 +159,8 @@ export function activate(context: vscode.ExtensionContext) {
     grepKeywordCmd,
     grepFunctionCmd,
     addKeywordCmd,
+    gotoPrevHitCmd,
+    gotoNextHitCmd,
     testGoCmd,
     testSyncConfigCmd,
     testClearCmd,

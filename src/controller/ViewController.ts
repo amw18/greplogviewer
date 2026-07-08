@@ -945,6 +945,115 @@ export class ViewController {
     }
   }
 
+  /**
+   * Ctrl+Up/Down 跳转：在当前命中的 group/keyword 行之间循环跳转。
+   * 若当前行同时命中 group 和 keyword，keyword 优先。
+   * 若当前行未命中任何 group/keyword，则在上/下一个任意命中行之间跳转。
+   * @returns 跳转后的位置信息，未跳转返回 undefined
+   */
+  gotoPrevNextHit(direction: 'prev' | 'next'): { cursorLine: number } | undefined {
+    const editor = this.currentEditor;
+    if (!editor) { return; }
+
+    const groups = this.regexGroupModel.getGroups();
+    const keywords = this.currentKeywords;
+    if (groups.length === 0 && (!keywords || keywords.length === 0)) { return; }
+
+    const editorId = editor.document.uri.toString();
+    const currentLine = editor.selection.active.line;
+    const lines = this.readLines(editor);
+
+    // 按 groupId 收集命中行
+    const groupHits = new Map<string, number[]>();
+    const results = this.filterResultModel.getResults(editorId);
+    if (results) {
+      for (const r of results) {
+        if (r.groupId && r.groupId !== ViewController.KW_VISIBLE_ID) {
+          const list = groupHits.get(r.groupId) || [];
+          list.push(r.lineNumber);
+          groupHits.set(r.groupId, list);
+        }
+      }
+    }
+    for (const list of groupHits.values()) { list.sort((a, b) => a - b); }
+
+    // 按 keywordId 收集命中行（尊重 matchScope）
+    const kwHits = new Map<string, number[]>();
+    if (keywords && keywords.length > 0) {
+      const groupMatchedLines = new Set<number>();
+      if (results) {
+        for (const r of results) {
+          if (r.groupId && r.groupId !== ViewController.KW_VISIBLE_ID) {
+            groupMatchedLines.add(r.lineNumber);
+          }
+        }
+      }
+      const compiledKws = this.getCompiledKeywordRegexes(keywords);
+      for (const { kw, regex } of compiledKws) {
+        const hits: number[] = [];
+        for (let i = 0; i < lines.length; i++) {
+          if (regex.test(lines[i])) {
+            if (kw.matchScope === 'matched' && !groupMatchedLines.has(i)) { continue; }
+            hits.push(i);
+          }
+        }
+        kwHits.set(kw.id, hits);
+      }
+    }
+
+    // 确定当前行优先属于哪个 keyword / group
+    let activeHits: number[] | undefined;
+    if (keywords) {
+      for (const kw of keywords) {
+        if (kw.enabled === false) { continue; }
+        const hits = kwHits.get(kw.id);
+        if (hits && hits.includes(currentLine)) {
+          activeHits = hits;
+          break;
+        }
+      }
+    }
+    if (!activeHits) {
+      for (const hits of groupHits.values()) {
+        if (hits.includes(currentLine)) {
+          activeHits = hits;
+          break;
+        }
+      }
+    }
+
+    // 当前行未命中任何 group/keyword：在所有命中行并集中跳转
+    if (!activeHits) {
+      const union = new Set<number>();
+      for (const hits of kwHits.values()) { hits.forEach(l => union.add(l)); }
+      for (const hits of groupHits.values()) { hits.forEach(l => union.add(l)); }
+      activeHits = Array.from(union).sort((a, b) => a - b);
+    }
+
+    if (activeHits.length === 0) { return undefined; }
+
+    let targetLine: number | undefined;
+    if (direction === 'next') {
+      for (const l of activeHits) {
+        if (l > currentLine) { targetLine = l; break; }
+      }
+      if (targetLine === undefined) { targetLine = activeHits[0]; }
+    } else {
+      for (let i = activeHits.length - 1; i >= 0; i--) {
+        if (activeHits[i] < currentLine) { targetLine = activeHits[i]; break; }
+      }
+      if (targetLine === undefined) { targetLine = activeHits[activeHits.length - 1]; }
+    }
+
+    if (targetLine !== undefined) {
+      const pos = new vscode.Position(targetLine, 0);
+      editor.selection = new vscode.Selection(pos, pos);
+      editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+      return { cursorLine: targetLine };
+    }
+    return undefined;
+  }
+
   /** 计算所有包含关键字匹配的行号集合 */
   private computeKeywordMatchedLines(lines: string[], keywords: import('../types').KeywordConfig[]): Set<number> {
     const matchedLines = new Set<number>();
