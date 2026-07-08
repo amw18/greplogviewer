@@ -72,18 +72,6 @@
         "title": "Goto Next Hit"
       }
     ],
-    "keybindings": [
-      {
-        "command": "greplogviewer.gotoPrevHit",
-        "key": "ctrl+up",
-        "when": "editorTextFocus"
-      },
-      {
-        "command": "greplogviewer.gotoNextHit",
-        "key": "ctrl+down",
-        "when": "editorTextFocus"
-      }
-    ],
     "menus": {
       "editor/context": [
         {
@@ -100,6 +88,14 @@
           "command": "greplogviewer.addKeyword",
           "when": "editorHasSelection",
           "group": "greplogviewer@3"
+        },
+        {
+          "command": "greplogviewer.gotoPrevHit",
+          "group": "greplogviewer@4"
+        },
+        {
+          "command": "greplogviewer.gotoNextHit",
+          "group": "greplogviewer@5"
         }
       ]
     }
