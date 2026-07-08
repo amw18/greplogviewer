@@ -502,6 +502,47 @@ describe('TimeMatchModel', () => {
     });
   });
 
+  describe('autoDetect — 自动识别常见日志时间格式', () => {
+    it('识别 Android logcat 格式 MM-DD HH:mm:ss.SSS', () => {
+      const lines = [
+        '01-23 12:00:00.123 I/Tag: message',
+        '01-23 12:00:01.456 I/Tag: message',
+        '01-23 12:00:02.789 I/Tag: message',
+      ];
+      const detected = model.autoDetect(lines);
+      assert.ok(detected);
+      assert.strictEqual(detected!.format, 'MM-DD HH:mm:ss.SSS');
+    });
+
+    it('识别 Linux kernel 格式 [    s.SSSSSS]', () => {
+      const lines = [
+        '[    0.000000] kernel message',
+        '[    1.234567] kernel message',
+        '[    2.345678] kernel message',
+      ];
+      const detected = model.autoDetect(lines);
+      assert.ok(detected);
+      assert.strictEqual(detected!.format, '[    s.SSSSSS]');
+    });
+
+    it('识别 ISO 风格 YYYY-MM-DD HH:mm:ss.SSS', () => {
+      const lines = [
+        '2024-01-23 12:00:00.123 message',
+        '2024-01-23 12:00:01.456 message',
+        '2024-01-23 12:00:02.789 message',
+      ];
+      const detected = model.autoDetect(lines);
+      assert.ok(detected);
+      assert.strictEqual(detected!.format, 'YYYY-MM-DD HH:mm:ss.SSS');
+    });
+
+    it('样本不足或无法识别时返回 null', () => {
+      const lines = ['no timestamp here', 'also no timestamp'];
+      const detected = model.autoDetect(lines);
+      assert.strictEqual(detected, null);
+    });
+  });
+
   describe('detectRingBufferStartLine — 环形缓冲区起点检测', () => {
     it('时间递增时返回 undefined', () => {
       model.setConfig({ format: 'HH:mm:ss' });

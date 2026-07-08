@@ -53,16 +53,20 @@ export class TimeMatchModel {
   autoDetect(lines: string[]): TimePatternConfig | null {
     if (lines.length === 0) { return null; }
 
-    // 常见格式按优先级排序
+    // 常见格式按优先级排序（覆盖 Android / Kernel 等常见日志）
     const formats = [
       '[YYYY-MM-DD HH:mm:ss.SSS]',
-      '[YY-MM-DD HH:mm:ss.SSS]',
       '[YYYY-MM-DD HH:mm:ss]',
+      '[YY-MM-DD HH:mm:ss.SSS]',
       '[YY-MM-DD HH:mm:ss]',
       'YYYY-MM-DD HH:mm:ss.SSS',
       'YYYY-MM-DD HH:mm:ss',
-      '[s.SSSSSS]',
+      'MM-DD HH:mm:ss.SSS',
+      'MM-DD HH:mm:ss',
+      'HH:mm:ss.SSS',
+      'HH:mm:ss',
       '[    s.SSSSSS]',
+      '[s.SSSSSS]',
     ];
 
     const sampleSize = Math.min(5, lines.length);

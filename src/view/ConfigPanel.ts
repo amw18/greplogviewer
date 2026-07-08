@@ -311,11 +311,8 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   /* ── Advance section ── */
   .advance-sub-item { margin-bottom: 6px; }
   .advance-sub-item:last-child { margin-bottom: 0; }
-  .info-icon { display: inline-flex; align-items: center; justify-content: center;
-    width: 14px; height: 14px; border-radius: 50%;
-    background: var(--vscode-button-secondaryBackground);
-    color: var(--vscode-button-secondaryForeground);
-    font-size: 9px; cursor: help; user-select: none; }
+  .advance-label { font-size: 11px; color: var(--vscode-descriptionForeground);
+    white-space: nowrap; width: 58px; text-align: right; flex-shrink: 0; }
   .cfg-mgmt-row { display: flex; align-items: center; gap: 3px; margin-bottom: 4px; }
   .cfg-mgmt-row label { font-size: 10px; color: var(--vscode-descriptionForeground);
                         white-space: nowrap; }
@@ -504,19 +501,18 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     html += '<span class="section-toggle ' + (advanceOpen ? 'open' : '') + '">' + (advanceOpen ? '▼' : '▶') + '</span><span>Advance</span></button>';
     html += '<div class="section-body ' + (advanceOpen ? '' : 'collapsed') + '">';
 
-    // Time Pattern sub-item (single row, input matches Solution dropdown style)
+    // Time Fmt sub-item (single row, input matches Solution dropdown style)
     html += '<div class="advance-sub-item">';
     html += '<div class="cfg-mgmt-row">';
-    html += '<label style="font-size:11px;color:var(--vscode-descriptionForeground);white-space:nowrap">Time Pattern</label>';
-    html += '<span class="info-icon" title="Write the timestamp exactly as it appears in your log. Tokens: YYYY YY MM DD HH mm ss SSS. Optional parts: {...}. Example: [YYYY-MM-DD HH:mm:ss{.SSS}]">?</span>';
-    html += '<input type="text" id="time-format" value="' + esc(timePattern?.format || '') + '" placeholder="e.g. [YYYY-MM-DD HH:mm:ss{.SSS}]">';
+    html += '<span class="advance-label">Time Fmt:</span>';
+    html += '<input type="text" id="time-format" value="' + esc(timePattern?.format || '') + '" placeholder="" title="Write the timestamp exactly as it appears. Tokens: YYYY YY MM DD HH mm ss SSS. Optional parts: {...}. Example: [YYYY-MM-DD HH:mm:ss{.SSS}]">';
     html += '</div>';
     html += '</div>';
 
     // Solution sub-item
     html += '<div class="advance-sub-item">';
     html += '<div class="cfg-mgmt-row">';
-    html += '<span style="font-size:11px;color:var(--vscode-descriptionForeground);white-space:nowrap">Solution:</span>';
+    html += '<span class="advance-label">Solution:</span>';
     html += '<select id="cfg-apply-select" style="flex:1;min-width:0"><option value="">-- Select saved --</option></select>';
     html += '<button class="cfg-btn" id="cfg-apply-btn" title="Apply">▶</button>';
     html += '<button class="cfg-btn danger" id="cfg-delete-btn" title="Delete">✕</button>';

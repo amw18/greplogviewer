@@ -75,7 +75,7 @@ describe('TimeMatchModel — autoDetect', () => {
     assert.strictEqual(result!.format, 'YYYY-MM-DD HH:mm:ss');
   });
 
-  it('检测 Linux kernel 格式 [s.SSSSSS]', () => {
+  it('检测 Linux kernel 格式 [    s.SSSSSS]', () => {
     const lines = [
       '[    0.000000] Booting Linux...',
       '[    1.234567] Initializing cgroup',
@@ -83,8 +83,7 @@ describe('TimeMatchModel — autoDetect', () => {
     ];
     const result = model.autoDetect(lines);
     assert.ok(result !== null);
-    // Linux kernel 无空格格式
-    assert.strictEqual(result!.format, '[s.SSSSSS]');
+    assert.strictEqual(result!.format, '[    s.SSSSSS]');
   });
 
   it('检测 Linux kernel 格式 [    s.SSSSSS]（固定空格）', () => {

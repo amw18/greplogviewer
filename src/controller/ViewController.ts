@@ -214,8 +214,11 @@ export class ViewController {
     this.regexGroupModel.setGroups(groups);
     this.currentKeywords = keywords;
 
-    if (timePattern && timePattern.format) {
-      this.timeMatchModel.setConfig(timePattern);
+    this.timeMatchModel.setConfig(timePattern || { format: '' });
+    if (!this.timeMatchModel.isConfigured()) {
+      const lines = this.readLines(editor);
+      const autoTp = this.timeMatchModel.autoDetect(lines);
+      if (autoTp) { this.timeMatchModel.setConfig(autoTp); }
     }
 
     // 持久化到 workspaceState（grepKeyword/grepFunction 从此读取）
@@ -262,9 +265,12 @@ export class ViewController {
 
     this.regexGroupModel.setGroups(groups);
 
-    // 时间匹配配置
-    if (timePattern && timePattern.format) {
-      this.timeMatchModel.setConfig(timePattern);
+    // 时间匹配配置：用户留空时自动检测常见格式
+    this.timeMatchModel.setConfig(timePattern || { format: '' });
+    const lines = this.readLines(editor);
+    if (!this.timeMatchModel.isConfigured()) {
+      const autoTp = this.timeMatchModel.autoDetect(lines);
+      if (autoTp) { this.timeMatchModel.setConfig(autoTp); }
     }
 
     // 关键字配置
@@ -277,7 +283,6 @@ export class ViewController {
     });
     this.editorStateModel.setActive(editorId, true);
 
-    const lines = this.readLines(editor);
 
     // 当前已存在的折叠区间（用于判断是否需要先清除旧折叠）
     const oldRanges = this.filterResultModel.getUnmatchedRanges(editorId);
