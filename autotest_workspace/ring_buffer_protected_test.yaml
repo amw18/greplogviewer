@@ -1,0 +1,63 @@
+name: "Ring buffer start line remains visible even when unmatched"
+description: "Verify the ring buffer start line is not folded away by regular filter unmatched ranges"
+plugin: "./.."
+workspace: "."
+timeout: 120000
+steps:
+  - description: "Open ring buffer test log file"
+    command: "greplogviewer._testOpenFile"
+    args:
+      - "./ring_buffer_test.log"
+    waitAfter: 1500
+
+  - description: "Focus editor and wait for activation"
+    command: "workbench.action.focusActiveEditorGroup"
+    waitAfter: 1500
+
+  - description: "Prime extension activation"
+    command: "greplogviewer._testGetState"
+    waitAfter: 1000
+
+  - description: "Apply filter that does NOT match the start line (line 4)"
+    command: "greplogviewer._testGo"
+    args:
+      - groups:
+          - id: "group-first"
+            name: "First cycle only"
+            color: "#ff0000"
+            expressions:
+              - id: "expr-first"
+                pattern: "first cycle"
+                flags: ""
+                operator: "and"
+        timePattern:
+          format: "YYYY-MM-DD HH:mm:ss"
+    waitAfter: 1500
+
+  - description: "Verify start line is detected"
+    command: "greplogviewer._testGetRingBufferState"
+    waitAfter: 500
+    assert:
+      type: "return_value_contains"
+      expected: '"startLine":4'
+      message: "Start line should be detected at line 4"
+
+  - description: "Toggle foldBelow via command"
+    command: "greplogviewer.toggleStartLineFold"
+    waitAfter: 1000
+
+  - description: "Verify foldBelow range starts at startLine+1, not startLine"
+    command: "greplogviewer._testGetState"
+    waitAfter: 800
+    assert:
+      type: "return_value_contains"
+      expected: '"startLine":5,"endLine":7'
+      message: "Start line 4 must remain visible; fold below should be 5-7"
+
+  - description: "Verify no range starts at line 4"
+    command: "greplogviewer._testGetState"
+    waitAfter: 500
+    assert:
+      type: "return_value_not_contains"
+      expected: '"startLine":4,"endLine":'
+      message: "Line 4 must not be included in any unmatched fold range"

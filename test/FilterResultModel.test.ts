@@ -74,4 +74,27 @@ describe('FilterResultModel', () => {
       { start: 5, end: 9 },
     ]);
   });
+
+  it('受保护行不被包含在未匹配区间中', () => {
+    makeResults('doc1', [0, 2, 4]); // 未匹配 1,3,5-9
+    model.setProtectedLines('doc1', new Set([3, 7]));
+    const ranges = model.getUnmatchedRanges('doc1');
+    assert.deepStrictEqual(ranges, [
+      { start: 1, end: 1 },
+      { start: 5, end: 6 },
+      { start: 8, end: 9 },
+    ]);
+  });
+
+  it('清除受保护行后恢复原始未匹配区间', () => {
+    makeResults('doc1', [0, 2, 4]);
+    model.setProtectedLines('doc1', new Set([3, 7]));
+    model.clearProtectedLines('doc1');
+    const ranges = model.getUnmatchedRanges('doc1');
+    assert.deepStrictEqual(ranges, [
+      { start: 1, end: 1 },
+      { start: 3, end: 3 },
+      { start: 5, end: 9 },
+    ]);
+  });
 });

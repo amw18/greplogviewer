@@ -3,11 +3,25 @@ import { FilterResult } from '../types';
 
 export class FilterResultModel {
   private resultsMap = new Map<string, FilterResult[]>();
+  private protectedLinesMap = new Map<string, Set<number>>();
   private changeListeners: Array<() => void> = [];
 
   /** 注册变更监听（供 extension.ts 绑定 vscode.EventEmitter） */
   onChange(listener: () => void): void {
     this.changeListeners.push(listener);
+  }
+
+  /**
+   * 设置需要保留不被折叠的行号集合（例如 ring buffer 起点行）。
+   * 这些行在计算未匹配区间时会被排除。
+   */
+  setProtectedLines(editorId: string, lines: Set<number>): void {
+    this.protectedLinesMap.set(editorId, new Set(lines));
+  }
+
+  /** 清除某编辑器的受保护行 */
+  clearProtectedLines(editorId: string): void {
+    this.protectedLinesMap.delete(editorId);
   }
 
   /** 设置过滤结果 */
@@ -43,8 +57,10 @@ export class FilterResultModel {
     const results = this.resultsMap.get(editorId);
     if (!results || results.length === 0) { return []; }
 
+    const protectedLines = this.protectedLinesMap.get(editorId) ?? new Set<number>();
+
     const unmatchedLines = results
-      .filter(r => r.groupId === null)
+      .filter(r => r.groupId === null && !protectedLines.has(r.lineNumber))
       .map(r => r.lineNumber)
       .sort((a, b) => a - b);
 

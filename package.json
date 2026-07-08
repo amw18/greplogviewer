@@ -61,6 +61,10 @@
       {
         "command": "greplogviewer.addKeyword",
         "title": "Add as Keyword"
+      },
+      {
+        "command": "greplogviewer.toggleStartLineFold",
+        "title": "Toggle Ring Buffer Fold"
       }
     ],
     "menus": {
@@ -79,6 +83,10 @@
           "command": "greplogviewer.addKeyword",
           "when": "editorHasSelection",
           "group": "greplogviewer@3"
+        },
+        {
+          "command": "greplogviewer.toggleStartLineFold",
+          "group": "greplogviewer@4"
         }
       ]
     }

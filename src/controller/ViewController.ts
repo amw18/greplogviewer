@@ -622,6 +622,7 @@ export class ViewController {
   private applyRingBufferStart(editor: vscode.TextEditor, lines: string[]): void {
     const editorId = editor.document.uri.toString();
     this.ringBufferModel.clear(editorId);
+    this.filterResultModel.clearProtectedLines(editorId);
     this.decorations.clearRingBufferFlag();
 
     if (!this.timeMatchModel.isConfigured()) { return; }
@@ -630,6 +631,7 @@ export class ViewController {
     if (startLine === undefined) { return; }
 
     this.ringBufferModel.setStartLine(editorId, startLine);
+    this.filterResultModel.setProtectedLines(editorId, new Set([startLine]));
     this.decorations.showRingBufferFlag(startLine, editor);
   }
 
@@ -713,6 +715,7 @@ export class ViewController {
     this.filterResultModel.clearResults(editorId);
     this.ringBufferModel.clear(editorId);
     this.startLineFoldModel.clear(editorId);
+    this.filterResultModel.clearProtectedLines(editorId);
     this.lastFilterFingerprint = '';  // 清除后必须重置指纹，否则再次 Go 会误判为未变更
     this.decorations.clear();
     this.decorations.clearTimeAnnotations();
@@ -732,6 +735,7 @@ export class ViewController {
     this.timeMatchModel.setConfig({ format: '' });
     this.editorStateModel.clearEditor(editorId);
     this.filterResultModel.clearResults(editorId);
+    this.filterResultModel.clearProtectedLines(editorId);
     this.ringBufferModel.clear(editorId);
     this.startLineFoldModel.clear(editorId);
     this.lastFilterFingerprint = '';  // 重置后必须清空指纹缓存
