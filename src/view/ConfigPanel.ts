@@ -308,7 +308,14 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     font-size: 10px; margin-left: auto; }
   .flag-sep { border-top: 1px solid var(--vscode-panel-border); margin: 3px 0; }
 
-  /* ── Config Management ── */
+  /* ── Advance section ── */
+  .advance-sub-item { margin-bottom: 6px; }
+  .advance-sub-item:last-child { margin-bottom: 0; }
+  .info-icon { display: inline-flex; align-items: center; justify-content: center;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    font-size: 9px; cursor: help; user-select: none; }
   .cfg-mgmt-row { display: flex; align-items: center; gap: 3px; margin-bottom: 4px; }
   .cfg-mgmt-row label { font-size: 10px; color: var(--vscode-descriptionForeground);
                         white-space: nowrap; }
@@ -339,7 +346,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   let groups = state.groups || [];
   let keywords = state.keywords || [];
   let timePattern = state.timePattern || { format: '' };
-  let sectionState = state.sectionState || { timePattern: false, configMgmt: false };
+  let sectionState = state.sectionState || { advance: false };
   var savedConfigsList = [];
   var selectedSavedConfigName = '';  // 记住用户在下拉框中选择的配置名
   var matchCounts = null;  // { totalLines, totalMatched, groupCounts, keywordCounts }
@@ -490,17 +497,36 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   function render() {
     var html = '';
 
-    // ── Section: Time Pattern (collapsible, default collapsed) ──
-    var timePatternOpen = sectionState['timePattern'] || false;
-    html += '<div class="section collapsible" id="section-timePattern">';
-    html += '<button class="section-header" data-action="toggleSection" data-section="timePattern">';
-    html += '<span class="section-toggle ' + (timePatternOpen ? 'open' : '') + '">' + (timePatternOpen ? '▼' : '▶') + '</span><span>Time Pattern</span></button>';
-    html += '<div class="section-body ' + (timePatternOpen ? '' : 'collapsed') + '">';
-    html += '<div class="time-pattern">';
-    html += '<label style="font-size:11px;color:var(--vscode-descriptionForeground)">Format string</label>';
+    // ── Section: Advance (collapsible, default collapsed) ──
+    var advanceOpen = sectionState['advance'] || false;
+    html += '<div class="section collapsible" id="section-advance">';
+    html += '<button class="section-header" data-action="toggleSection" data-section="advance">';
+    html += '<span class="section-toggle ' + (advanceOpen ? 'open' : '') + '">' + (advanceOpen ? '▼' : '▶') + '</span><span>Advance</span></button>';
+    html += '<div class="section-body ' + (advanceOpen ? '' : 'collapsed') + '">';
+
+    // Time Pattern sub-item
+    html += '<div class="advance-sub-item">';
+    html += '<div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">';
+    html += '<label style="font-size:11px;color:var(--vscode-descriptionForeground)">Time Pattern</label>';
+    html += '<span class="info-icon" title="Write the timestamp exactly as it appears in your log. Tokens: YYYY YY MM DD HH mm ss SSS. Optional parts: {...}. Example: [YYYY-MM-DD HH:mm:ss{.SSS}]">?</span>';
+    html += '</div>';
     html += '<input type="text" id="time-format" value="' + esc(timePattern?.format || '') + '" placeholder="e.g. [YYYY-MM-DD HH:mm:ss{.SSS}]" style="width:100%">';
-    html += '<span style="font-size:10px;color:var(--vscode-descriptionForeground)">Write the timestamp exactly as it appears in your log.<br>Tokens: YYYY YY MM DD HH mm ss SSS. Optional parts: {...}.<br>Example: <code>[YYYY-MM-DD HH:mm:ss{.SSS}]</code></span>';
-    html += '</div></div></div>';
+    html += '</div>';
+
+    // Solution sub-item
+    html += '<div class="advance-sub-item">';
+    html += '<div class="cfg-mgmt-row">';
+    html += '<span style="font-size:11px;color:var(--vscode-descriptionForeground);white-space:nowrap">Solution:</span>';
+    html += '<select id="cfg-apply-select" style="flex:1;min-width:0"><option value="">-- Select saved --</option></select>';
+    html += '<button class="cfg-btn" id="cfg-apply-btn" title="Apply">▶</button>';
+    html += '<button class="cfg-btn danger" id="cfg-delete-btn" title="Delete">✕</button>';
+    html += '<button class="cfg-btn" id="cfg-save-btn" title="Save">💾</button>';
+    html += '<button class="cfg-btn" id="cfg-export-btn" title="Export">⬆</button>';
+    html += '<button class="cfg-btn" id="cfg-import-btn" title="Import">⬇</button>';
+    html += '</div>';
+    html += '</div>';
+
+    html += '</div></div>';
 
     // ── Section: Pattern Groups ──
     html += '<div class="section">';
@@ -573,25 +599,6 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     html += '<div id="tl-tooltip" style="position:absolute;display:none;background:var(--vscode-editor-background);color:var(--vscode-editor-foreground);border:1px solid var(--vscode-panel-border);padding:2px 6px;font-size:11px;pointer-events:none;white-space:nowrap;border-radius:2px;z-index:10"></div>';
     html += '<div id="tl-zoom" style="position:absolute;bottom:2px;right:4px;font-size:10px;color:var(--vscode-descriptionForeground);pointer-events:none"></div>';
     html += '</div>';
-
-    // ── Section: Config Management (collapsible) ──
-    var configMgmtOpen = sectionState['configMgmt'] || false;
-    html += '<div class="section collapsible" id="section-configMgmt">';
-    html += '<button class="section-header" data-action="toggleSection" data-section="configMgmt">';
-    html += '<span class="section-toggle ' + (configMgmtOpen ? 'open' : '') + '">' + (configMgmtOpen ? '▼' : '▶') + '</span><span>Config Management</span></button>';
-    html += '<div class="section-body ' + (configMgmtOpen ? '' : 'collapsed') + '">';
-
-    // Config management row (icon buttons to save width)
-    html += '<div class="cfg-mgmt-row">';
-    html += '<select id="cfg-apply-select" style="flex:1;min-width:0"><option value="">-- Select saved --</option></select>';
-    html += '<button class="cfg-btn" id="cfg-apply-btn" title="Apply">▶</button>';
-    html += '<button class="cfg-btn danger" id="cfg-delete-btn" title="Delete">✕</button>';
-    html += '<button class="cfg-btn" id="cfg-save-btn" title="Save">💾</button>';
-    html += '<button class="cfg-btn" id="cfg-export-btn" title="Export">⬆</button>';
-    html += '<button class="cfg-btn" id="cfg-import-btn" title="Import">⬇</button>';
-    html += '</div>';
-
-    html += '</div></div>';
 
     var statsHtml = '';
     if (matchCounts) {
