@@ -10,6 +10,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   private exportCallback: ((groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void) | undefined;
   private importCallback: (() => void) | undefined;
   private saveCallback: ((name: string, groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void) | undefined;
+  private requestSaveCallback: ((groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void) | undefined;
   private listSavedCallback: (() => void) | undefined;
   private applyCallback: ((name: string, scope: ConfigScope) => void) | undefined;
   private deleteCallback: ((name: string, scope: ConfigScope) => void) | undefined;
@@ -43,6 +44,9 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
           break;
         case 'saveConfig':
           this.saveCallback?.(msg.name, msg.groups, msg.timePattern, msg.keywords);
+          break;
+        case 'requestSaveConfig':
+          this.requestSaveCallback?.(msg.groups, msg.timePattern, msg.keywords);
           break;
         case 'listSavedConfigs':
           this.listSavedCallback?.();
@@ -100,6 +104,10 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
 
   onSave(callback: (name: string, groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void): void {
     this.saveCallback = callback;
+  }
+
+  onRequestSave(callback: (groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void): void {
+    this.requestSaveCallback = callback;
   }
 
   onListSaved(callback: () => void): void {
@@ -327,14 +335,16 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
 <script>
 (function() {
   const vscode = acquireVsCodeApi();
-  let state = vscode.getState() || { groups: [], timePattern: undefined, keywords: [] };
+  let state = vscode.getState() || { groups: [], timePattern: undefined, keywords: [], sectionState: {} };
   let groups = state.groups || [];
   let keywords = state.keywords || [];
   let timePattern = state.timePattern || { format: '' };
+  let sectionState = state.sectionState || { timePattern: false, configMgmt: false };
   var savedConfigsList = [];
+  var selectedSavedConfigName = '';  // 记住用户在下拉框中选择的配置名
   var matchCounts = null;  // { totalLines, totalMatched, groupCounts, keywordCounts }
 
-  function saveState() { vscode.setState({ groups, timePattern, keywords }); }
+  function saveState() { vscode.setState({ groups, timePattern, keywords, sectionState }); }
 
   var syncTimer = null;
   function syncToExtension() {
@@ -481,10 +491,11 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     var html = '';
 
     // ── Section: Time Pattern (collapsible, default collapsed) ──
+    var timePatternOpen = sectionState['timePattern'] || false;
     html += '<div class="section collapsible" id="section-timePattern">';
     html += '<button class="section-header" data-action="toggleSection" data-section="timePattern">';
-    html += '<span class="section-toggle">▶</span><span>Time Pattern</span></button>';
-    html += '<div class="section-body collapsed">';
+    html += '<span class="section-toggle ' + (timePatternOpen ? 'open' : '') + '">' + (timePatternOpen ? '▼' : '▶') + '</span><span>Time Pattern</span></button>';
+    html += '<div class="section-body ' + (timePatternOpen ? '' : 'collapsed') + '">';
     html += '<div class="time-pattern">';
     html += '<label style="font-size:11px;color:var(--vscode-descriptionForeground)">Format string</label>';
     html += '<input type="text" id="time-format" value="' + esc(timePattern?.format || '') + '" placeholder="e.g. [YYYY-MM-DD HH:mm:ss{.SSS}]" style="width:100%">';
@@ -564,19 +575,20 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     html += '</div>';
 
     // ── Section: Config Management (collapsible) ──
+    var configMgmtOpen = sectionState['configMgmt'] || false;
     html += '<div class="section collapsible" id="section-configMgmt">';
     html += '<button class="section-header" data-action="toggleSection" data-section="configMgmt">';
-    html += '<span class="section-toggle">▶</span><span>Config Management</span></button>';
-    html += '<div class="section-body collapsed">';
+    html += '<span class="section-toggle ' + (configMgmtOpen ? 'open' : '') + '">' + (configMgmtOpen ? '▼' : '▶') + '</span><span>Config Management</span></button>';
+    html += '<div class="section-body ' + (configMgmtOpen ? '' : 'collapsed') + '">';
 
-    // Config management row
+    // Config management row (icon buttons to save width)
     html += '<div class="cfg-mgmt-row">';
     html += '<select id="cfg-apply-select" style="flex:1;min-width:0"><option value="">-- Select saved --</option></select>';
-    html += '<button class="cfg-btn" id="cfg-apply-btn">Apply</button>';
-    html += '<button class="cfg-btn danger" id="cfg-delete-btn">Delete</button>';
-    html += '<button class="cfg-btn" id="cfg-save-btn">Save</button>';
-    html += '<button class="cfg-btn" id="cfg-export-btn">Export</button>';
-    html += '<button class="cfg-btn" id="cfg-import-btn">Import</button>';
+    html += '<button class="cfg-btn" id="cfg-apply-btn" title="Apply">▶</button>';
+    html += '<button class="cfg-btn danger" id="cfg-delete-btn" title="Delete">✕</button>';
+    html += '<button class="cfg-btn" id="cfg-save-btn" title="Save">💾</button>';
+    html += '<button class="cfg-btn" id="cfg-export-btn" title="Export">⬆</button>';
+    html += '<button class="cfg-btn" id="cfg-import-btn" title="Import">⬇</button>';
     html += '</div>';
 
     html += '</div></div>';
@@ -784,11 +796,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       var tf3 = document.getElementById('time-format');
       timePattern = { format: tf3 ? tf3.value : '' };
       saveState();
-      var saveName = prompt('Save configuration as:', '');
-      if (!saveName) { return; }
-      saveName = saveName.trim();
-      if (!saveName) { alert('Please enter a config name.'); return; }
-      vscode.postMessage({ type: 'saveConfig', name: saveName, scope: 'user', groups: groups, timePattern: timePattern, keywords: keywords });
+      vscode.postMessage({ type: 'requestSaveConfig', groups: groups, timePattern: timePattern, keywords: keywords });
     } else if (btn.id === 'cfg-apply-btn') {
       var applySel = document.getElementById('cfg-apply-select');
       var applyVal = applySel ? applySel.value : '';
@@ -833,9 +841,10 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       var secId = btn.dataset.section;
       var body = document.querySelector('#section-' + secId + ' .section-body');
       var toggle = document.querySelector('#section-' + secId + ' .section-toggle');
-      var section = document.getElementById('section-' + secId);
       if (body) {
         var isOpen = !body.classList.contains('collapsed');
+        sectionState[secId] = !isOpen;
+        saveState();
         if (isOpen) {
           body.classList.add('collapsed');
           if (toggle) { toggle.classList.remove('open'); toggle.textContent = '▶'; }
@@ -868,6 +877,13 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   document.getElementById('app').addEventListener('change', function(e) {
     var el = e.target, gi = parseInt(el.dataset.gi), ei = parseInt(el.dataset.ei);
     var ki = parseInt(el.dataset.ki);
+    // 记住用户选择的已保存配置名
+    if (el.id === 'cfg-apply-select') {
+      var idx = parseInt(el.value, 10);
+      var item = savedConfigsList[idx];
+      selectedSavedConfigName = item ? item.name : '';
+      return;
+    }
     // 原生颜色选择器变更
     if (el.classList.contains('native-color')) {
       var nk = el.dataset.colorGi !== undefined ? 'gi' : 'ki';
@@ -993,17 +1009,18 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       savedConfigsList = msg.configs || [];
       var sel = document.getElementById('cfg-apply-select');
       if (sel) {
-        var curIdx = sel.value;
         sel.innerHTML = '<option value="">-- Select saved --</option>';
+        var restoredIdx = '';
         savedConfigsList.forEach(function(c, i) {
           var opt = document.createElement('option');
           opt.value = String(i);
           opt.textContent = c.name;
           sel.appendChild(opt);
+          if (c.name === selectedSavedConfigName) { restoredIdx = String(i); }
         });
-        // Restore previous selection if still valid
-        if (curIdx !== '' && parseInt(curIdx, 10) < savedConfigsList.length) {
-          sel.value = curIdx;
+        // Restore previous selection by config name if it still exists
+        if (restoredIdx !== '') {
+          sel.value = restoredIdx;
         }
       }
     }

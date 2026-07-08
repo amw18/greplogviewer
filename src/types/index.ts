@@ -158,6 +158,13 @@ export interface SaveConfigMessage {
   keywords?: KeywordConfig[];
 }
 
+export interface RequestSaveConfigMessage {
+  type: 'requestSaveConfig';
+  groups: RegexGroup[];
+  timePattern?: TimePatternConfig;
+  keywords?: KeywordConfig[];
+}
+
 export interface ListSavedConfigsMessage {
   type: 'listSavedConfigs';
 }
@@ -250,7 +257,7 @@ export interface GotoGroupMatchMessage {
 }
 
 export type WebviewMessage = GoMessage | ResetMessage | ClearMessage
-  | ExportConfigMessage | ImportConfigMessage | SaveConfigMessage
+  | ExportConfigMessage | ImportConfigMessage | SaveConfigMessage | RequestSaveConfigMessage
   | ListSavedConfigsMessage | ApplySavedConfigMessage | DeleteSavedConfigMessage
   | GotoKeywordMatchMessage | GotoGroupMatchMessage
   | TimelineClickMessage | SyncConfigMessage;

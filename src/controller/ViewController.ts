@@ -97,6 +97,7 @@ export class ViewController {
     this.configPanel.onExport((g, tp, kw) => this.handleExport(g, tp, kw));
     this.configPanel.onImport(() => this.handleImport());
     this.configPanel.onSave((n, g, tp, kw) => this.handleSave(n, g, tp, kw));
+    this.configPanel.onRequestSave((g, tp, kw) => this.handleRequestSave(g, tp, kw));
     this.configPanel.onListSaved(() => this.handleListSaved());
     this.configPanel.onApply((n, sc) => this.handleApply(n, sc));
     this.configPanel.onDelete((n, sc) => this.handleDelete(n, sc));
@@ -803,6 +804,19 @@ export class ViewController {
     vscode.window.showInformationMessage(`Config "${name}" saved.`);
     // Refresh the webview dropdown
     this.handleListSaved();
+  }
+
+  /** Save 按钮：弹出输入框让用户输入配置名，然后保存到 user scope */
+  private async handleRequestSave(groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): Promise<void> {
+    const name = await vscode.window.showInputBox({
+      prompt: 'Save configuration as',
+      validateInput: (value) => {
+        if (!value || !value.trim()) { return 'Please enter a config name.'; }
+        return undefined;
+      },
+    });
+    if (!name) { return; }
+    await this.handleSave(name.trim(), groups, timePattern, keywords);
   }
 
   /** 列出所有已保存配置并发送到 webview */
