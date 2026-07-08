@@ -96,7 +96,7 @@ export class ViewController {
     // Config management callbacks
     this.configPanel.onExport((g, tp, kw) => this.handleExport(g, tp, kw));
     this.configPanel.onImport(() => this.handleImport());
-    this.configPanel.onSave((n, sc, g, tp, kw) => this.handleSave(n, sc, g, tp, kw));
+    this.configPanel.onSave((n, g, tp, kw) => this.handleSave(n, g, tp, kw));
     this.configPanel.onListSaved(() => this.handleListSaved());
     this.configPanel.onApply((n, sc) => this.handleApply(n, sc));
     this.configPanel.onDelete((n, sc) => this.handleDelete(n, sc));
@@ -786,11 +786,12 @@ export class ViewController {
     }
   }
 
-  /** Save: 将当前配置保存到 workspaceState 或 globalState（命名） */
-  private async handleSave(name: string, scope: ConfigScope, groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): Promise<void> {
+  /** Save: 将当前配置保存到 globalState（固定 user scope） */
+  private async handleSave(name: string, groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): Promise<void> {
+    const scope: ConfigScope = 'user';
     if (this.configStorageModel.exists(name, scope)) {
       const answer = await vscode.window.showWarningMessage(
-        `Config "${name}" already exists in ${scope}. Overwrite?`,
+        `Config "${name}" already exists. Overwrite?`,
         { modal: true },
         'Overwrite'
       );
@@ -799,7 +800,7 @@ export class ViewController {
 
     await this.configStorageModel.save(name, { groups, timePattern, keywords }, scope);
 
-    vscode.window.showInformationMessage(`Config "${name}" saved to ${scope}.`);
+    vscode.window.showInformationMessage(`Config "${name}" saved.`);
     // Refresh the webview dropdown
     this.handleListSaved();
   }

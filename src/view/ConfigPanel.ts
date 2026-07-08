@@ -9,7 +9,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   private clearCallback: (() => void) | undefined;
   private exportCallback: ((groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void) | undefined;
   private importCallback: (() => void) | undefined;
-  private saveCallback: ((name: string, scope: ConfigScope, groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void) | undefined;
+  private saveCallback: ((name: string, groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void) | undefined;
   private listSavedCallback: (() => void) | undefined;
   private applyCallback: ((name: string, scope: ConfigScope) => void) | undefined;
   private deleteCallback: ((name: string, scope: ConfigScope) => void) | undefined;
@@ -42,7 +42,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
           this.importCallback?.();
           break;
         case 'saveConfig':
-          this.saveCallback?.(msg.name, msg.scope, msg.groups, msg.timePattern, msg.keywords);
+          this.saveCallback?.(msg.name, msg.groups, msg.timePattern, msg.keywords);
           break;
         case 'listSavedConfigs':
           this.listSavedCallback?.();
@@ -98,7 +98,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     this.importCallback = callback;
   }
 
-  onSave(callback: (name: string, scope: ConfigScope, groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void): void {
+  onSave(callback: (name: string, groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void): void {
     this.saveCallback = callback;
   }
 
@@ -569,25 +569,14 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     html += '<span class="section-toggle">▶</span><span>Config Management</span></button>';
     html += '<div class="section-body collapsed">';
 
-    // Save row
-    html += '<div class="cfg-mgmt-row">';
-    html += '<input type="text" id="cfg-save-name" placeholder="Config name" style="width:90px">';
-    html += '<select id="cfg-save-scope"><option value="user">User</option><option value="workspace">Workspace</option></select>';
-    html += '<button class="cfg-btn" id="cfg-save-btn">Save</button>';
-    html += '</div>';
-
-    // Apply + Delete row
+    // Config management row
     html += '<div class="cfg-mgmt-row">';
     html += '<select id="cfg-apply-select" style="flex:1;min-width:0"><option value="">-- Select saved --</option></select>';
     html += '<button class="cfg-btn" id="cfg-apply-btn">Apply</button>';
     html += '<button class="cfg-btn danger" id="cfg-delete-btn">Delete</button>';
-    html += '</div>';
-
-    // Export / Import row
-    html += '<hr class="cfg-divider">';
-    html += '<div class="cfg-mgmt-row">';
-    html += '<button class="cfg-btn" id="cfg-export-btn" style="flex:1">Export to file</button>';
-    html += '<button class="cfg-btn" id="cfg-import-btn" style="flex:1">Import from file</button>';
+    html += '<button class="cfg-btn" id="cfg-save-btn">Save</button>';
+    html += '<button class="cfg-btn" id="cfg-export-btn">Export</button>';
+    html += '<button class="cfg-btn" id="cfg-import-btn">Import</button>';
     html += '</div>';
 
     html += '</div></div>';
@@ -795,10 +784,11 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       var tf3 = document.getElementById('time-format');
       timePattern = { format: tf3 ? tf3.value : '' };
       saveState();
-      var saveName = document.getElementById('cfg-save-name').value.trim();
-      var saveScope = document.getElementById('cfg-save-scope').value;
+      var saveName = prompt('Save configuration as:', '');
+      if (!saveName) { return; }
+      saveName = saveName.trim();
       if (!saveName) { alert('Please enter a config name.'); return; }
-      vscode.postMessage({ type: 'saveConfig', name: saveName, scope: saveScope, groups: groups, timePattern: timePattern, keywords: keywords });
+      vscode.postMessage({ type: 'saveConfig', name: saveName, scope: 'user', groups: groups, timePattern: timePattern, keywords: keywords });
     } else if (btn.id === 'cfg-apply-btn') {
       var applySel = document.getElementById('cfg-apply-select');
       var applyVal = applySel ? applySel.value : '';
@@ -1008,7 +998,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
         savedConfigsList.forEach(function(c, i) {
           var opt = document.createElement('option');
           opt.value = String(i);
-          opt.textContent = '[' + c.scope + '] ' + c.name;
+          opt.textContent = c.name;
           sel.appendChild(opt);
         });
         // Restore previous selection if still valid
