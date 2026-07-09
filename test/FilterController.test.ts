@@ -255,4 +255,29 @@ describe('FilterController', () => {
       assert.strictEqual(fc.matchGroup('ERROR crash', group), false);
     });
   });
+
+  describe('filterAsync — 异步分块过滤', () => {
+    it('结果与同步 filter 一致', async () => {
+      const lines = Array.from({ length: 120 }, (_, i) => `line ${i} ${i % 3 === 0 ? 'ERROR' : 'INFO'}`);
+      const g1 = makeGroup('g1', 'Errors', '#ff0000', [
+        { pattern: 'ERROR', flags: '', operator: LogicOperator.AND },
+      ]);
+      const g2 = makeGroup('g2', 'Odd', '#00ff00', [
+        { pattern: 'line [0-9]*[13579] ', flags: '', operator: LogicOperator.AND },
+      ]);
+
+      const syncResults = fc.filter(lines, [g1, g2]);
+      let progressCount = 0;
+      const asyncResults = await fc.filterAsync(lines, [g1, g2], () => { progressCount++; }, 30);
+
+      assert.deepStrictEqual(asyncResults, syncResults);
+      assert.ok(progressCount > 1, 'progress should be reported multiple times');
+    });
+
+    it('空 groups 时立即返回默认值', async () => {
+      const results = await fc.filterAsync(['a', 'b', 'c'], []);
+      assert.strictEqual(results.length, 3);
+      assert.strictEqual(results[0].groupId, null);
+    });
+  });
 });

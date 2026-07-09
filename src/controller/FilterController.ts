@@ -1,22 +1,89 @@
 // FilterController — 正则匹配引擎，首组匹配优先
 import { RegexGroup, RegexExpression, FilterResult, LogicOperator } from '../types';
 
+type CompiledGroup = { group: RegexGroup; exprs: { pattern: RegExp; operator: LogicOperator }[] };
+
 export class FilterController {
   /**
-   * 对文档所有行执行过滤
+   * 对文档所有行执行过滤（同步版本，适合中小文件）
    * @param lines 文档所有行文本
    * @param groups 正则组配置列表（按优先级排序）
    * @returns 每行的过滤结果
    */
   filter(lines: string[], groups: RegexGroup[]): FilterResult[] {
-    // 初始化结果数组：所有行默认为未匹配
     const results: FilterResult[] = new Array(lines.length);
     for (let i = 0; i < lines.length; i++) {
       results[i] = { lineNumber: i, groupId: null, color: undefined };
     }
 
-    // 预编译：每个 group 的表达式 regex 只创建一次
-    const compiled: { group: RegexGroup; exprs: { pattern: RegExp; operator: LogicOperator }[] }[] = [];
+    const compiled = this.compileGroups(groups);
+    if (compiled.length === 0) { return results; }
+
+    const matchedLines = new Set<number>();
+    for (const cg of compiled) {
+      for (let i = 0; i < lines.length; i++) {
+        if (matchedLines.has(i)) { continue; }
+        if (this.matchGroupCompiled(lines[i], cg.exprs)) {
+          results[i] = { lineNumber: i, groupId: cg.group.id, color: cg.group.color };
+          matchedLines.add(i);
+        }
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * 对文档所有行执行过滤（异步分块版本，避免大文件阻塞 UI）
+   * @param lines 文档所有行文本
+   * @param groups 正则组配置列表（按优先级排序）
+   * @param onProgress 可选进度回调 (processed, total)
+   * @param chunkSize 每次处理的行数
+   * @returns 每行的过滤结果
+   */
+  async filterAsync(
+    lines: string[],
+    groups: RegexGroup[],
+    onProgress?: (processed: number, total: number) => void,
+    chunkSize = 50000
+  ): Promise<FilterResult[]> {
+    const results: FilterResult[] = new Array(lines.length);
+    for (let i = 0; i < lines.length; i++) {
+      results[i] = { lineNumber: i, groupId: null, color: undefined };
+    }
+
+    const compiled = this.compileGroups(groups);
+    if (compiled.length === 0) { return results; }
+
+    const matchedLines = new Set<number>();
+    const totalChunks = Math.max(1, Math.ceil(lines.length / chunkSize));
+    const shouldYield = chunkSize < lines.length;
+
+    for (const cg of compiled) {
+      for (let chunk = 0; chunk < totalChunks; chunk++) {
+        const start = chunk * chunkSize;
+        const end = Math.min(start + chunkSize, lines.length);
+        for (let i = start; i < end; i++) {
+          if (matchedLines.has(i)) { continue; }
+          if (this.matchGroupCompiled(lines[i], cg.exprs)) {
+            results[i] = { lineNumber: i, groupId: cg.group.id, color: cg.group.color };
+            matchedLines.add(i);
+          }
+        }
+        if (onProgress) {
+          onProgress(Math.min(end, lines.length), lines.length);
+        }
+        if (shouldYield && chunk < totalChunks - 1) {
+          await new Promise<void>(r => setImmediate(r));
+        }
+      }
+    }
+
+    return results;
+  }
+
+  private compileGroups(groups: RegexGroup[]): CompiledGroup[] {
+    const compiled: CompiledGroup[] = [];
     for (const g of groups) {
       if (g.enabled === false) { continue; }
       const exprs = g.expressions.filter(e => e.enabled !== false);
@@ -31,22 +98,7 @@ export class FilterController {
         compiled.push({ group: g, exprs: compiledExprs });
       }
     }
-
-    const matchedLines = new Set<number>();
-
-    // 全文匹配
-    for (const cg of compiled) {
-      for (let i = 0; i < lines.length; i++) {
-        if (matchedLines.has(i)) { continue; }
-
-        if (this.matchGroupCompiled(lines[i], cg.exprs)) {
-          results[i] = { lineNumber: i, groupId: cg.group.id, color: cg.group.color };
-          matchedLines.add(i);
-        }
-      }
-    }
-
-    return results;
+    return compiled;
   }
 
   /** 用预编译的 regex 判定单行匹配（快速路径） */
@@ -111,6 +163,4 @@ export class FilterController {
       return false;
     }
   }
-
-
 }

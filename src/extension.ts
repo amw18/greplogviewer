@@ -144,8 +144,8 @@ export function activate(context: vscode.ExtensionContext) {
     if (editor) { viewController!.attach(editor); }
   });
 
-  const docChangeListener = vscode.workspace.onDidChangeTextDocument(e => {
-    viewController?.onDocumentChange(e.document);
+  const docChangeListener = vscode.workspace.onDidChangeTextDocument(async e => {
+    await viewController?.onDocumentChange(e.document);
   });
 
   if (vscode.window.activeTextEditor) {

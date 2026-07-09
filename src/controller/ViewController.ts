@@ -20,6 +20,15 @@ export class ViewController {
   /** 用于标记范围内被 keyword 匹配但未被 group 匹配的行。这些行不参与折叠也不 dim。 */
   private static readonly KW_VISIBLE_ID = '__kw_visible__';
 
+  /** 超过此行数视为大文件，启用异步过滤并跳过部分重型功能 */
+  private static readonly LARGE_FILE_THRESHOLD = 100000;
+
+  /** 超过此行数 VS Code 通常会禁用折叠，插件只做高亮和导航 */
+  private static readonly FOLDING_DISABLED_THRESHOLD = 300000;
+
+  /** 超过此行数禁用时间线，避免扫描百万行阻塞 UI */
+  private static readonly TIMELINE_DISABLE_THRESHOLD = 200000;
+
   /** 安全构建 keyword 正则：null-safe flags + 移除 g 标志避免 test() 状态残留 */
   private static buildKwRegex(kw: KeywordConfig): RegExp | null {
     if (!kw.pattern) { return null; }
@@ -149,7 +158,7 @@ export class ViewController {
         this.reRegisterFoldProvider?.();
         await new Promise(r => setTimeout(r, 100));
 
-        const results = this.filterController.filter(lines, savedConfig.groups);
+        const results = await this.runFilterWithProgress(lines, savedConfig.groups);
         this.filterResultModel.setResults(editorId, results);
 
         const scanStart = 0;
@@ -295,7 +304,7 @@ export class ViewController {
     let results: FilterResult[];
 
     if (filterChanged) {
-      results = this.filterController.filter(lines, groups);
+      results = await this.runFilterWithProgress(lines, groups);
     } else {
       // 重用已有过滤结果
       const existing = this.filterResultModel.getResults(editorId);
@@ -316,10 +325,13 @@ export class ViewController {
       }
 
       // 强制 FoldingRangeProvider 先返回空区间并重新注册 provider，
-      // 彻底移除旧的 provider 折叠和 gutter 折叠图标
-      this.filterResultModel.setEmptyResults(editorId);
-      this.reRegisterFoldProvider?.();
-      await new Promise(r => setTimeout(r, 100));
+      // 彻底移除旧的 provider 折叠和 gutter 折叠图标。
+      // 大文件跳过 re-register，避免 VS Code 在 provider 切换期间丢失折叠区间。
+      if (lines.length <= ViewController.LARGE_FILE_THRESHOLD) {
+        this.filterResultModel.setEmptyResults(editorId);
+        this.reRegisterFoldProvider?.();
+        await new Promise(r => setTimeout(r, 100));
+      }
 
       this.filterResultModel.setResults(editorId, results);
       this.decorations.apply(results, editor, keywords, scanStart, scanEnd, undefined, lines);
@@ -340,6 +352,13 @@ export class ViewController {
 
     // 发送匹配行数统计
     this.sendMatchCounts(editorId, lines, keywords, scanStart, scanEnd);
+
+    // 超大文件提示：VS Code 自身会禁用折叠
+    if (lines.length > ViewController.FOLDING_DISABLED_THRESHOLD) {
+      vscode.window.showInformationMessage(
+        `GrepLogViewer: ${lines.length.toLocaleString()} lines is too large for VS Code folding; only highlighting is applied.`
+      );
+    }
   }
 
   /** 计算时间线数据并发送到 KeywordTimeline webview */
@@ -371,6 +390,25 @@ export class ViewController {
     let globalMax = -Infinity;
 
     const compiledKws = this.getCompiledKeywordRegexes(keywords);
+    const MAX_TIMELINE_POINTS = 5000;
+
+    // 超大文件跳过时间线，避免扫描百万行阻塞 UI
+    if ((scanEnd ?? lines.length) - (scanStart ?? 0) > ViewController.TIMELINE_DISABLE_THRESHOLD) {
+      this.timeline.sendTimelineData({
+        type: 'timelineData',
+        timeMin: 0,
+        timeMax: 1,
+        keywords: [],
+      });
+      this.configPanel.sendTimelineData({
+        type: 'timelineData',
+        timeMin: 0,
+        timeMax: 1,
+        keywords: [],
+      });
+      return;
+    }
+
     for (const { kw, regex } of compiledKws) {
 
       const points: import('../types').TimelinePoint[] = [];
@@ -387,11 +425,16 @@ export class ViewController {
         points.push({ lineNumber: i, time: ms });
       }
 
-      if (points.length > 0) {
+      // 大文件时间线采样，避免渲染和消息传输阻塞
+      const displayPoints = (end - start > ViewController.LARGE_FILE_THRESHOLD && points.length > MAX_TIMELINE_POINTS)
+        ? this.sampleTimelinePoints(points, MAX_TIMELINE_POINTS)
+        : points;
+
+      if (displayPoints.length > 0) {
         kwData.push({
           name: kw.hint || kw.pattern,
           color: kw.color,
-          points,
+          points: displayPoints,
         });
       }
     }
@@ -413,6 +456,18 @@ export class ViewController {
     };
     this.timeline.sendTimelineData(tlMsg);
     this.configPanel.sendTimelineData(tlMsg);
+  }
+
+  /** 对时间线点做均匀采样，控制最大点数 */
+  private sampleTimelinePoints(points: import('../types').TimelinePoint[], maxPoints: number): import('../types').TimelinePoint[] {
+    if (points.length <= maxPoints) { return points; }
+    const sampled: import('../types').TimelinePoint[] = [];
+    const step = points.length / maxPoints;
+    for (let i = 0; i < maxPoints; i++) {
+      const idx = Math.floor(i * step);
+      sampled.push(points[idx]);
+    }
+    return sampled;
   }
 
   /** 计算匹配行数并发送到 webview */
@@ -502,8 +557,8 @@ export class ViewController {
       }));
     }
 
-    // 丰富 keyword 命中统计
-    if (keywords && keywords.length > 0) {
+    // 丰富 keyword 命中统计（大文件跳过，避免扫描全量折叠区间）
+    if (keywords && keywords.length > 0 && lines.length <= ViewController.LARGE_FILE_THRESHOLD) {
       foldRanges = this.enrichWithKeywordHits(foldRanges, lines, keywords);
     }
 
@@ -602,6 +657,11 @@ export class ViewController {
         viewColumn: editor.viewColumn,
         preserveFocus: false,
       });
+    }
+
+    // 超过阈值后 VS Code 通常会禁用折叠，不再尝试 foldAll，避免长时间无响应
+    if (editor.document.lineCount > ViewController.FOLDING_DISABLED_THRESHOLD) {
+      return;
     }
 
     // 等待 VS Code 处理 FoldingRangeProvider 的 onDidChangeFoldingRanges 事件
@@ -713,7 +773,7 @@ export class ViewController {
   }
 
   /** 文档变更时重新过滤（仅已激活编辑器） */
-  onDocumentChange(document: vscode.TextDocument): void {
+  async onDocumentChange(document: vscode.TextDocument): Promise<void> {
     if (!this.currentEditor) { return; }
     if (document !== this.currentEditor.document) { return; }
 
@@ -725,7 +785,7 @@ export class ViewController {
     if (groups.length === 0) { return; }
 
     const lines = this.readLines(editor);
-    const results = this.filterController.filter(lines, groups);
+    const results = await this.runFilterWithProgress(lines, groups);
     this.filterResultModel.setResults(editorId, results);
     this.decorations.apply(results, editor, this.currentKeywords);
 
@@ -736,12 +796,30 @@ export class ViewController {
     this.applyRingBufferStart(editor, lines);
   }
 
+  private linesCache: { editorId: string; version: number; lines: string[] } | undefined;
+
   private readLines(editor: vscode.TextEditor): string[] {
-    const lines: string[] = [];
-    for (let i = 0; i < editor.document.lineCount; i++) {
-      lines.push(editor.document.lineAt(i).text);
+    const editorId = editor.document.uri.toString();
+    const version = editor.document.version;
+    if (this.linesCache && this.linesCache.editorId === editorId && this.linesCache.version === version) {
+      return this.linesCache.lines;
     }
+    const lines = editor.document.getText().split('\n');
+    this.linesCache = { editorId, version, lines };
     return lines;
+  }
+
+  /** 根据文件大小选择同步或异步过滤，大文件在状态栏显示进度（不抢焦点） */
+  private async runFilterWithProgress(lines: string[], groups: RegexGroup[]): Promise<FilterResult[]> {
+    if (lines.length > ViewController.LARGE_FILE_THRESHOLD) {
+      return vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Window, title: 'Filtering large log...', cancellable: false },
+        async progress => this.filterController.filterAsync(lines, groups, (processed, total) => {
+          progress.report({ message: `${processed.toLocaleString()} / ${total.toLocaleString()} lines` });
+        }, ViewController.LARGE_FILE_THRESHOLD)
+      );
+    }
+    return this.filterController.filter(lines, groups);
   }
 
   // ── Config Management Handlers ──
@@ -1099,7 +1177,7 @@ export class ViewController {
     if (this.editorStateModel.isActive(editorId)) {
       const lines = this.readLines(editor);
       const groups = this.regexGroupModel.getGroups();
-      const results = this.filterController.filter(lines, groups);
+      const results = await this.runFilterWithProgress(lines, groups);
 
       const scanStart = 0;
       const scanEnd = lines.length;

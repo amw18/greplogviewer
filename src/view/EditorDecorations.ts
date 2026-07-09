@@ -9,6 +9,9 @@ interface KeywordMatch {
   keywordId: string;
 }
 
+/** 超过此行数时跳过未匹配行 dim 装饰，避免 setDecorations 阻塞 UI */
+const LARGE_FILE_DIM_THRESHOLD = 100000;
+
 export class EditorDecorations {
   private decorationTypes = new Map<string, vscode.TextEditorDecorationType>();
   /** 未匹配行装饰类型（降低透明度） */
@@ -63,7 +66,8 @@ export class EditorDecorations {
 
     // ── 2. 按 groupId 分组匹配行，同时从行范围内挖掉关键字子串 ──
     const groupLines = new Map<string, vscode.Range[]>();
-    const unmatchedLines: vscode.Range[] = [];
+    const skipDim = allLines.length > LARGE_FILE_DIM_THRESHOLD;
+    const unmatchedLines: vscode.Range[] = skipDim ? [] : [];
 
     for (const r of results) {
       const lineLen = r.lineNumber < allLines.length ? allLines[r.lineNumber].length : 0;
@@ -85,7 +89,7 @@ export class EditorDecorations {
       } else if (r.groupId === '__kw_visible__') {
         // 范围内被 keyword 匹配到的行：不 dim，关键字高亮由下方统一处理
         // （kwByLine 中已有该行的匹配信息）
-      } else {
+      } else if (!skipDim) {
         unmatchedLines.push(fullRange);
       }
     }
@@ -109,8 +113,8 @@ export class EditorDecorations {
       editor.setDecorations(this.decorationTypes.get(key)!, ranges);
     }
 
-    // 未匹配行应用暗淡效果（仅对非关键字部分）
-    if (unmatchedLines.length > 0) {
+    // 未匹配行应用暗淡效果（仅对非关键字部分）。大文件跳过全量 dim，避免阻塞 UI。
+    if (unmatchedLines.length > 0 && allLines.length <= LARGE_FILE_DIM_THRESHOLD) {
       editor.setDecorations(this.dimDecoration, unmatchedLines);
     }
 

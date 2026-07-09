@@ -1,0 +1,41 @@
+name: "1M line file filter performance"
+description: "Verify 1 million line log can be filtered without hanging"
+plugin: "./.."
+workspace: "."
+timeout: 300000
+steps:
+  - description: "Open 1M line log file"
+    command: "greplogviewer._testOpenFile"
+    args:
+      - "./test_1m.log"
+    waitAfter: 5000
+
+  - description: "Focus editor and wait for activation"
+    command: "workbench.action.focusActiveEditorGroup"
+    waitAfter: 3000
+
+  - description: "Prime extension activation"
+    command: "greplogviewer._testGetState"
+    waitAfter: 2000
+
+  - description: "Apply filter for ERROR lines"
+    command: "greplogviewer._testGo"
+    args:
+      - groups:
+          - id: "error-group"
+            name: "Errors"
+            color: "#ff0000"
+            expressions:
+              - id: "error-expr"
+                pattern: "ERROR"
+                flags: ""
+                operator: "and"
+    waitAfter: 5000
+
+  - description: "Get filter state"
+    command: "greplogviewer._testGetState"
+    waitAfter: 1000
+
+  - description: "Get visible ranges to verify folding actually applied"
+    command: "greplogviewer._testGetVisibleRanges"
+    waitAfter: 1000
