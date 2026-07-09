@@ -2,6 +2,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import { RegexGroup, TimePatternConfig, KeywordConfig, ConfigScope, FoldRange, FilterResult } from '../types';
 import { ConfigController } from './ConfigController';
 import { FilterController } from './FilterController';
@@ -267,7 +268,7 @@ export class ViewController {
   }
 
   /** Go: 应用过滤 + 颜色高亮 + 创建折叠 + 时间标注 */
-  private async handleGo(groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): Promise<void> {
+  private async handleGo(groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[], skipLargeFilePrompt = false): Promise<void> {
     if (!this.currentEditor) { return; }
     const editor = this.currentEditor;
     const editorId = editor.document.uri.toString();
@@ -353,12 +354,55 @@ export class ViewController {
     // 发送匹配行数统计
     this.sendMatchCounts(editorId, lines, keywords, scanStart, scanEnd);
 
-    // 超大文件提示：VS Code 自身会禁用折叠
-    if (lines.length > ViewController.FOLDING_DISABLED_THRESHOLD) {
-      vscode.window.showInformationMessage(
-        `GrepLogViewer: ${lines.length.toLocaleString()} lines is too large for VS Code folding; only highlighting is applied.`
+    // 超大文件提示：VS Code 自身会禁用折叠，提供导出过滤结果到临时文件的选项。
+    // 原文件的高亮效果仍然保留，临时文件只是额外提供一个可折叠的小文件视图。
+    if (!skipLargeFilePrompt && lines.length > ViewController.FOLDING_DISABLED_THRESHOLD) {
+      const action = await vscode.window.showInformationMessage(
+        `GrepLogViewer: ${lines.length.toLocaleString()} lines is too large for VS Code folding; highlighting is still applied.`,
+        'Open filtered results in new tab'
       );
+      if (action === 'Open filtered results in new tab') {
+        await this.openFilteredResultsInTempFile(editor, lines, results, groups, keywords);
+      }
     }
+  }
+
+  /** 将过滤后的匹配行写入临时文件并打开，以便在较小的文件上使用完整功能（折叠等） */
+  private async openFilteredResultsInTempFile(
+    editor: vscode.TextEditor,
+    lines: string[],
+    results: FilterResult[],
+    groups: RegexGroup[],
+    keywords?: KeywordConfig[]
+  ): Promise<void> {
+    const matchedLineNumbers = new Set<number>();
+    for (const r of results) {
+      if (r.groupId !== null) {
+        matchedLineNumbers.add(r.lineNumber);
+      }
+    }
+    if (matchedLineNumbers.size === 0) {
+      vscode.window.showWarningMessage('GrepLogViewer: No matched lines to export.');
+      return;
+    }
+
+    const sortedLines = Array.from(matchedLineNumbers).sort((a, b) => a - b);
+    const filteredContent = sortedLines.map(i => lines[i]).join('\n') + '\n';
+
+    const tmpDir = path.join(os.tmpdir(), 'greplogviewer-filtered');
+    if (!fs.existsSync(tmpDir)) { fs.mkdirSync(tmpDir, { recursive: true }); }
+    const baseName = path.basename(editor.document.fileName || 'filtered.log');
+    const tmpFile = path.join(tmpDir, `${baseName}.filtered-${Date.now()}.log`);
+    fs.writeFileSync(tmpFile, filteredContent, 'utf-8');
+
+    const doc = await vscode.workspace.openTextDocument(tmpFile);
+    const newEditor = await vscode.window.showTextDocument(doc);
+
+    // 在新文件上自动应用相同配置，使用户能继续用折叠等功能
+    await this.handleGo(groups, this.timeMatchModel.getConfig(), keywords, true);
+
+    // 把焦点切回新打开的临时文件（handleGo 会改变 currentEditor）
+    await vscode.window.showTextDocument(newEditor.document, { viewColumn: newEditor.viewColumn });
   }
 
   /** 计算时间线数据并发送到 KeywordTimeline webview */
@@ -1253,7 +1297,8 @@ export class ViewController {
     await this.handleGo(
       g,
       config.timePattern,
-      config.keywords
+      config.keywords,
+      true
     );
   }
 
