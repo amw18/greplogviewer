@@ -7,7 +7,8 @@ type FormatSegment =
   | { type: 'token'; value: string }
   | { type: 'literal'; value: string }
   | { type: 'optional'; segments: FormatSegment[] }
-  | { type: 'whitespace' };
+  | { type: 'whitespace' }
+  | { type: 'wildcard' };
 
 /** 支持的格式 token → 数字位数（0 = 可变宽度） */
 const TOKEN_DIGITS: Record<string, number> = {
@@ -24,31 +25,40 @@ interface WalkResult {
 
 export class TimeMatchModel {
   private format: string = '';
-  private formatSegments: FormatSegment[] = [];
+  private additionalFormats: string[] = [];
+  private formatSegmentLists: FormatSegment[][] = [];
 
-  /** 设置时间匹配配置 */
+  /** 设置时间匹配配置（支持主格式 + 附加格式） */
   setConfig(config: TimePatternConfig): void {
     this.format = config.format;
-    this.formatSegments = [];
-    if (this.format) {
-      this.formatSegments = this.parseFormat(this.format);
+    this.additionalFormats = config.additionalFormats || [];
+    this.formatSegmentLists = [];
+    const allFormats = [this.format, ...this.additionalFormats];
+    for (const fmt of allFormats) {
+      if (fmt) {
+        this.formatSegmentLists.push(this.parseFormat(fmt));
+      }
     }
   }
 
   /** 获取配置 */
   getConfig(): TimePatternConfig {
-    return { format: this.format };
+    const cfg: TimePatternConfig = { format: this.format };
+    if (this.additionalFormats.length > 0) {
+      cfg.additionalFormats = [...this.additionalFormats];
+    }
+    return cfg;
   }
 
   /** 是否已配置时间匹配 */
   isConfigured(): boolean {
-    return this.formatSegments.length > 0;
+    return this.formatSegmentLists.length > 0;
   }
 
   /**
    * 从日志行自动检测时间格式。
-   * 采样前 5 行，按优先级尝试常见格式模板。
-   * @returns 检测到的格式配置，未检测到返回 null
+   * 采样前 20 行，按优先级尝试常见格式模板，收集所有匹配到的格式。
+   * @returns 检测到的格式配置（含附加格式），未检测到返回 null
    */
   autoDetect(lines: string[]): TimePatternConfig | null {
     if (lines.length === 0) { return null; }
@@ -65,26 +75,41 @@ export class TimeMatchModel {
       'MM-DD HH:mm:ss',
       'HH:mm:ss.SSS',
       'HH:mm:ss',
+      '[*:    s.SSSSSS]',
       '[    s.SSSSSS]',
-      '[s.SSSSSS]',
     ];
 
-    const sampleSize = Math.min(5, lines.length);
+    const sampleSize = Math.min(20, lines.length);
     const minMatches = Math.min(3, sampleSize);
+    const matchedFormats: string[] = [];
+    const coveredLines = new Set<number>();
 
     for (const format of formats) {
       const segments = this.parseFormat(format);
-      let matches = 0;
+      const matchedLines = new Set<number>();
       for (let i = 0; i < sampleSize; i++) {
         const result = walkSegments(lines[i], segments, 0);
-        if (result) { matches++; }
+        if (result) { matchedLines.add(i); }
       }
-      if (matches >= minMatches) {
-        return { format };
+      if (matchedLines.size === 0) { continue; }
+
+      // 选择能为未覆盖行提供新解析能力的格式
+      let newCoverage = 0;
+      for (const idx of matchedLines) {
+        if (!coveredLines.has(idx)) { newCoverage++; }
+      }
+      if (newCoverage > 0) {
+        matchedFormats.push(format);
+        for (const idx of matchedLines) { coveredLines.add(idx); }
       }
     }
 
-    return null;
+    if (coveredLines.size < minMatches) { return null; }
+    const cfg: TimePatternConfig = { format: matchedFormats[0] };
+    if (matchedFormats.length > 1) {
+      cfg.additionalFormats = matchedFormats.slice(1);
+    }
+    return cfg;
   }
 
   /**
@@ -179,9 +204,14 @@ export class TimeMatchModel {
   /** 解析单行的时间戳，失败返回 null */
   /** 从行文本中提取时间戳（供 Timeline 等外部调用） */
   parseLineTimestamp(line: string): Date | null {
-    const result = walkSegments(line, this.formatSegments, 0);
-    if (!result) { return null; }
-    return buildDate(result.values);
+    for (const segments of this.formatSegmentLists) {
+      const result = walkSegments(line, segments, 0);
+      if (result) {
+        const date = buildDate(result.values);
+        if (date) { return date; }
+      }
+    }
+    return null;
   }
 
   /**
@@ -254,6 +284,13 @@ export class TimeMatchModel {
         continue;
       }
 
+      // 通配符：匹配任意字符直到下一个 token/literal
+      if (format[i] === '*') {
+        segments.push({ type: 'wildcard' });
+        i++;
+        continue;
+      }
+
       const token = matchToken(format, i);
       if (token) {
         segments.push({ type: 'token', value: token });
@@ -313,7 +350,8 @@ function walkSegments(str: string, segments: FormatSegment[], startPos: number):
   let pos = startPos;
   const values: Record<string, number> = {};
 
-  for (const seg of segments) {
+  for (let segIndex = 0; segIndex < segments.length; segIndex++) {
+    const seg = segments[segIndex];
     if (str.length < pos) { return null; }
 
     if (seg.type === 'whitespace') {
@@ -350,6 +388,22 @@ function walkSegments(str: string, segments: FormatSegment[], startPos: number):
         Object.assign(values, optResult.values);
         pos = optResult.endPos;
       }
+    } else if (seg.type === 'wildcard') {
+      // 通配符：尝试从当前位置到字符串末尾的每个位置，找到第一个能让剩余 segment 匹配的位置
+      const remainingSegments = segments.slice(segIndex + 1);
+      let matched = false;
+      for (let tryPos = pos; tryPos <= str.length; tryPos++) {
+        const remainingResult = walkSegments(str, remainingSegments, tryPos);
+        if (remainingResult) {
+          Object.assign(values, remainingResult.values);
+          pos = remainingResult.endPos;
+          matched = true;
+          break;
+        }
+      }
+      if (!matched && remainingSegments.length > 0) { return null; }
+      // 通配符已消耗剩余所有 segment，直接结束
+      break;
     }
   }
 

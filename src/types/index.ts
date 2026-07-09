@@ -37,16 +37,19 @@ export interface FilterResult {
   color: string | undefined;
 }
 
-/** 时间匹配配置：仅需一个格式字符串，描述时间戳在日志中的完整形态 */
+/** 时间匹配配置：主格式 + 可选附加格式，用于兼容同日志中多种时间戳形态 */
 export interface TimePatternConfig {
   /**
-   * 时间格式字符串，需与日志中的时间戳形态完全一致。
+   * 主时间格式字符串，需与日志中的时间戳形态完全一致。
    * 系统会根据 token 自动生成匹配正则。
    * 示例："[YYYY-MM-DD HH:mm:ss]" 匹配 "[2023-01-01 10:00:05]"
    * "YYYY-MM-DD HH:mm:ss{.SSS}" 匹配 "2023-01-01 10:00:05.123"
    * "{.SSS}" 表示毫秒可选
+   * "*" 表示通配符，匹配任意字符直到下一个 token/literal
    */
   format: string;
+  /** 附加格式，当日志中混合多种时间戳形态时使用 */
+  additionalFormats?: string[];
 }
 
 /** 带时间元数据的折叠区间 */

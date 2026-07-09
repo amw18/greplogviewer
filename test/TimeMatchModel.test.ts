@@ -47,6 +47,19 @@ describe('TimeMatchModel', () => {
       assert.deepStrictEqual(segs[0], { type: 'literal', value: '[' });
       assert.deepStrictEqual(segs[segs.length - 1], { type: 'literal', value: ']' });
     });
+
+    it('解析通配符格式 [* :    s.SSSSSS]', () => {
+      const segs = model.parseFormat('[*:    s.SSSSSS]');
+      assert.strictEqual(segs.length, 8);
+      assert.deepStrictEqual(segs[0], { type: 'literal', value: '[' });
+      assert.deepStrictEqual(segs[1], { type: 'wildcard' });
+      assert.deepStrictEqual(segs[2], { type: 'literal', value: ':' });
+      assert.deepStrictEqual(segs[3], { type: 'whitespace' });
+      assert.deepStrictEqual(segs[4], { type: 'token', value: 's' });
+      assert.deepStrictEqual(segs[5], { type: 'literal', value: '.' });
+      assert.deepStrictEqual(segs[6], { type: 'token', value: 'SSSSSS' });
+      assert.deepStrictEqual(segs[7], { type: 'literal', value: ']' });
+    });
   });
 
   // ===== 日期解析 =====
@@ -126,6 +139,18 @@ describe('TimeMatchModel', () => {
       assert.strictEqual(result!.getHours(), 14);
       assert.strictEqual(result!.getMinutes(), 22);
       assert.strictEqual(result!.getSeconds(), 33);
+    });
+
+    it('解析通配符格式 [* :    s.SSSSSS]', () => {
+      const segs = model.parseFormat('[*:    s.SSSSSS]');
+      const result = model.parseDate('[CPU0:    0.000000]', segs);
+      assert.ok(result instanceof Date);
+      assert.strictEqual(result!.getSeconds(), 0);
+      assert.strictEqual(result!.getMilliseconds(), 0);
+
+      const result2 = model.parseDate('[CPU1:  123.456789]', segs);
+      assert.ok(result2 instanceof Date);
+      assert.strictEqual(result2!.getSeconds(), 3);
     });
   });
 
@@ -525,6 +550,32 @@ describe('TimeMatchModel', () => {
       assert.strictEqual(detected!.format, '[    s.SSSSSS]');
     });
 
+    it('自动检测混合 kernel 格式并收集附加格式', () => {
+      const lines = [
+        '[    0.000000] cpu0 message',
+        '[CPU1:    1.000000] cpu1 message',
+        '[    2.000000] cpu0 message',
+        '[CPU2:    3.000000] cpu2 message',
+      ];
+      const detected = model.autoDetect(lines);
+      assert.ok(detected);
+      assert.strictEqual(detected!.format, '[*:    s.SSSSSS]');
+      assert.deepStrictEqual(detected!.additionalFormats, ['[    s.SSSSSS]']);
+    });
+
+    it('setConfig 使用 additionalFormats 解析混合格式行', () => {
+      model.setConfig({
+        format: '[    s.SSSSSS]',
+        additionalFormats: ['[s.SSSSSS]'],
+      });
+      const d1 = model.parseLineTimestamp('[    0.000000] line');
+      const d2 = model.parseLineTimestamp('[123.456789] line');
+      assert.ok(d1);
+      assert.ok(d2);
+      assert.strictEqual(d1!.getSeconds(), 0);
+      assert.strictEqual(d2!.getSeconds(), 3);
+    });
+
     it('识别 ISO 风格 YYYY-MM-DD HH:mm:ss.SSS', () => {
       const lines = [
         '2024-01-23 12:00:00.123 message',
@@ -591,6 +642,21 @@ describe('TimeMatchModel', () => {
       model.setConfig({ format: '' });
       const lines = ['10:00:00 line 1', '09:59:50 line 2'];
       assert.strictEqual(model.detectRingBufferStartLine(lines), undefined);
+    });
+
+    it('混合格式 kernel 日志也能检测 ring-buffer 起点', () => {
+      model.setConfig({
+        format: '[*:    s.SSSSSS]',
+        additionalFormats: ['[    s.SSSSSS]'],
+      });
+      const lines = [
+        '[    0.000000] boot',
+        '[CPU1:    1.000000] event',
+        '[    2.000000] event',
+        '[CPU0:    0.500000] wrap around start',
+        '[CPU1:    1.500000] event',
+      ];
+      assert.strictEqual(model.detectRingBufferStartLine(lines), 3);
     });
   });
 });
