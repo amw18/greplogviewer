@@ -21,8 +21,11 @@ export class ViewController {
   /** 用于标记范围内被 keyword 匹配但未被 group 匹配的行。这些行不参与折叠也不 dim。 */
   private static readonly KW_VISIBLE_ID = '__kw_visible__';
 
-  /** 超过此行数视为大文件，启用异步过滤并跳过部分重型功能 */
+  /** 超过此行数视为大文件，跳过部分重型功能（dim、keyword 折叠标注、时间线） */
   private static readonly LARGE_FILE_THRESHOLD = 100000;
+
+  /** 超过此行数启用异步分块过滤，避免同步正则阻塞 UI */
+  private static readonly ASYNC_FILTER_THRESHOLD = 1000000;
 
   /** 超过此行数 VS Code 通常会禁用折叠，插件只做高亮和导航 */
   private static readonly FOLDING_DISABLED_THRESHOLD = 300000;
@@ -322,9 +325,18 @@ export class ViewController {
     if (filterChanged) {
       results = await this.runFilterWithProgress(lines, groups);
     } else {
-      // 重用已有过滤结果
+      // 重用已有过滤结果，但重置 keyword 可见标记（旧标记可能已过期）。
       const existing = this.filterResultModel.getResults(editorId);
-      results = existing ?? [];
+      if (existing && existing.length > 0) {
+        // 仅保留 group 匹配，清除 __kw_visible__ 标记，后续会用新 keywords 重新标记
+        results = existing.map(r => ({
+          lineNumber: r.lineNumber,
+          groupId: r.groupId && r.groupId !== '__kw_visible__' ? r.groupId : null,
+          color: r.groupId && r.groupId !== '__kw_visible__' ? r.color : undefined,
+        }));
+      } else {
+        results = [];
+      }
     }
 
     const scanStart = 0;
@@ -333,32 +345,28 @@ export class ViewController {
     // 范围内被 keyword 匹配但未被 group 匹配的行 → 标记为可见，不参与折叠
     this.markKeywordVisibleLines(results, lines, keywords, scanStart, scanEnd);
 
-    // 先清除旧折叠：避免 VS Code 保留上一次 filter 的折叠状态
     this.isApplyingFilter = true;
     try {
-      if (oldRanges.length > 0) {
-        await this.clearFoldingState(editor);
+      if (filterChanged) {
+        // 过滤规则变化时才需要清除旧折叠并重新应用
+        if (oldRanges.length > 0) {
+          await this.clearFoldingState(editor);
+        }
+        if (lines.length <= ViewController.LARGE_FILE_THRESHOLD) {
+          this.filterResultModel.setEmptyResults(editorId);
+          this.reRegisterFoldProvider?.();
+          await new Promise(r => setTimeout(r, 100));
+        }
+        this.filterResultModel.setResults(editorId, results);
+        this.applyFoldAnnotations(editor, editorId, lines, keywords);
+        this.applyRingBufferStart(editor, lines);
+        await this.applyFolding(editor);
+      } else {
+        // 过滤规则未变：只更新 decorations（keywords/colors 可能变了），跳过昂贵的 fold/unfold
+        this.filterResultModel.setResults(editorId, results);
       }
 
-      // 强制 FoldingRangeProvider 先返回空区间并重新注册 provider，
-      // 彻底移除旧的 provider 折叠和 gutter 折叠图标。
-      // 大文件跳过 re-register，避免 VS Code 在 provider 切换期间丢失折叠区间。
-      if (lines.length <= ViewController.LARGE_FILE_THRESHOLD) {
-        this.filterResultModel.setEmptyResults(editorId);
-        this.reRegisterFoldProvider?.();
-        await new Promise(r => setTimeout(r, 100));
-      }
-
-      this.filterResultModel.setResults(editorId, results);
       this.decorations.apply(results, editor, keywords, scanStart, scanEnd, undefined, lines);
-
-      // 折叠标注（含时间 + keyword 命中统计）
-      this.applyFoldAnnotations(editor, editorId, lines, keywords);
-
-      // 检测并应用 ring buffer 起点行红旗
-      this.applyRingBufferStart(editor, lines);
-
-      await this.applyFolding(editor);
     } finally {
       this.isApplyingFilter = false;
     }
@@ -369,9 +377,9 @@ export class ViewController {
     // 发送匹配行数统计
     this.sendMatchCounts(editorId, lines, keywords, scanStart, scanEnd);
 
-    // 超大文件提示：VS Code 自身会禁用折叠，提供导出过滤结果到临时文件的选项。
-    // 原文件的高亮效果仍然保留，临时文件只是额外提供一个可折叠的小文件视图。
-    if (!skipLargeFilePrompt && ViewController.isFoldingDisabled(editor, lines.length)) {
+    // 超大文件提示：仅当过滤规则变化且文件超出 VS Code 折叠能力时才提示。
+    // 相同规则重复 Go 不弹，避免每次操作都打断用户。
+    if (filterChanged && !skipLargeFilePrompt && ViewController.isFoldingDisabled(editor, lines.length)) {
       const action = await vscode.window.showInformationMessage(
         `GrepLogViewer: ${lines.length.toLocaleString()} lines is too large for VS Code folding; highlighting is still applied.`,
         'Open filtered results in new tab'
@@ -917,14 +925,21 @@ export class ViewController {
     return lines;
   }
 
-  /** 根据文件大小选择同步或异步过滤，大文件在状态栏显示进度（不抢焦点） */
+  /** 根据文件大小选择同步或异步过滤，超大文件在状态栏显示进度（不抢焦点） */
   private async runFilterWithProgress(lines: string[], groups: RegexGroup[]): Promise<FilterResult[]> {
-    if (lines.length > ViewController.LARGE_FILE_THRESHOLD) {
+    if (lines.length > ViewController.ASYNC_FILTER_THRESHOLD) {
+      const chunkSize = 250000;
+      let lastReported = -1;
       return vscode.window.withProgress(
         { location: vscode.ProgressLocation.Window, title: 'Filtering large log...', cancellable: false },
         async progress => this.filterController.filterAsync(lines, groups, (processed, total) => {
-          progress.report({ message: `${processed.toLocaleString()} / ${total.toLocaleString()} lines` });
-        }, ViewController.LARGE_FILE_THRESHOLD)
+          // 每 10% 报告一次，降低进度刷新频率
+          const reportInterval = Math.max(100000, Math.floor(total / 10));
+          if (processed - lastReported >= reportInterval || processed === total) {
+            lastReported = processed;
+            progress.report({ message: `${processed.toLocaleString()} / ${total.toLocaleString()} lines` });
+          }
+        }, chunkSize)
       );
     }
     return this.filterController.filter(lines, groups);

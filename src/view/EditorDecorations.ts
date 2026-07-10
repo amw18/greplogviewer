@@ -70,9 +70,9 @@ export class EditorDecorations {
     const unmatchedLines: vscode.Range[] = skipDim ? [] : [];
 
     for (const r of results) {
-      const lineLen = r.lineNumber < allLines.length ? allLines[r.lineNumber].length : 0;
-      const fullRange = new vscode.Range(r.lineNumber, 0, r.lineNumber, lineLen);
       if (r.groupId && r.color) {
+        const lineLen = r.lineNumber < allLines.length ? allLines[r.lineNumber].length : 0;
+        const fullRange = new vscode.Range(r.lineNumber, 0, r.lineNumber, lineLen);
         if (!groupLines.has(r.groupId)) {
           groupLines.set(r.groupId, []);
         }
@@ -90,7 +90,8 @@ export class EditorDecorations {
         // 范围内被 keyword 匹配到的行：不 dim，关键字高亮由下方统一处理
         // （kwByLine 中已有该行的匹配信息）
       } else if (!skipDim) {
-        unmatchedLines.push(fullRange);
+        const lineLen = r.lineNumber < allLines.length ? allLines[r.lineNumber].length : 0;
+        unmatchedLines.push(new vscode.Range(r.lineNumber, 0, r.lineNumber, lineLen));
       }
     }
 

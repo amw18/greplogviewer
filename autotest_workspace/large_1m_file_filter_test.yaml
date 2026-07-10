@@ -30,7 +30,7 @@ steps:
                 pattern: "ERROR"
                 flags: ""
                 operator: "and"
-    waitAfter: 5000
+    waitAfter: 1000
 
   - description: "Get filter state"
     command: "greplogviewer._testGetState"
