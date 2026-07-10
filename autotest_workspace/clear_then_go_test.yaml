@@ -39,9 +39,23 @@ steps:
       expected: '"startLine":1'
     waitAfter: 1000
 
+  - description: "Verify match counts after Go"
+    command: "greplogviewer._testGetMatchCounts"
+    assert:
+      type: "return_value_contains"
+      expected: '"totalMatched":2'
+    waitAfter: 500
+
   - description: "Click Clear"
     command: "greplogviewer._testClear"
     waitAfter: 2000
+
+  - description: "Verify match counts cleared after Clear"
+    command: "greplogviewer._testGetMatchCounts"
+    assert:
+      type: "return_value_contains"
+      expected: '"totalMatched":0'
+    waitAfter: 500
 
   - description: "Apply same filter A again (Go after Clear)"
     command: "greplogviewer._testGo"

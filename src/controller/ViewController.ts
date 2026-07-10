@@ -56,6 +56,7 @@ export class ViewController {
   private currentKeywords?: KeywordConfig[];
   private isApplyingFilter = false;  // 防止 Go / keyword 更新期间的 attach 重入
   private lastFilterFingerprint = '';  // 跳过重复过滤
+  private lastMatchCounts: import('../types').MatchCountsMessage | undefined;
   private context: vscode.ExtensionContext;
 
   /** 缓存：预编译的关键词正则 */
@@ -567,13 +568,25 @@ export class ViewController {
       }
     }
 
-    this.configPanel.sendMatchCounts({
+    const msg: import('../types').MatchCountsMessage = {
       type: 'matchCounts',
       totalLines,
       totalMatched: matchedSet.size,
       groupCounts,
       keywordCounts,
-    });
+    };
+    this.sendMatchCountsMessage(msg);
+  }
+
+  /** 发送匹配计数消息并缓存（Clear/Reset 复用） */
+  private sendMatchCountsMessage(msg: import('../types').MatchCountsMessage): void {
+    this.lastMatchCounts = msg;
+    this.configPanel.sendMatchCounts(msg);
+  }
+
+  /** 测试用：获取最近一次发送的匹配计数 */
+  testGetMatchCounts(): import('../types').MatchCountsMessage | undefined {
+    return this.lastMatchCounts;
   }
 
   /** Timeline 点击：跳转到指定行 */
@@ -810,7 +823,7 @@ export class ViewController {
     this.decorations.clearTimeAnnotations();
 
     // 清空匹配计数
-    this.configPanel.sendMatchCounts({
+    this.sendMatchCountsMessage({
       type: 'matchCounts',
       totalLines: editor.document.lineCount,
       totalMatched: 0,
@@ -842,7 +855,7 @@ export class ViewController {
     this.decorations.clearTimeAnnotations();
 
     // 清空匹配计数
-    this.configPanel.sendMatchCounts({
+    this.sendMatchCountsMessage({
       type: 'matchCounts',
       totalLines: editor.document.lineCount,
       totalMatched: 0,

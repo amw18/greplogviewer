@@ -136,6 +136,9 @@ export function activate(context: vscode.ExtensionContext) {
   const testGetTimelineDataCmd = vscode.commands.registerCommand('greplogviewer._testGetTimelineData', (): any => {
     return viewController?.testGetTimelineData() || {};
   });
+  const testGetMatchCountsCmd = vscode.commands.registerCommand('greplogviewer._testGetMatchCounts', (): any => {
+    return viewController?.testGetMatchCounts() || {};
+  });
   const testGetRingBufferStateCmd = vscode.commands.registerCommand('greplogviewer._testGetRingBufferState', (): any => {
     return viewController?.testGetRingBufferState?.() ?? {};
   });
@@ -169,6 +172,7 @@ export function activate(context: vscode.ExtensionContext) {
     testOpenFileCmd,
     testGetVisibleRangesCmd,
     testGetTimelineDataCmd,
+    testGetMatchCountsCmd,
     testGetRingBufferStateCmd,
     editorChangeListener,
     docChangeListener,
