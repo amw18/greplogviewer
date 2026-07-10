@@ -1,0 +1,40 @@
+name: "Large file export filtered lines to temp file"
+description: "Verify 1M line log can export matched lines to a smaller temp file"
+plugin: "./.."
+workspace: "."
+timeout: 180000
+steps:
+  - description: "Open 1M line log"
+    command: "greplogviewer._testOpenFile"
+    args:
+      - "./test_1m.log"
+    waitAfter: 5000
+
+  - description: "Focus editor"
+    command: "workbench.action.focusActiveEditorGroup"
+    waitAfter: 3000
+
+  - description: "Apply filter for ERROR lines"
+    command: "greplogviewer._testGo"
+    args:
+      - groups:
+          - id: "error-group"
+            name: "Errors"
+            color: "#ff0000"
+            expressions:
+              - id: "error-expr"
+                pattern: "ERROR"
+                flags: ""
+                operator: "and"
+    waitAfter: 5000
+
+  - description: "Export filtered results to temp file"
+    command: "greplogviewer._testOpenFilteredTempFile"
+    assert:
+      type: "return_value_contains"
+      expected: '"lineCount":10000'
+    waitAfter: 5000
+
+  - description: "Verify temp file is active"
+    command: "greplogviewer._testGetState"
+    waitAfter: 1000

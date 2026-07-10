@@ -402,7 +402,7 @@ export class ViewController {
     }
 
     const sortedLines = Array.from(matchedLineNumbers).sort((a, b) => a - b);
-    const filteredContent = sortedLines.map(i => lines[i]).join('\n') + '\n';
+    const filteredContent = sortedLines.map(i => lines[i]).join('\n');
 
     const tmpDir = path.join(os.tmpdir(), 'greplogviewer-filtered');
     if (!fs.existsSync(tmpDir)) { fs.mkdirSync(tmpDir, { recursive: true }); }
@@ -587,6 +587,17 @@ export class ViewController {
   /** 测试用：获取最近一次发送的匹配计数 */
   testGetMatchCounts(): import('../types').MatchCountsMessage | undefined {
     return this.lastMatchCounts;
+  }
+
+  /** 测试用：直接触发大文件过滤结果导出到临时文件 */
+  async testOpenFilteredTempFile(): Promise<void> {
+    if (!this.currentEditor) { return; }
+    const editor = this.currentEditor;
+    const editorId = editor.document.uri.toString();
+    const lines = this.readLines(editor);
+    const results = this.filterResultModel.getResults(editorId) || [];
+    const groups = this.regexGroupModel.getGroups();
+    await this.openFilteredResultsInTempFile(editor, lines, results, groups, this.currentKeywords);
   }
 
   /** Timeline 点击：跳转到指定行 */
