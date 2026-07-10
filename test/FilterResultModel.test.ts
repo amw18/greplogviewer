@@ -97,4 +97,19 @@ describe('FilterResultModel', () => {
       { start: 5, end: 9 },
     ]);
   });
+
+  it('keyword 全局匹配标记为 __kw_visible__ 的行不参与折叠', () => {
+    const results: FilterResult[] = [];
+    for (let i = 0; i < 6; i++) {
+      results.push({ lineNumber: i, groupId: null, color: undefined });
+    }
+    // line 2 被 keyword (full scope) 命中，标记为可见
+    results[2].groupId = '__kw_visible__';
+    model.setResults('doc1', results);
+    const ranges = model.getUnmatchedRanges('doc1');
+    assert.deepStrictEqual(ranges, [
+      { start: 0, end: 1 },
+      { start: 3, end: 5 },
+    ]);
+  });
 });

@@ -497,6 +497,27 @@ describe('TimeMatchModel', () => {
       assert.ok(result[0].firstMatchTime instanceof Date);
       assert.strictEqual(result[0].firstMatchTime!.getSeconds(), 5);
     });
+
+    it('日志开头/结尾的折叠区间使用区间内时间戳计算 duration', () => {
+      model.setConfig({ format: 'HH:mm:ss' });
+      const lines = [
+        '10:00:00 Folded line 0',  // 折叠
+        '10:00:02 Folded line 1',  // 折叠
+        '10:00:05 Matched line 2',
+        '10:00:08 Matched line 3',
+        '10:00:10 Folded line 4',  // 折叠
+        '10:00:12 Folded line 5',  // 折叠
+      ];
+      const ranges = [
+        { start: 0, end: 1 },   // 开头折叠，前面无匹配行
+        { start: 4, end: 5 },   // 结尾折叠，后面无匹配行
+      ];
+      const result = model.computeFoldRanges(ranges, lines, lines.length);
+      // 第一个折叠区间 [0,1] 前面无匹配行，duration 从区间内首时间戳到下一个匹配行
+      assert.strictEqual(result[0].durationMs, 5000);
+      // 最后一个折叠区间 [4,5] 后面无匹配行，duration 从上一个匹配行到区间内末时间戳
+      assert.strictEqual(result[1].durationMs, 4000);
+    });
   });
 
   // ===== 边界情况 =====
