@@ -129,16 +129,38 @@ export class TimeMatchModel {
     return ranges.map(r => {
       const timeFrom = this.findTimeBefore(r.start, lines, matchedSet);
       const timeTo = this.findTimeAfter(r.end, lines, totalLines, matchedSet);
+      // duration 优先使用匹配行前后时间戳；若折叠区间在日志开头/结尾没有匹配行包裹，
+      // 则退而使用区间内的第一个/最后一个时间戳，避免最早/最晚的折叠区间没有时长。
+      const durationFrom = timeFrom || this.findFirstTimeInRange(r.start, r.end, lines);
+      const durationTo = timeTo || this.findLastTimeInRange(r.start, r.end, lines);
       return {
         start: r.start,
         end: r.end,
         lineCount: r.end - r.start + 1,
         timeFrom,
         timeTo,
-        durationMs: timeFrom && timeTo ? timeTo.getTime() - timeFrom.getTime() : undefined,
+        durationMs: durationFrom && durationTo ? durationTo.getTime() - durationFrom.getTime() : undefined,
         firstMatchTime,
       };
     });
+  }
+
+  /** 在 [start, end] 范围内查找第一个可解析的时间戳 */
+  private findFirstTimeInRange(start: number, end: number, lines: string[]): Date | undefined {
+    for (let i = start; i <= end && i < lines.length; i++) {
+      const date = this.parseLineTimestamp(lines[i]);
+      if (date) { return date; }
+    }
+    return undefined;
+  }
+
+  /** 在 [start, end] 范围内查找最后一个可解析的时间戳 */
+  private findLastTimeInRange(start: number, end: number, lines: string[]): Date | undefined {
+    for (let i = end; i >= start && i >= 0; i--) {
+      const date = this.parseLineTimestamp(lines[i]);
+      if (date) { return date; }
+    }
+    return undefined;
   }
 
   /**

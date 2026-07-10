@@ -27,8 +27,22 @@ export class ViewController {
   /** 超过此行数 VS Code 通常会禁用折叠，插件只做高亮和导航 */
   private static readonly FOLDING_DISABLED_THRESHOLD = 300000;
 
+  /** 超过此文件大小（字节）也视为超大文件，避免行长短导致 VS Code 折叠失效 */
+  private static readonly FOLDING_DISABLED_SIZE_THRESHOLD = 20 * 1024 * 1024; // 20 MB
+
   /** 超过此行数禁用时间线，避免扫描百万行阻塞 UI */
   private static readonly TIMELINE_DISABLE_THRESHOLD = 200000;
+
+  /** 判断当前文件是否超出 VS Code 折叠能力（按行数或文件大小） */
+  private static isFoldingDisabled(editor: vscode.TextEditor, lineCount: number): boolean {
+    if (lineCount > ViewController.FOLDING_DISABLED_THRESHOLD) { return true; }
+    try {
+      const size = fs.statSync(editor.document.uri.fsPath).size;
+      return size > ViewController.FOLDING_DISABLED_SIZE_THRESHOLD;
+    } catch {
+      return false;
+    }
+  }
 
   /** 安全构建 keyword 正则：null-safe flags + 移除 g 标志避免 test() 状态残留 */
   private static buildKwRegex(kw: KeywordConfig): RegExp | null {
@@ -356,7 +370,7 @@ export class ViewController {
 
     // 超大文件提示：VS Code 自身会禁用折叠，提供导出过滤结果到临时文件的选项。
     // 原文件的高亮效果仍然保留，临时文件只是额外提供一个可折叠的小文件视图。
-    if (!skipLargeFilePrompt && lines.length > ViewController.FOLDING_DISABLED_THRESHOLD) {
+    if (!skipLargeFilePrompt && ViewController.isFoldingDisabled(editor, lines.length)) {
       const action = await vscode.window.showInformationMessage(
         `GrepLogViewer: ${lines.length.toLocaleString()} lines is too large for VS Code folding; highlighting is still applied.`,
         'Open filtered results in new tab'
@@ -679,6 +693,10 @@ export class ViewController {
    * 保持 FoldingRangeProvider 方案，不回到逐个 createFoldingRangeFromSelection 的旧路径。
    */
   private async clearFoldingState(editor: vscode.TextEditor): Promise<void> {
+    // 超大文件 unfoldAll 会超时，直接跳过
+    if (ViewController.isFoldingDisabled(editor, editor.document.lineCount)) {
+      return;
+    }
     // 确保编辑器有焦点（侧边栏点击 Go 后编辑器可能失焦，fold 命令会静默失败）
     if (vscode.window.activeTextEditor !== editor) {
       await vscode.window.showTextDocument(editor.document, {
@@ -704,7 +722,7 @@ export class ViewController {
     }
 
     // 超过阈值后 VS Code 通常会禁用折叠，不再尝试 foldAll，避免长时间无响应
-    if (editor.document.lineCount > ViewController.FOLDING_DISABLED_THRESHOLD) {
+    if (ViewController.isFoldingDisabled(editor, editor.document.lineCount)) {
       return;
     }
 
@@ -791,8 +809,19 @@ export class ViewController {
     this.decorations.clear();
     this.decorations.clearTimeAnnotations();
 
-    // 展开所有折叠区域
-    await vscode.commands.executeCommand('editor.unfoldAll');
+    // 清空匹配计数
+    this.configPanel.sendMatchCounts({
+      type: 'matchCounts',
+      totalLines: editor.document.lineCount,
+      totalMatched: 0,
+      groupCounts: {},
+      keywordCounts: {},
+    });
+
+    // 小文件才展开折叠；超大文件 VS Code 的 unfoldAll 会超时
+    if (!ViewController.isFoldingDisabled(editor, editor.document.lineCount)) {
+      await vscode.commands.executeCommand('editor.unfoldAll');
+    }
   }
 
   /** Reset: 清除配置 + 显示效果 */
@@ -812,8 +841,19 @@ export class ViewController {
     this.decorations.clear();
     this.decorations.clearTimeAnnotations();
 
-    // 展开所有折叠区域
-    await vscode.commands.executeCommand('editor.unfoldAll');
+    // 清空匹配计数
+    this.configPanel.sendMatchCounts({
+      type: 'matchCounts',
+      totalLines: editor.document.lineCount,
+      totalMatched: 0,
+      groupCounts: {},
+      keywordCounts: {},
+    });
+
+    // 小文件才展开折叠；超大文件 VS Code 的 unfoldAll 会超时
+    if (!ViewController.isFoldingDisabled(editor, editor.document.lineCount)) {
+      await vscode.commands.executeCommand('editor.unfoldAll');
+    }
   }
 
   /** 文档变更时重新过滤（仅已激活编辑器） */

@@ -1,0 +1,44 @@
+name: "Large file clear residue"
+description: "Verify clear removes all highlights from large file"
+plugin: "./.."
+workspace: "."
+timeout: 120000
+steps:
+  - description: "Open 1M line log"
+    command: "greplogviewer._testOpenFile"
+    args:
+      - "./test_1m.log"
+    waitAfter: 5000
+
+  - description: "Focus editor"
+    command: "workbench.action.focusActiveEditorGroup"
+    waitAfter: 2000
+
+  - description: "Apply filter"
+    command: "greplogviewer._testGo"
+    args:
+      - groups:
+          - id: "error-group"
+            name: "Errors"
+            color: "#ff0000"
+            expressions:
+              - id: "error-expr"
+                pattern: "ERROR"
+                flags: ""
+                operator: "and"
+    waitAfter: 5000
+
+  - description: "Get state after filter"
+    command: "greplogviewer._testGetState"
+    waitAfter: 1000
+
+  - description: "Clear"
+    command: "greplogviewer._testClear"
+    waitAfter: 3000
+
+  - description: "Get state after clear"
+    command: "greplogviewer._testGetState"
+    assert:
+      type: "return_value_contains"
+      expected: '"foldSummaries":[]'
+    waitAfter: 1000
