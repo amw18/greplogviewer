@@ -382,6 +382,9 @@ export class ViewController {
       this.isApplyingFilter = false;
     }
 
+    // 标记本次会话已完整过滤，切回时不再重新 foldAll
+    this.attachedEditors.add(editorId);
+
     // 发送时间线图表数据
     this.sendTimelineData(editorId, lines, keywords, scanStart, scanEnd);
 
@@ -1341,6 +1344,9 @@ export class ViewController {
       } finally {
         this.isApplyingFilter = false;
       }
+
+      // 标记本次会话已完整过滤，切回时不再重新 foldAll
+      this.attachedEditors.add(editorId);
 
       // 更新时间线图表和匹配统计
       this.sendTimelineData(editorId, lines, this.currentKeywords, scanStart, scanEnd);
