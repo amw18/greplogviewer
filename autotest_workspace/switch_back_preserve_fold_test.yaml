@@ -1,0 +1,56 @@
+name: "Switch back preserves fold state"
+description: "Verify switching to another file and back does not re-fold, preserving user's expanded state"
+plugin: "./.."
+workspace: "."
+timeout: 120000
+steps:
+  - description: "Open test log file"
+    command: "greplogviewer._testOpenFile"
+    args:
+      - "./test.log"
+    waitAfter: 2000
+
+  - description: "Focus editor"
+    command: "workbench.action.focusActiveEditorGroup"
+    waitAfter: 1500
+
+  - description: "Apply filter A"
+    command: "greplogviewer._testGo"
+    args:
+      - groups:
+          - id: "group-a"
+            name: "Group A"
+            color: "#ff0000"
+            expressions:
+              - id: "expr-a"
+                pattern: "match A"
+                flags: ""
+                operator: "and"
+    waitAfter: 3000
+
+  - description: "Get fold state after initial filter"
+    command: "greplogviewer._testGetState"
+    waitAfter: 1000
+
+  - description: "Open second file"
+    command: "greplogviewer._testOpenFile"
+    args:
+      - "./test_timeline.log"
+    waitAfter: 2000
+
+  - description: "Focus second editor"
+    command: "workbench.action.focusActiveEditorGroup"
+    waitAfter: 1500
+
+  - description: "Switch back to first file"
+    command: "greplogviewer._testOpenFile"
+    args:
+      - "./test.log"
+    waitAfter: 3000
+
+  - description: "Get fold state after switching back"
+    command: "greplogviewer._testGetState"
+    assert:
+      type: "return_value_contains"
+      expected: '"startLine":1'
+    waitAfter: 1000

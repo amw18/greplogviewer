@@ -60,6 +60,8 @@ export class ViewController {
   private isApplyingFilter = false;  // 防止 Go / keyword 更新期间的 attach 重入
   private lastFilterFingerprint = '';  // 跳过重复过滤
   private lastMatchCounts: import('../types').MatchCountsMessage | undefined;
+  /** 本次会话已完整恢复过过滤+折叠的编辑器，切回时不再重新 foldAll，保留用户手动展开状态 */
+  private attachedEditors: Set<string> = new Set();
   private context: vscode.ExtensionContext;
 
   /** 缓存：预编译的关键词正则 */
@@ -165,41 +167,50 @@ export class ViewController {
       this.currentKeywords = savedConfig.keywords;
 
       if (this.editorStateModel.isActive(editorId) && !this.isApplyingFilter) {
-        // 已激活：先清除可能从上一会话恢复的折叠状态，再重新应用过滤
-        // （FoldingRangeProvider 的折叠状态会被 VS Code 持久化，重启后可能残留）
-        await this.clearFoldingState(editor);
-
+        const alreadyAttached = this.attachedEditors.has(editorId);
         const lines = this.readLines(editor);
 
-        // 强制 FoldingRangeProvider 先返回空区间并重新注册 provider，
-        // 彻底移除旧的 provider 折叠和 gutter 折叠图标
-        this.filterResultModel.setEmptyResults(editorId);
-        this.reRegisterFoldProvider?.();
-        await new Promise(r => setTimeout(r, 100));
+        if (alreadyAttached) {
+          // 会话内切回：只恢复颜色装饰，保留用户手动展开的折叠状态
+          const results = this.filterResultModel.getResults(editorId);
+          if (results) {
+            const scanStart = 0;
+            const scanEnd = lines.length;
+            this.markKeywordVisibleLines(results, lines, this.currentKeywords, scanStart, scanEnd);
+            this.decorations.apply(results, editor, this.currentKeywords, scanStart, scanEnd, undefined, lines);
+            this.applyFoldAnnotations(editor, editorId, lines, this.currentKeywords);
+            this.applyRingBufferStart(editor, lines);
+          }
+        } else {
+          // 首次恢复（如重启后）：清除残留折叠 + 重新应用过滤 + foldAll
+          await this.clearFoldingState(editor);
 
-        const results = await this.runFilterWithProgress(lines, savedConfig.groups);
-        this.filterResultModel.setResults(editorId, results);
+          this.filterResultModel.setEmptyResults(editorId);
+          this.reRegisterFoldProvider?.();
+          await new Promise(r => setTimeout(r, 100));
 
-        const scanStart = 0;
-        const scanEnd = lines.length;
+          const results = await this.runFilterWithProgress(lines, savedConfig.groups);
+          this.filterResultModel.setResults(editorId, results);
 
-        // 范围内被 keyword 匹配但未被 group 匹配的行 → 标记为可见
-        this.markKeywordVisibleLines(results, lines, this.currentKeywords, scanStart, scanEnd);
+          const scanStart = 0;
+          const scanEnd = lines.length;
 
-        this.decorations.apply(results, editor, this.currentKeywords, scanStart, scanEnd);
+          this.markKeywordVisibleLines(results, lines, this.currentKeywords, scanStart, scanEnd);
+          this.decorations.apply(results, editor, this.currentKeywords, scanStart, scanEnd, undefined, lines);
+          this.applyFoldAnnotations(editor, editorId, lines, this.currentKeywords);
+          this.applyRingBufferStart(editor, lines);
 
-        // 恢复时间标注
-        this.applyFoldAnnotations(editor, editorId, lines, this.currentKeywords);
+          await new Promise(r => setTimeout(r, 80));
+          if (!ViewController.isFoldingDisabled(editor, editor.document.lineCount)) {
+            await vscode.commands.executeCommand('editor.foldAll');
+          }
 
-        // 检测并应用 ring buffer 起点行红旗
-        this.applyRingBufferStart(editor, lines);
+          this.attachedEditors.add(editorId);
+        }
 
-        // 恢复折叠（FoldingRangeProvider 已定义区域，但切换编辑器时需重新 foldAll）
-        await new Promise(r => setTimeout(r, 80));
-        await vscode.commands.executeCommand('editor.foldAll');
-
-        // Go / keyword 更新期间 attach 被 showTextDocument 触发时不重发 timeline/matchCounts
         if (!this.isApplyingFilter) {
+          const scanStart = 0;
+          const scanEnd = lines.length;
           this.sendTimelineData(editorId, lines, this.currentKeywords, scanStart, scanEnd);
           this.sendMatchCounts(editorId, lines, this.currentKeywords, scanStart, scanEnd);
         }
