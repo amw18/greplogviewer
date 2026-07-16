@@ -150,3 +150,29 @@ _ex0=./out; grep -rn --exclude-dir="${_ex0##*/}" 'keyword' dirs
 ## 22. Canvas 缩放的 RAF 节流
 **问题**: 滚轮事件每秒触发数十次，每次直接同步调用 `draw()` 重绘整个 canvas，导致画面卡顿不丝滑。
 **修复**: 用 `requestAnimationFrame` 做节流——`scheduleDraw()` 在已排期时跳过，同帧内多次调用只执行最后一次 `draw()`。
+
+## 23. 大文件折叠失效：VS Code 内部限制
+**问题**: 超过约 30 万行或 20MB 的文件，`editor.foldAll` 静默无效，非匹配行不折叠。
+**根因**: VS Code 对大文件有内部折叠限制（非 `foldingMaximumRegions` 设置可控），foldAll 命令不报错但不生效。
+**修复**: 用 `isFoldingDisabled(editor, lineCount)` 判断（行数 >30万 或文件 >20MB），超阈值时跳过 foldAll/unfoldAll，改为提示用户用 Export 导出过滤结果到新 editor。
+**教训**: 不要假设 VS Code 命令在大文件上一定生效；要用 visibleRanges 验证实际折叠状态，不能只信任模型数据。
+
+## 24. 大文件 Clear/Reset 超时
+**问题**: 大文件上点 Clear，`editor.unfoldAll` 超时 10s+，导致 Clear 似乎"卡死"。
+**修复**: 所有 fold/unfold 操作都用 `isFoldingDisabled()` 保护，大文件直接跳过。
+**教训**: VS Code 的 fold 命令在大文件上性能极差，必须设阈值跳过。
+
+## 25. 切换编辑器后折叠被重置
+**问题**: `attach()` 每次切回文件都 clearFoldingState + foldAll，用户手动展开的折叠被重新折起。
+**修复**: 用 `attachedEditors: Set<string>` 记录本次会话已完整恢复的编辑器。首次恢复（如重启后）才 foldAll；会话内切回只恢复颜色装饰，保留折叠状态。
+**关键**: `handleGo()` 和 `addKeyword()` 也要加入 Set，否则点 Go 后第一次切回仍被误判为首次恢复。
+
+## 26. Clear 未清空匹配计数
+**问题**: `handleClear` 发送了零计数消息但未更新 `lastMatchCounts` 缓存，测试读到旧值。
+**修复**: 统一用 `sendMatchCountsMessage(msg)` 同时更新缓存和发送面板消息。
+**教训**: 手动构造消息发送时，要确保所有缓存同步更新。
+
+## 27. Skill 自动安装
+**需求**: 插件安装/更新时把 skill 拷贝到 `~/.agent/skills/`。
+**实现**: `installSkill()` 在 `activate()` 时读取 bundled `skills/greplogviewer-config/SKILL.md`，与目标文件内容比较，不同才写入。
+**注意**: skill 必须有 YAML frontmatter（`name` + `description`），否则不会被 agent 加载。`skills/` 不能在 `.vscodeignore` 中。

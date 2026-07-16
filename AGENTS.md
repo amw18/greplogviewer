@@ -16,7 +16,7 @@
 ## 关键命令
 
 ```bash
-npm test              # 运行 165 个单元测试
+npm test              # 运行 204 个单元测试
 npx tsc --noEmit      # 类型检查
 npx tsc               # 编译
 # F5 启动调试
