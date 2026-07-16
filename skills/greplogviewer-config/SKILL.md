@@ -1,101 +1,92 @@
-# GrepLogViewer Config Skill
+---
+name: greplogviewer-config
+description: Configure GrepLogViewer VS Code extension filter groups, keywords, and time patterns for any log format. Use when setting up regex highlighting/folding for log analysis, or when a user wants to filter and colorize log files.
+---
 
-Help AI agents automatically configure GrepLogViewer's filter groups, keywords,
-and time patterns for any log format.
+# GrepLogViewer Configuration
 
-## When to Use
+Help users configure the GrepLogViewer VS Code extension to filter, colorize, and
+fold log files using regex groups and keywords.
 
-Use this skill when a user wants to:
-- Set up regex filter groups to highlight and fold log lines
-- Configure keyword highlighting
-- Detect time patterns for fold duration annotations
-- Analyze a new log format they haven't used before
+## What GrepLogViewer Does
 
-## How GrepLogViewer Works
-
-GrepLogViewer is a VS Code extension that filters log files using regex groups.
-Clicking **Go** applies the filter: matched lines get colored, unmatched lines
-get folded. Keywords add sub-string highlights on top of group colors.
-
-### Key Concepts
-
-1. **Regex Group**: A named group with one or more expressions. First matching
-   group wins (priority by order). Each group has a color.
-2. **Expression**: A regex pattern + flags + logic operator (AND/OR/NOT).
-3. **Keyword**: A regex that highlights matching substrings. `matchScope`:
-   - `matched`: only highlight within group-matched lines
-   - `full`: highlight in all lines (keyword-only lines stay visible, not folded)
-4. **Time Pattern**: A format string like `YYYY-MM-DD HH:mm:ss.SSS` for
-   timestamp parsing. Leave empty to auto-detect (Android, kernel, ISO, etc.).
-5. **Ring Buffer**: Detects wrap-around start in ring-buffer logs (red flag icon).
+GrepLogViewer is a VS Code extension that:
+- Matches log lines against regex **groups** (first match wins, colored by group)
+- Folds unmatched lines so only relevant lines are visible
+- Highlights **keywords** as colored substrings within visible lines
+- Parses **time patterns** to show fold duration annotations
+- Detects ring-buffer wrap-around (red flag at start line)
 
 ## Configuration Procedure
 
-### Step 1: Identify the log format
+### 1. Collect sample log lines
 
-Ask the user to paste 5-10 sample lines. Identify:
-- Timestamp format (if any)
-- Common log levels (ERROR, WARN, INFO, etc.)
-- PID/TID patterns
-- Tag/module patterns
+Ask the user to paste 5–10 representative lines. Identify:
+- Timestamp format
+- Log levels (ERROR, WARN, INFO, etc.)
+- Tags / modules / PIDs
 
-### Step 2: Define regex groups
+### 2. Define regex groups
 
-Create groups in priority order. Common patterns:
+Groups are evaluated top-to-bottom; the first matching group wins. Each group
+has a color and one or more expressions (combined with AND / OR / NOT).
 
-```
-# Android logcat: MM-DD HH:mm:ss.SSS LEVEL/TAG: message
-Group "Fatal":   pattern "FATAL|ASSERT"
-Group "Error":   pattern " E |ERROR"
-Group "Warn":    pattern " W |WARN"
-Group "Info":    pattern " I |INFO"
+Common patterns by log type:
 
-# Kernel log: [  s.SSSSSS] message
-Group "Error":   pattern "err|ERROR|panic"
-Group "Warn":    pattern "warn|WARNING"
+**Android logcat** (`MM-DD HH:mm:ss.SSS LEVEL/TAG: msg`):
+- Fatal: `FATAL|ASSERT`
+- Error: ` E /|ERROR`
+- Warn: ` W /|WARN`
 
-# Generic
-Group "Error":   pattern "ERROR|FATAL|Exception|Traceback"
-Group "Warn":    pattern "WARN|WARNING"
-```
+**Kernel** (`[  s.SSSSSS] msg`):
+- Error: `err|ERROR|panic|BUG`
+- Warn: `warn|WARNING`
 
-### Step 3: Define keywords (optional)
+**Generic application logs**:
+- Error: `ERROR|FATAL|Exception|Traceback|CRASH`
+- Warn: `WARN|WARNING|DEPRECATED`
 
-Keywords highlight specific terms across all visible lines:
+### 3. Define keywords (optional)
 
-```json
-{
-  "id": "kw1",
-  "pattern": "timeout|timed out",
-  "flags": "i",
-  "color": "#ff6600",
-  "enabled": true,
-  "matchScope": "full",
-  "hint": "timeout"
-}
-```
+Keywords highlight specific substrings across visible lines. Each keyword has:
+- `pattern`: regex
+- `flags`: e.g. `i` for case-insensitive
+- `color`: hex color
+- `matchScope`:
+  - `matched` — only highlight within group-matched lines
+  - `full` — scan all lines; keyword-only lines stay visible and are **not folded**
+- `hint`: optional label shown after the line (e.g. "timeout")
 
-- Use `matchScope: "full"` for keywords that should keep unmatched lines visible.
-- Use `matchScope: "matched"` for keywords that only matter within group hits.
+Use `matchScope: "full"` sparingly on large files — every matched line stays
+unfolded.
 
-### Step 4: Set time pattern
+### 4. Set time pattern
 
-Common formats:
-- Android: `MM-DD HH:mm:ss.SSS`
-- Android (no ms): `MM-DD HH:mm:ss`
-- ISO: `YYYY-MM-DD HH:mm:ss.SSS`
-- Kernel: `[S+]` (auto-detected)
-- Leave empty for auto-detection.
+Leave the Time Fmt field empty to auto-detect. Common explicit formats:
 
-### Step 5: Export config JSON
+| Log type | Format |
+|----------|--------|
+| Android logcat | `MM-DD HH:mm:ss.SSS` |
+| Android (no ms) | `MM-DD HH:mm:ss` |
+| ISO 8601 | `YYYY-MM-DD HH:mm:ss.SSS` |
+| Kernel | auto-detected (`[S+]`) |
 
-The config can be exported/imported as JSON:
+### 5. Apply and verify
+
+1. Click **Go** — matched lines get colored, unmatched lines fold.
+2. Check the match-counts badge (e.g. `12/1000`).
+3. Fold annotations show `▼ N lines │ ~duration │ +elapsed`.
+4. If nothing matches, test the regex in a JS console first.
+
+## Config JSON Structure
+
+Configs can be exported / imported as JSON:
 
 ```json
 {
   "groups": [
     {
-      "id": "g1",
+      "id": "g-error",
       "name": "Errors",
       "color": "#ff0000",
       "expressions": [
@@ -104,29 +95,34 @@ The config can be exported/imported as JSON:
     }
   ],
   "timePattern": { "format": "YYYY-MM-DD HH:mm:ss.SSS" },
-  "keywords": []
+  "keywords": [
+    {
+      "id": "kw1",
+      "pattern": "timeout",
+      "flags": "i",
+      "color": "#ff6600",
+      "enabled": true,
+      "matchScope": "full",
+      "hint": "timeout"
+    }
+  ]
 }
 ```
 
-## Config Panel Layout
+## Panel Layout
 
-- **Regex Groups** section: add/remove groups and expressions
-- **Keyword Highlight** section: add/remove keywords with ↑/↓ navigation
-- **Advance** section: Time Fmt, saved configs (Apply/Delete/Save/Export/Import)
-- **Action bar**: Go | Clear | Reset | Export (exports matched lines to new editor)
+| Section | Controls |
+|---------|----------|
+| Regex Groups | Add/remove groups and expressions, color per group |
+| Keyword Highlight | Add/remove keywords, ↑/↓ per-keyword hit navigation |
+| Advance | Time Fmt, saved configs (Apply / Delete / Save / Export / Import) |
+| Action bar | Go \| Clear \| Reset \| Export (matched lines → new editor) |
 
 ## Pitfalls
 
-- Groups are evaluated in order; first match wins. Put most specific first.
-- Keyword `matchScope: "full"` lines are never folded — use sparingly on large files.
-- Time pattern auto-detect samples only the first few lines.
-- Files >20MB or >300k lines: VS Code disables folding; use Export to filtered editor.
-- VS Code refuses to sync files >50MB to extensions (hard limit).
-
-## Verification
-
-After configuring:
-1. Click **Go** — matched lines should be colored, unmatched folded.
-2. Check match counts badge (e.g., `5/100`).
-3. Fold annotations show line count + duration.
-4. If no matches, verify regex with `RegExp` test.
+- Groups are priority-ordered; put most specific first.
+- `matchScope: "full"` keyword lines are never folded — use sparingly.
+- Files >20 MB or >300 k lines: VS Code disables folding; use **Export** to get a
+  smaller filtered editor.
+- VS Code refuses to sync files >50 MB to extensions (hard limit).
+- Time auto-detect samples only the first few lines.
