@@ -70,6 +70,10 @@
       {
         "command": "greplogviewer.gotoNextHit",
         "title": "Goto Next Hit"
+      },
+      {
+        "command": "greplogviewer.exportMatchedLines",
+        "title": "Export Matched Lines"
       }
     ],
     "menus": {
@@ -96,6 +100,10 @@
         {
           "command": "greplogviewer.gotoNextHit",
           "group": "greplogviewer@5"
+        },
+        {
+          "command": "greplogviewer.exportMatchedLines",
+          "group": "greplogviewer@6"
         }
       ]
     }

@@ -442,6 +442,37 @@ export class ViewController {
     await vscode.window.showTextDocument(newEditor.document, { viewColumn: newEditor.viewColumn });
   }
 
+  /** 导出匹配行到一个新的未保存 editor（untitled document） */
+  async exportMatchedLines(): Promise<void> {
+    const editor = this.currentEditor;
+    if (!editor) { return; }
+    const editorId = editor.document.uri.toString();
+    const results = this.filterResultModel.getResults(editorId);
+    if (!results || results.length === 0) {
+      vscode.window.showWarningMessage('GrepLogViewer: No filter results. Click Go first.');
+      return;
+    }
+
+    const lines = this.readLines(editor);
+    const matchedLineNumbers = new Set<number>();
+    for (const r of results) {
+      if (r.groupId !== null) { matchedLineNumbers.add(r.lineNumber); }
+    }
+    if (matchedLineNumbers.size === 0) {
+      vscode.window.showWarningMessage('GrepLogViewer: No matched lines to export.');
+      return;
+    }
+
+    const sortedLines = Array.from(matchedLineNumbers).sort((a, b) => a - b);
+    const content = sortedLines.map(i => lines[i]).join('\n') + '\n';
+
+    const doc = await vscode.workspace.openTextDocument({ content, language: 'log' });
+    await vscode.window.showTextDocument(doc, { preview: false });
+    vscode.window.showInformationMessage(
+      `GrepLogViewer: Exported ${sortedLines.length} matched lines to new editor.`
+    );
+  }
+
   /** 计算时间线数据并发送到 KeywordTimeline webview */
   private sendTimelineData(
     editorId: string,
