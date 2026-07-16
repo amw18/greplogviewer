@@ -55,7 +55,10 @@ Keywords highlight specific substrings across visible lines. Each keyword has:
 - `matchScope`:
   - `matched` — only highlight within group-matched lines
   - `full` — scan all lines; keyword-only lines stay visible and are **not folded**
-- `hint`: optional label shown after the line (e.g. "timeout")
+- `hint`: optional label shown after the line (e.g. "timeout").
+  Supports `{{name}}` placeholders to reference named capture groups from the
+  pattern. Example: pattern `(?<pid>\d+)\s+(?<tag>\w+):`, hint `pid={{pid}}`
+  displays `pid=1234`.
 
 Use `matchScope: "full"` sparingly on large files — every matched line stays
 unfolded.

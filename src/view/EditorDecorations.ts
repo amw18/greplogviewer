@@ -7,6 +7,7 @@ interface KeywordMatch {
   range: vscode.Range;
   color: string;
   keywordId: string;
+  groups?: Record<string, string>;
 }
 
 /** 超过此行数时跳过未匹配行 dim 装饰，避免 setDecorations 阻塞 UI */
@@ -219,7 +220,11 @@ export class EditorDecorations {
         const hint = hintMap.get(m.keywordId);
         if (hint && !seenHints.has(hint)) {
           seenHints.add(hint);
-          hints.push(hint);
+          // 用命名捕获组替换 {{name}} 占位符
+          const resolved = m.groups
+            ? hint.replace(/\{\{(\w+)\}\}/g, (_, name) => m.groups![name] || '')
+            : hint;
+          hints.push(resolved);
         }
       }
       if (hints.length > 0) {
@@ -291,7 +296,7 @@ export class EditorDecorations {
           const endPos = new vscode.Position(i, match.index + match[0].length);
           const range = new vscode.Range(startPos, endPos);
           if (!map.has(i)) { map.set(i, []); }
-          map.get(i)!.push({ range, color: c.color, keywordId: c.id });
+          map.get(i)!.push({ range, color: c.color, keywordId: c.id, groups: match.groups || undefined });
         }
       }
     }

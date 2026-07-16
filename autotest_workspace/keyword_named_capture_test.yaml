@@ -1,0 +1,41 @@
+name: "Keyword named capture hint"
+description: "Verify {{name}} placeholders in hint are resolved from regex named capture groups"
+plugin: "./.."
+workspace: "."
+timeout: 120000
+steps:
+  - description: "Open test log file"
+    command: "greplogviewer._testOpenFile"
+    args:
+      - "./test.log"
+    waitAfter: 2000
+
+  - description: "Focus editor"
+    command: "workbench.action.focusActiveEditorGroup"
+    waitAfter: 1500
+
+  - description: "Apply filter with keyword using named capture in hint"
+    command: "greplogviewer._testGo"
+    args:
+      - groups:
+          - id: "g-all"
+            name: "All"
+            color: "#ff0000"
+            expressions:
+              - id: "e-all"
+                pattern: "line"
+                flags: ""
+                operator: "and"
+        keywords:
+          - id: "kw-cap"
+            pattern: "match (?<type>\\w+)"
+            flags: ""
+            color: "#00ff00"
+            enabled: true
+            matchScope: "full"
+            hint: "type={{type}}"
+    waitAfter: 3000
+
+  - description: "Verify filter applied"
+    command: "greplogviewer._testGetState"
+    waitAfter: 1000
