@@ -122,6 +122,7 @@ export class ViewController {
     this.configPanel.onGo((g, tp, kw) => this.handleGo(g, tp, kw));
     this.configPanel.onReset(() => this.handleReset());
     this.configPanel.onClear(() => this.handleClear());
+    this.configPanel.onExportMatchedLines(() => this.exportMatchedLines());
 
     // Config management callbacks
     this.configPanel.onExport((g, tp, kw) => this.handleExport(g, tp, kw));
@@ -442,7 +443,8 @@ export class ViewController {
     await vscode.window.showTextDocument(newEditor.document, { viewColumn: newEditor.viewColumn });
   }
 
-  /** 导出匹配行到一个新的未保存 editor（untitled document） */
+  /** 导出匹配行到一个新的未保存 editor（untitled document），用旧文件名+_matched{n} 命名 */
+  private exportCounter = 0;
   async exportMatchedLines(): Promise<void> {
     const editor = this.currentEditor;
     if (!editor) { return; }
@@ -466,10 +468,21 @@ export class ViewController {
     const sortedLines = Array.from(matchedLineNumbers).sort((a, b) => a - b);
     const content = sortedLines.map(i => lines[i]).join('\n') + '\n';
 
-    const doc = await vscode.workspace.openTextDocument({ content, language: 'log' });
-    await vscode.window.showTextDocument(doc, { preview: false });
+    // 用旧文件名 + _matched{n} 作为 untitled document 名称
+    this.exportCounter++;
+    const baseName = editor.document.isUntitled
+      ? 'Untitled'
+      : path.basename(editor.document.fileName, path.extname(editor.document.fileName));
+    const docName = `${baseName}_matched${this.exportCounter}`;
+    const uri = vscode.Uri.parse(`untitled:${docName}`);
+    const doc = await vscode.workspace.openTextDocument(uri);
+    const newEditor = await vscode.window.showTextDocument(doc, { preview: false });
+    await newEditor.edit(edit => edit.insert(new vscode.Position(0, 0), content));
+    // 设置语言为 log，使语法高亮和插件功能生效
+    await vscode.languages.setTextDocumentLanguage(doc, 'log');
+
     vscode.window.showInformationMessage(
-      `GrepLogViewer: Exported ${sortedLines.length} matched lines to new editor.`
+      `GrepLogViewer: Exported ${sortedLines.length} matched lines to ${docName}.`
     );
   }
 

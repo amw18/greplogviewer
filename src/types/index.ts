@@ -259,11 +259,15 @@ export interface GotoGroupMatchMessage {
   direction: 'prev' | 'next';
 }
 
+export interface ExportMatchedLinesMessage {
+  type: 'exportMatchedLines';
+}
+
 export type WebviewMessage = GoMessage | ResetMessage | ClearMessage
   | ExportConfigMessage | ImportConfigMessage | SaveConfigMessage | RequestSaveConfigMessage
   | ListSavedConfigsMessage | ApplySavedConfigMessage | DeleteSavedConfigMessage
   | GotoKeywordMatchMessage | GotoGroupMatchMessage
-  | TimelineClickMessage | SyncConfigMessage;
+  | TimelineClickMessage | SyncConfigMessage | ExportMatchedLinesMessage;
 
 export type ExtensionMessage = UpdateConfigMessage
   | ConfigImportedMessage | SavedConfigsListMessage | ConfigAppliedMessage

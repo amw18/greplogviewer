@@ -7,6 +7,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   private goCallback: ((groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void) | undefined;
   private resetCallback: (() => void) | undefined;
   private clearCallback: (() => void) | undefined;
+  private exportMatchedCallback: (() => void) | undefined;
   private exportCallback: ((groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void) | undefined;
   private importCallback: (() => void) | undefined;
   private saveCallback: ((name: string, groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void) | undefined;
@@ -35,6 +36,9 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
           break;
         case 'clear':
           this.clearCallback?.();
+          break;
+        case 'exportMatchedLines':
+          this.exportMatchedCallback?.();
           break;
         case 'exportConfig':
           this.exportCallback?.(msg.groups, msg.timePattern, msg.keywords);
@@ -92,6 +96,9 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
 
   onClear(callback: () => void): void {
     this.clearCallback = callback;
+  }
+  onExportMatchedLines(callback: () => void): void {
+    this.exportMatchedCallback = callback;
   }
 
   onExport(callback: (groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void): void {
@@ -605,6 +612,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     html += '<button class="action-btn" id="go-btn">Go</button>';
     html += '<button class="action-btn reset-btn" id="clear-btn">Clear</button>';
     html += '<button class="action-btn reset-btn" id="reset-btn">Reset</button>';
+    html += '<button class="action-btn reset-btn" id="export-matched-btn">Export</button>';
     html += statsHtml;
     html += '</div>';
     document.getElementById('app').innerHTML = html;
@@ -786,6 +794,8 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       timePattern = { format: '' }; saveState();
       vscode.postMessage({ type: 'reset' });
       render();
+    } else if (btn.id === 'export-matched-btn') {
+      vscode.postMessage({ type: 'exportMatchedLines' });
     } else if (btn.id === 'cfg-export-btn') {
       collectData();
       var tf2 = document.getElementById('time-format');

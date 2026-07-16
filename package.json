@@ -100,10 +100,6 @@
         {
           "command": "greplogviewer.gotoNextHit",
           "group": "greplogviewer@5"
-        },
-        {
-          "command": "greplogviewer.exportMatchedLines",
-          "group": "greplogviewer@6"
         }
       ]
     }
