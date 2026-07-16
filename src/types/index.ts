@@ -207,6 +207,7 @@ export interface ConfigAppliedMessage {
 export interface GotoKeywordMatchMessage {
   type: 'gotoKeywordMatch';
   direction: 'next' | 'prev';
+  keywordId?: string;
 }
 
 /** 时间线图表的单个数据点 */

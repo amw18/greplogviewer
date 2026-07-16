@@ -100,6 +100,9 @@ export function activate(context: vscode.ExtensionContext) {
   const exportMatchedLinesCmd = vscode.commands.registerCommand('greplogviewer.exportMatchedLines', () => {
     return viewController?.exportMatchedLines();
   });
+  const gotoKeywordHitCmd = vscode.commands.registerCommand('greplogviewer.gotoKeywordHit', (args: any) => {
+    return viewController?.gotoKeywordHit(args?.direction || 'next', args?.keywordId);
+  });
 
   // ── Test-only commands for autotest automation ──
   const testGoCmd = vscode.commands.registerCommand('greplogviewer._testGo', async (config: any) => {
@@ -145,6 +148,7 @@ export function activate(context: vscode.ExtensionContext) {
       isUntitled: doc.isUntitled,
       languageId: doc.languageId,
       lineCount: doc.lineCount,
+      cursorLine: editor.selection.active.line,
     };
   });
   const testGetTimelineDataCmd = vscode.commands.registerCommand('greplogviewer._testGetTimelineData', (): any => {
@@ -184,6 +188,7 @@ export function activate(context: vscode.ExtensionContext) {
     gotoPrevHitCmd,
     gotoNextHitCmd,
     exportMatchedLinesCmd,
+    gotoKeywordHitCmd,
     testGoCmd,
     testSyncConfigCmd,
     testClearCmd,

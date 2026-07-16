@@ -8,6 +8,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   private resetCallback: (() => void) | undefined;
   private clearCallback: (() => void) | undefined;
   private exportMatchedCallback: (() => void) | undefined;
+  private gotoKeywordHitCallback: ((direction: 'next' | 'prev', keywordId: string) => void) | undefined;
   private exportCallback: ((groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void) | undefined;
   private importCallback: (() => void) | undefined;
   private saveCallback: ((name: string, groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void) | undefined;
@@ -39,6 +40,9 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
           break;
         case 'exportMatchedLines':
           this.exportMatchedCallback?.();
+          break;
+        case 'gotoKeywordMatch':
+          this.gotoKeywordHitCallback?.(msg.direction, msg.keywordId || '');
           break;
         case 'exportConfig':
           this.exportCallback?.(msg.groups, msg.timePattern, msg.keywords);
@@ -99,6 +103,9 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   }
   onExportMatchedLines(callback: () => void): void {
     this.exportMatchedCallback = callback;
+  }
+  onGotoKeywordHit(callback: (direction: 'next' | 'prev', keywordId: string) => void): void {
+    this.gotoKeywordHitCallback = callback;
   }
 
   onExport(callback: (groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void): void {
@@ -210,6 +217,9 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   .group-header .group-first-expr { flex: 1 1 60px; min-width: 40px; }
   .remove-btn { background: none; border: none; color: var(--vscode-errorForeground);
                 cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; flex-shrink: 0; }
+  .kw-nav-btn { background: none; border: none; color: var(--vscode-descriptionForeground);
+                cursor: pointer; font-size: 12px; line-height: 1; padding: 0 2px; flex-shrink: 0; }
+  .kw-nav-btn:hover { color: var(--vscode-foreground); }
   .move-btn { background: none; border: none; color: var(--vscode-descriptionForeground);
               cursor: pointer; font-size: 10px; line-height: 1; padding: 0 2px; }
   .move-btn:hover { color: var(--vscode-foreground); }
@@ -255,7 +265,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   .keyword-row input[type="text"] { flex: 1; background: transparent;
         color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border);
         padding: 1px 4px; border-radius: 2px; font-size: 11px; }
-  .keyword-row input.pattern { min-width: 60px; }
+  .keyword-row input.pattern { min-width: 40px; width: 90px; flex: 0 0 90px; }
   .keyword-row input.flags { width: 40px; }
   .keyword-row input.hint { min-width: 60px; }
 
@@ -591,6 +601,8 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       if (kc >= 0) {
         html += '<span class="count-badge' + (kc === 0 ? ' zero' : '') + '">' + kc + '</span>';
       }
+      html += '<button class="kw-nav-btn" data-action="kwGotoPrev" data-kw-id="' + kw.id + '" title="Previous hit">\u2191</button>';
+      html += '<button class="kw-nav-btn" data-action="kwGotoNext" data-kw-id="' + kw.id + '" title="Next hit">\u2193</button>';
       html += '<button class="remove-btn" data-action="removeKeyword" data-ki="' + ki + '">&times;</button>';
       html += '</div>';
     }
@@ -849,6 +861,10 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     } else if (action === 'removeKeyword') {
       var ki = parseInt(btn.dataset.ki);
       keywords.splice(ki, 1); saveState(); render();
+    } else if (action === 'kwGotoPrev' || action === 'kwGotoNext') {
+      var kwId = btn.dataset.kwId;
+      var dir = action === 'kwGotoPrev' ? 'prev' : 'next';
+      vscode.postMessage({ type: 'gotoKeywordMatch', direction: dir, keywordId: kwId });
     }
     else if (action === 'toggleSection') {
       var secId = btn.dataset.section;

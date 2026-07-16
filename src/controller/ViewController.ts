@@ -123,6 +123,7 @@ export class ViewController {
     this.configPanel.onReset(() => this.handleReset());
     this.configPanel.onClear(() => this.handleClear());
     this.configPanel.onExportMatchedLines(() => this.exportMatchedLines());
+    this.configPanel.onGotoKeywordHit((dir, kwId) => this.gotoKeywordHit(dir, kwId));
 
     // Config management callbacks
     this.configPanel.onExport((g, tp, kw) => this.handleExport(g, tp, kw));
@@ -1160,7 +1161,12 @@ export class ViewController {
   }
 
   /** 跳转到当前光标位置的下一个/上一个关键字匹配行 */
-  private handleGotoKeywordMatch(direction: 'next' | 'prev'): void {
+  /** 跳转到指定 keyword 的上一个/下一个命中行 */
+  gotoKeywordHit(direction: 'next' | 'prev', keywordId?: string): void {
+    this.handleGotoKeywordMatch(direction, keywordId);
+  }
+
+  private handleGotoKeywordMatch(direction: 'next' | 'prev', keywordId?: string): void {
     const editor = this.currentEditor;
     if (!editor) { return; }
     const editorId = editor.document.uri.toString();
@@ -1169,8 +1175,14 @@ export class ViewController {
     const keywords = this.currentKeywords;
     if (!keywords || keywords.length === 0) { return; }
 
+    // 若指定了 keywordId，只在该 keyword 的命中行之间跳转
+    const targetKeywords = keywordId
+      ? keywords.filter(k => k.id === keywordId)
+      : keywords;
+    if (targetKeywords.length === 0) { return; }
+
     const allLines = this.readLines(editor);
-    const matchedLineSet = this.computeKeywordMatchedLines(allLines, keywords);
+    const matchedLineSet = this.computeKeywordMatchedLines(allLines, targetKeywords);
     if (matchedLineSet.size === 0) { return; }
 
     const currentLine = editor.selection.active.line;
