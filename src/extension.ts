@@ -1,5 +1,7 @@
-// extension.ts — 插件入口
+// extension.ts - 插件入口
 import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
 import * as vscode from 'vscode';
 import { RegexGroupModel } from './model/RegexGroupModel';
 import { EditorStateModel } from './model/EditorStateModel';
@@ -17,6 +19,9 @@ let viewController: ViewController | undefined;
 let grepController: GrepController | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
+  // 安装/更新 skill 到 ~/.agent/skills/
+  installSkill(context);
+
   const regexGroupModel = new RegexGroupModel();
   const editorStateModel = new EditorStateModel(context);
   const filterResultModel = new FilterResultModel();
@@ -28,7 +33,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   const timeline = new KeywordTimeline();
 
-  // ── 折叠区间 Provider（声明式，比逐个 createFoldingRangeFromSelection 快 N 倍）──
+  // ── 折叠区间 Provider(声明式,比逐个 createFoldingRangeFromSelection 快 N 倍)──
   const foldChangeEmitter = new vscode.EventEmitter<void>();
   filterResultModel.onChange(() => foldChangeEmitter.fire());
 
@@ -42,9 +47,9 @@ export function activate(context: vscode.ExtensionContext) {
         provideFoldingRanges(document) {
           const editorId = document.uri.toString();
           const results = filterResultModel.getResults(editorId);
-          // 未过滤：返回 undefined，让 VS Code 回退到默认折叠（不影响代码文件）
+          // 未过滤:返回 undefined,让 VS Code 回退到默认折叠(不影响代码文件)
           if (results === undefined) { return undefined; }
-          // 已过滤（包括主动清空）：返回实际区间或空数组，强制 VS Code 使用本插件的区间
+          // 已过滤(包括主动清空):返回实际区间或空数组,强制 VS Code 使用本插件的区间
           const ranges = filterResultModel.getUnmatchedRanges(editorId);
           return ranges.map(r => new vscode.FoldingRange(r.start, r.end));
         },
@@ -209,4 +214,37 @@ export function activate(context: vscode.ExtensionContext) {
 
 export function deactivate() {
   viewController?.dispose();
+}
+
+/**
+ * 将打包的 greplogviewer-config skill 拷贝到用户 ~/.agent/skills/ 目录。
+ * 已存在且内容相同时跳过，避免每次激活都写盘。
+ */
+function installSkill(context: vscode.ExtensionContext): void {
+  const bundledSkillPath = path.join(context.extensionPath, 'skills', 'greplogviewer-config', 'SKILL.md');
+  const targetDir = path.join(os.homedir(), '.agent', 'skills', 'greplogviewer-config');
+  const targetPath = path.join(targetDir, 'SKILL.md');
+
+  let bundledContent: string;
+  try {
+    bundledContent = fs.readFileSync(bundledSkillPath, 'utf-8');
+  } catch {
+    // 打包文件缺失，静默跳过
+    return;
+  }
+
+  // 已存在且内容相同则跳过
+  try {
+    const existing = fs.readFileSync(targetPath, 'utf-8');
+    if (existing === bundledContent) { return; }
+  } catch {
+    // 不存在，继续拷贝
+  }
+
+  try {
+    fs.mkdirSync(targetDir, { recursive: true });
+    fs.writeFileSync(targetPath, bundledContent, 'utf-8');
+  } catch {
+    // 权限不足等错误，静默跳过
+  }
 }
