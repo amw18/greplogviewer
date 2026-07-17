@@ -109,7 +109,7 @@ directory. The extension automatically scans this directory and lists the
 configs in the Advance panel's dropdown - the user just selects and clicks
 Apply, no import needed.
 
-**Directory**: `~/.agent/greplogviewer-configs/`
+**Directory**: `~/.agents/greplogviewer-configs/`
 
 **File name**: `<config-name>.json` (e.g. `android-crash.json`)
 
@@ -117,8 +117,8 @@ Apply, no import needed.
 
 Example:
 ```bash
-mkdir -p ~/.agent/greplogviewer-configs
-cat > ~/.agent/greplogviewer-configs/android-error.json << 'EOF'
+mkdir -p ~/.agents/greplogviewer-configs
+cat > ~/.agents/greplogviewer-configs/android-error.json << 'EOF'
 {
   "groups": [...],
   "timePattern": { "format": "MM-DD HH:mm:ss.SSS" },

@@ -10,7 +10,7 @@ export class ConfigStorageModel {
   private static USER_KEY = 'greplogviewer.userSavedConfigs';
 
   /** agent 写入配置的共享目录 */
-  private static FILE_CONFIG_DIR = path.join(os.homedir(), '.agent', 'greplogviewer-configs');
+  private static FILE_CONFIG_DIR = path.join(os.homedir(), '.agents', 'greplogviewer-configs');
 
   constructor(private context: vscode.ExtensionContext) {}
 
@@ -90,7 +90,7 @@ export class ConfigStorageModel {
     return this.scopeState(scope).get<SavedConfigEntry[]>(this.scopeKey(scope)) || [];
   }
 
-  /** 扫描 ~/.agent/greplogviewer-configs/ 目录下的 JSON 配置文件 */
+  /** 扫描 ~/.agents/greplogviewer-configs/ 目录下的 JSON 配置文件 */
   private readFileConfigs(): SavedConfigEntry[] {
     const dir = ConfigStorageModel.FILE_CONFIG_DIR;
     try {
