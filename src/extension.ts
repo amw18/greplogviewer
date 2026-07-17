@@ -170,6 +170,9 @@ export function activate(context: vscode.ExtensionContext) {
   const testGetRingBufferStateCmd = vscode.commands.registerCommand('greplogviewer._testGetRingBufferState', (): any => {
     return viewController?.testGetRingBufferState?.() ?? {};
   });
+  const testGetSavedConfigsCmd = vscode.commands.registerCommand('greplogviewer._testGetSavedConfigs', (): any => {
+    return configStorageModel.listAll();
+  });
 
   const editorChangeListener = vscode.window.onDidChangeActiveTextEditor(editor => {
     if (editor) { viewController!.attach(editor); }
@@ -206,6 +209,7 @@ export function activate(context: vscode.ExtensionContext) {
     testGetMatchCountsCmd,
     testOpenFilteredTempFileCmd,
     testGetRingBufferStateCmd,
+    testGetSavedConfigsCmd,
     editorChangeListener,
     docChangeListener,
     { dispose: () => viewController?.dispose() }

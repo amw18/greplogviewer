@@ -1,10 +1,16 @@
-// ConfigStorageModel — 管理命名配置预设，持久化到 workspaceState / globalState
+// ConfigStorageModel - 管理命名配置预设，持久化到 workspaceState / globalState / 文件
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import { EditorConfig, SavedConfigEntry, ConfigScope } from '../types';
 
 export class ConfigStorageModel {
   private static WORKSPACE_KEY = 'greplogviewer.savedConfigs';
   private static USER_KEY = 'greplogviewer.userSavedConfigs';
+
+  /** agent 写入配置的共享目录 */
+  private static FILE_CONFIG_DIR = path.join(os.homedir(), '.agent', 'greplogviewer-configs');
 
   constructor(private context: vscode.ExtensionContext) {}
 
@@ -49,11 +55,23 @@ export class ConfigStorageModel {
     for (const name of this.list('user')) {
       result.push({ name, scope: 'user' });
     }
+    for (const name of this.list('file')) {
+      result.push({ name, scope: 'file' });
+    }
     return result;
   }
 
   /** 删除指定命名配置，返回是否成功 */
   async delete(name: string, scope: ConfigScope): Promise<boolean> {
+    if (scope === 'file') {
+      const filePath = path.join(ConfigStorageModel.FILE_CONFIG_DIR, `${name}.json`);
+      try {
+        fs.unlinkSync(filePath);
+        return true;
+      } catch {
+        return false;
+      }
+    }
     const state = this.scopeState(scope);
     const key = this.scopeKey(scope);
     const current = state.get<SavedConfigEntry[]>(key) || [];
@@ -66,7 +84,33 @@ export class ConfigStorageModel {
   }
 
   private readAll(scope: ConfigScope): SavedConfigEntry[] {
+    if (scope === 'file') {
+      return this.readFileConfigs();
+    }
     return this.scopeState(scope).get<SavedConfigEntry[]>(this.scopeKey(scope)) || [];
+  }
+
+  /** 扫描 ~/.agent/greplogviewer-configs/ 目录下的 JSON 配置文件 */
+  private readFileConfigs(): SavedConfigEntry[] {
+    const dir = ConfigStorageModel.FILE_CONFIG_DIR;
+    try {
+      const files = fs.readdirSync(dir).filter(f => f.endsWith('.json'));
+      const configs: SavedConfigEntry[] = [];
+      for (const file of files) {
+        try {
+          const content = fs.readFileSync(path.join(dir, file), 'utf-8');
+          const config = JSON.parse(content) as EditorConfig;
+          const name = file.replace(/\.json$/, '');
+          // 基本校验：必须有 groups 字段
+          if (config && Array.isArray(config.groups)) {
+            configs.push({ name, config });
+          }
+        } catch { /* 跳过无效文件 */ }
+      }
+      return configs;
+    } catch {
+      return []; // 目录不存在
+    }
   }
 
   private scopeKey(scope: ConfigScope): string {

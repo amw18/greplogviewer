@@ -102,6 +102,33 @@ Leave the Time Fmt field empty to auto-detect. Common explicit formats:
 5. Use ↑/↓ buttons on each keyword to jump between hits.
 6. Click **Export** to copy matched lines to a new unsaved editor.
 
+## How AI Agents Can Auto-Install Configs
+
+Terminal-based AI agents can write config JSON files directly to a shared
+directory. The extension automatically scans this directory and lists the
+configs in the Advance panel's dropdown - the user just selects and clicks
+Apply, no import needed.
+
+**Directory**: `~/.agent/greplogviewer-configs/`
+
+**File name**: `<config-name>.json` (e.g. `android-crash.json`)
+
+**File format**: Same as the Config JSON Structure below.
+
+Example:
+```bash
+mkdir -p ~/.agent/greplogviewer-configs
+cat > ~/.agent/greplogviewer-configs/android-error.json << 'EOF'
+{
+  "groups": [...],
+  "timePattern": { "format": "MM-DD HH:mm:ss.SSS" },
+  "keywords": [...]
+}
+EOF
+```
+
+The config appears in the Advance section dropdown as `android-error (file)`.
+
 ## Config JSON Structure
 
 Configs can be exported / imported as JSON:

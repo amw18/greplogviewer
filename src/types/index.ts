@@ -113,7 +113,7 @@ export interface SavedConfigEntry {
 }
 
 /** 储存范围 */
-export type ConfigScope = 'workspace' | 'user';
+export type ConfigScope = 'workspace' | 'user' | 'file';
 
 // ===== Webview ↔ Extension 消息协议 =====
 
