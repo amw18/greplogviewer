@@ -595,6 +595,441 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       html += '</div>';
     }
     html += '<button class="add-btn" data-action="addKeyword" style="display:block;width:100%">+ Add Keyword</button>';
+    var statsHtml = '';
+    if (matchCounts) {
+      statsHtml = '<span class="count-badge" style="margin-left:auto">'
+        + matchCounts.totalMatched + '/' + matchCounts.totalLines + '</span>';
+    }
+    html += '<div class="action-bar">';
+    html += '<button class="action-btn" id="go-btn">Go</button>';
+    html += '<button class="action-btn reset-btn" id="clear-btn">Clear</button>';
+    html += '<button class="action-btn reset-btn" id="reset-btn">Reset</button>';
+    html += '<button class="action-btn reset-btn" id="export-matched-btn">Export</button>';
+    html += statsHtml;
+    html += '</div>';
+    document.getElementById('app').innerHTML = html;
+    vscode.postMessage({ type: 'listSavedConfigs' });
+  }
+
+  // ── 关闭所有颜色弹出面板 ──
+  function closeAllPopovers() {
+    document.querySelectorAll('.color-popover.show, .flags-popover.show').forEach(function(p) { p.classList.remove('show'); });
+  }
+
+  // ── 更新颜色数据 ──
+  function setColor(kind, idx, color) {
+    var trigger = document.querySelector('.color-trigger[data-color-' + kind + '="' + idx + '"]');
+    var native = document.querySelector('.native-color[data-color-' + kind + '="' + idx + '"]');
+    if (trigger) trigger.style.background = color;
+    if (native) native.value = color;
+    if (kind === 'gi') { groups[idx].color = color; }
+    else if (kind === 'ki') { keywords[idx].color = color; }
+    saveState();
+    syncToExtension();
+  }
+
+  // ── Drag and Drop for Group Cards (long-press 2s) ──
+  var dragFromGi = -1;
+  var dragTimer = null, dragTimerCard = null;
+
+  document.getElementById('app').addEventListener('mousedown', function(e) {
+    var card = e.target.closest('.group-card');
+    if (!card) { return; }
+    // 仅左键触发长按计时
+    if (e.button !== 0) { return; }
+    dragTimerCard = card;
+    dragTimer = setTimeout(function() {
+      if (dragTimerCard) {
+        dragTimerCard.dataset.dragReady = 'true';
+        dragTimerCard.classList.add('drag-ready');
+      }
+    }, 2000);
+  });
+  document.getElementById('app').addEventListener('mouseup', function(e) {
+    clearDragTimer();
+  });
+  document.getElementById('app').addEventListener('mouseleave', function(e) {
+    // 只有离开 app 容器时才清理（避免在子元素间移动时误清除）
+    if (e.target === document.getElementById('app')) { clearDragTimer(); }
+  });
+  function clearDragTimer() {
+    if (dragTimer) { clearTimeout(dragTimer); dragTimer = null; }
+    if (dragTimerCard) { dragTimerCard.dataset.dragReady = 'false'; dragTimerCard.classList.remove('drag-ready'); dragTimerCard = null; }
+  }
+
+  document.getElementById('app').addEventListener('dragstart', function(e) {
+    var card = e.target.closest('.group-card');
+    if (!card) { return; }
+    if (card.dataset.dragReady !== 'true') { e.preventDefault(); return; }
+    dragFromGi = parseInt(card.dataset.gi);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(dragFromGi));
+    card.classList.add('dragging');
+  });
+  document.getElementById('app').addEventListener('dragend', function(e) {
+    var card = e.target.closest('.group-card');
+    if (card) { card.classList.remove('dragging'); }
+    clearDragTimer();
+    dragFromGi = -1;
+    document.querySelectorAll('.group-card.drag-over').forEach(function(c) { c.classList.remove('drag-over'); });
+  });
+  document.getElementById('app').addEventListener('dragover', function(e) {
+    e.preventDefault();
+    var card = e.target.closest('.group-card');
+    if (!card || dragFromGi < 0) { return; }
+    e.dataTransfer.dropEffect = 'move';
+    document.querySelectorAll('.group-card.drag-over').forEach(function(c) { c.classList.remove('drag-over'); });
+    card.classList.add('drag-over');
+  });
+  document.getElementById('app').addEventListener('drop', function(e) {
+    e.preventDefault();
+    var card = e.target.closest('.group-card');
+    if (!card || dragFromGi < 0) { return; }
+    card.classList.remove('drag-over');
+    var toGi = parseInt(card.dataset.gi);
+    if (dragFromGi !== toGi && !isNaN(dragFromGi) && !isNaN(toGi)) {
+      var item = groups.splice(dragFromGi, 1)[0];
+      groups.splice(toGi, 0, item);
+      saveState(); render();
+    }
+    dragFromGi = -1;
+  });
+
+  // ── 事件委托 ──
+  document.getElementById('app').addEventListener('click', function(e) {
+    // ── 颜色触发器：切换弹出面板（fixed 定位 + 边界约束）──
+    var trigger = e.target.closest('.color-trigger');
+    if (trigger) {
+      var kind = trigger.dataset.colorGi !== undefined ? 'gi' : 'ki';
+      var idx = trigger.dataset.colorGi !== undefined ? trigger.dataset.colorGi : trigger.dataset.colorKi;
+      var popover = document.querySelector('.color-popover[data-color-' + kind + '="' + idx + '"]');
+      var wasOpen = popover && popover.classList.contains('show');
+      closeAllPopovers();
+      if (popover && !wasOpen) {
+        var rect = trigger.getBoundingClientRect();
+        // 水平：不超出 webview 右边界
+        var pw = 226;
+        var left = rect.left;
+        if (left + pw > window.innerWidth - 4) {
+          left = Math.max(2, window.innerWidth - pw - 4);
+        }
+        popover.style.left = left + 'px';
+        // 垂直：下方空间不足时翻到上方
+        var estH = 160;
+        if (rect.bottom + estH + 8 > window.innerHeight && rect.top > estH + 8) {
+          popover.style.top = (rect.top - estH - 4) + 'px';
+        } else {
+          popover.style.top = (rect.bottom + 4) + 'px';
+        }
+        popover.classList.add('show');
+      }
+      return;
+    }
+
+    // ── 色板点击：更新颜色并关闭面板 ──
+    var swatch = e.target.closest('.swatch');
+    if (swatch) {
+      var color = swatch.dataset.swatchColor;
+      var sk = swatch.dataset.swatchGi !== undefined ? 'gi' : 'ki';
+      var sv = swatch.dataset.swatchGi !== undefined ? swatch.dataset.swatchGi : swatch.dataset.swatchKi;
+      setColor(sk, sv, color);
+      closeAllPopovers();
+      return;
+    }
+
+    // ── 点击弹出面板内部（非色板）不关闭 ──
+    if (e.target.closest('.color-popover')) { return; }
+
+    // ── Flags 触发器：切换弹出面板 ──
+    var fTrigger = e.target.closest('.flags-trigger');
+    if (fTrigger) {
+      var fKind = fTrigger.dataset.flagsExpr !== undefined ? 'expr' : 'kw';
+      var fId = fTrigger.dataset.flagsExpr !== undefined ? fTrigger.dataset.flagsExpr : fTrigger.dataset.flagsKw;
+      var fPopover = document.querySelector('.flags-popover[data-flags-' + fKind + '="' + fId + '"]');
+      var fWasOpen = fPopover && fPopover.classList.contains('show');
+      closeAllPopovers();
+      if (fPopover && !fWasOpen) {
+        var fRect = fTrigger.getBoundingClientRect();
+        fPopover.style.left = Math.max(2, fRect.left) + 'px';
+        if (fRect.bottom + 120 > window.innerHeight && fRect.top > 120) {
+          fPopover.style.top = (fRect.top - 120) + 'px';
+        } else {
+          fPopover.style.top = (fRect.bottom + 4) + 'px';
+        }
+        fPopover.classList.add('show');
+      }
+      return;
+    }
+
+    // ── 点击 flags 弹出面板内部不关闭 ──
+    if (e.target.closest('.flags-popover')) { return; }
+
+    // ── 点击其他区域关闭所有面板 ──
+    closeAllPopovers();
+
+    var btn = e.target.closest('button, input[data-action]'); if (!btn) return;
+    var action = btn.dataset.action;
+    var gi = parseInt(btn.dataset.gi), ei = parseInt(btn.dataset.ei);
+    if (btn.id === 'go-btn') {
+      collectData();
+      var tf = document.getElementById('time-format');
+      timePattern = { format: tf ? tf.value : '' };
+      saveState();
+      vscode.postMessage({ type: 'go', groups: groups, timePattern: timePattern, keywords: keywords });
+    } else if (btn.id === 'clear-btn') {
+      vscode.postMessage({ type: 'clear' });
+    } else if (btn.id === 'reset-btn') {
+      groups = []; keywords = [];
+      matchCounts = null;
+      timePattern = { format: '' }; saveState();
+      vscode.postMessage({ type: 'reset' });
+      render();
+    } else if (btn.id === 'export-matched-btn') {
+      vscode.postMessage({ type: 'exportMatchedLines' });
+    } else if (btn.id === 'cfg-export-btn') {
+      collectData();
+      var tf2 = document.getElementById('time-format');
+      timePattern = { format: tf2 ? tf2.value : '' };
+      saveState();
+      vscode.postMessage({ type: 'exportConfig', groups: groups, timePattern: timePattern, keywords: keywords });
+    } else if (btn.id === 'cfg-import-btn') {
+      vscode.postMessage({ type: 'importConfig' });
+    } else if (btn.id === 'cfg-save-btn') {
+      collectData();
+      var tf3 = document.getElementById('time-format');
+      timePattern = { format: tf3 ? tf3.value : '' };
+      saveState();
+      vscode.postMessage({ type: 'requestSaveConfig', groups: groups, timePattern: timePattern, keywords: keywords });
+    } else if (btn.id === 'cfg-apply-btn') {
+      var applySel = document.getElementById('cfg-apply-select');
+      var applyVal = applySel ? applySel.value : '';
+      if (applyVal === '') { alert('Please select a saved config.'); return; }
+      var idx = parseInt(applyVal, 10);
+      var item = savedConfigsList[idx];
+      if (!item) { return; }
+      vscode.postMessage({ type: 'applySavedConfig', name: item.name, scope: item.scope });
+    } else if (btn.id === 'cfg-delete-btn') {
+      var delSel = document.getElementById('cfg-apply-select');
+      var delVal = delSel ? delSel.value : '';
+      if (delVal === '') { alert('Please select a saved config to delete.'); return; }
+      var didx = parseInt(delVal, 10);
+      var ditem = savedConfigsList[didx];
+      if (!ditem) { return; }
+      vscode.postMessage({ type: 'deleteSavedConfig', name: ditem.name, scope: ditem.scope });
+    } else if (action === 'addGroup') {
+      groups.push({ id: uuid(), name: 'New Group', color: randomColor(), expressions: [{ id: uuid(), pattern: '', flags: '', operator: 'and', enabled: true }], enabled: true });
+      saveState(); render();
+    } else if (action === 'removeGroup') { groups.splice(gi, 1); saveState(); render(); }
+    else if (action === 'addExpr') {
+      groups[gi].expressions.push({ id: uuid(), pattern: '', flags: '', operator: 'and', enabled: true });
+      saveState(); render();
+    } else if (action === 'removeExpr') { groups[gi].expressions.splice(ei, 1); saveState(); render(); }
+    else if (action === 'moveExprUp' && ei > 0) {
+      var exprs = groups[gi].expressions;
+      var tmp = exprs[ei]; exprs[ei] = exprs[ei - 1]; exprs[ei - 1] = tmp;
+      saveState(); render();
+    } else if (action === 'moveExprDown' && ei < groups[gi].expressions.length - 1) {
+      var exprs = groups[gi].expressions;
+      var tmp = exprs[ei]; exprs[ei] = exprs[ei + 1]; exprs[ei + 1] = tmp;
+      saveState(); render();
+    }
+    else if (action === 'addKeyword') {
+      keywords.push({ id: uuid(), pattern: '', flags: '', color: randomColor(), enabled: true, matchScope: 'matched' });
+      saveState(); render();
+    } else if (action === 'removeKeyword') {
+      var ki = parseInt(btn.dataset.ki);
+      keywords.splice(ki, 1); saveState(); render();
+    } else if (action === 'kwGotoPrev' || action === 'kwGotoNext') {
+      var kwId = btn.dataset.kwId;
+      var dir = action === 'kwGotoPrev' ? 'prev' : 'next';
+      vscode.postMessage({ type: 'gotoKeywordMatch', direction: dir, keywordId: kwId });
+    }
+    else if (action === 'toggleSection') {
+      var secId = btn.dataset.section;
+      var body = document.querySelector('#section-' + secId + ' .section-body');
+      var toggle = document.querySelector('#section-' + secId + ' .section-toggle');
+      if (body) {
+        var isOpen = !body.classList.contains('collapsed');
+        sectionState[secId] = !isOpen;
+        saveState();
+        if (isOpen) {
+          body.classList.add('collapsed');
+          if (toggle) { toggle.classList.remove('open'); toggle.textContent = '▶'; }
+
+        } else {
+          body.classList.remove('collapsed');
+          if (toggle) { toggle.classList.add('open'); toggle.textContent = '▼'; }
+        }
+      }
+    }
+  });
+
+  document.getElementById('app').addEventListener('input', function(e) {
+    var el = e.target, gi = parseInt(el.dataset.gi), ei = parseInt(el.dataset.ei);
+    var ki = parseInt(el.dataset.ki);
+    if (el.id === 'time-format') { timePattern.format = el.value; saveState(); return; }
+    // Keyword inputs
+    if (!isNaN(ki)) {
+      if (el.classList.contains('pattern')) { keywords[ki].pattern = el.value; syncToExtension(); }
+      else if (el.classList.contains('hint')) keywords[ki].hint = el.value || undefined;
+      saveState(); return;
+    }
+    if (isNaN(gi)) return;
+    if (el.classList.contains('group-name')) groups[gi].name = el.value;
+    else if (el.classList.contains('group-first-expr') && !isNaN(ei)) groups[gi].expressions[ei].pattern = el.value;
+    else if (el.classList.contains('pattern') && !isNaN(ei)) groups[gi].expressions[ei].pattern = el.value;
+    saveState();
+  });
+
+  document.getElementById('app').addEventListener('change', function(e) {
+    var el = e.target, gi = parseInt(el.dataset.gi), ei = parseInt(el.dataset.ei);
+    var ki = parseInt(el.dataset.ki);
+    // 记住用户选择的已保存配置名
+    if (el.id === 'cfg-apply-select') {
+      var idx = parseInt(el.value, 10);
+      var item = savedConfigsList[idx];
+      selectedSavedConfigName = item ? item.name : '';
+      return;
+    }
+    // 原生颜色选择器变更
+    if (el.classList.contains('native-color')) {
+      var nk = el.dataset.colorGi !== undefined ? 'gi' : 'ki';
+      var nv = el.dataset.colorGi !== undefined ? el.dataset.colorGi : el.dataset.colorKi;
+      setColor(nk, nv, el.value);
+      return;
+    }
+    if (el.classList.contains('expr-op')) {
+      groups[gi].expressions[ei].operator = el.value; saveState();
+    } else if (el.classList.contains('group-enabled')) {
+      groups[gi].enabled = el.checked; saveState();
+    } else if (el.classList.contains('expr-enabled')) {
+      groups[gi].expressions[ei].enabled = el.checked; saveState();
+    } else if (el.classList.contains('keyword-enabled')) {
+      keywords[ki].enabled = el.checked; saveState();
+    }
+    // Flags 复选框变更
+    if (el.dataset.flag) {
+      if (el.dataset.flag === 'matched') {
+        // matchScope toggle for keywords
+        var fid = el.dataset.flagsKw;
+        var parts = fid.split(':');
+        var ki2 = parseInt(parts[1]);
+        if (keywords[ki2]) {
+          keywords[ki2].matchScope = el.checked ? 'matched' : 'full';
+          saveState();
+        }
+      } else {
+        var fk = el.dataset.flagsExpr !== undefined ? 'expr' : 'kw';
+        var fid2 = el.dataset.flagsExpr !== undefined ? el.dataset.flagsExpr : el.dataset.flagsKw;
+        var parts2 = fid2.split(':');
+        if (fk === 'expr') {
+          setFlags('expr', parseInt(parts2[0]), parseInt(parts2[1]), null);
+        } else {
+          setFlags('kw', null, null, parseInt(parts2[1]));
+        }
+      }
+    }
+  });
+
+  function randomColor() {
+    return '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6,'0');
+  }
+
+  function collectData() {
+    document.querySelectorAll('.group-enabled').forEach(function(el) {
+      groups[parseInt(el.dataset.gi)].enabled = el.checked;
+    });
+    document.querySelectorAll('.group-name').forEach(function(el) {
+      groups[parseInt(el.dataset.gi)].name = el.value;
+    });
+    document.querySelectorAll('.expr-enabled').forEach(function(el) {
+      var gii = parseInt(el.dataset.gi), eii = parseInt(el.dataset.ei);
+      if (!isNaN(eii)) groups[gii].expressions[eii].enabled = el.checked;
+    });
+    document.querySelectorAll('.pattern, .group-first-expr').forEach(function(el) {
+      var gii = parseInt(el.dataset.gi), eii = parseInt(el.dataset.ei);
+      var kii = parseInt(el.dataset.ki);
+      if (!isNaN(eii)) groups[gii].expressions[eii].pattern = el.value;
+      else if (!isNaN(kii)) keywords[kii].pattern = el.value;
+    });
+    // 颜色从 trigger 读取
+    document.querySelectorAll('.color-trigger[data-color-gi]').forEach(function(el) {
+      groups[parseInt(el.dataset.colorGi)].color = rgbToHex(el.style.background);
+    });
+    document.querySelectorAll('.color-trigger[data-color-ki]').forEach(function(el) {
+      keywords[parseInt(el.dataset.colorKi)].color = rgbToHex(el.style.background);
+    });
+    document.querySelectorAll('.keyword-enabled').forEach(function(el) {
+      keywords[parseInt(el.dataset.ki)].enabled = el.checked;
+    });
+    document.querySelectorAll('.hint').forEach(function(el) {
+      var kii = parseInt(el.dataset.ki);
+      if (!isNaN(kii)) keywords[kii].hint = el.value || undefined;
+    });
+  }
+
+  function rgbToHex(rgb) {
+    if (!rgb || rgb === '') return '#000000';
+    if (rgb.startsWith('#')) return rgb;
+    var m = rgb.match(/\\d+/g);
+    if (!m) return '#000000';
+    return '#' + m.slice(0,3).map(function(x) {
+      return parseInt(x).toString(16).padStart(2,'0');
+    }).join('');
+  }
+
+  window.addEventListener('message', function(event) {
+    var msg = event.data;
+    if (msg.type === 'updateConfig') {
+      groups = msg.groups;
+      keywords = msg.keywords || [];
+      timePattern = msg.timePattern || { format: '' };
+      saveState();
+      render();
+    } else if (msg.type === 'configApplied') {
+      // Apply: load the saved config into the panel (user still needs to click Go)
+      groups = msg.groups || [];
+      keywords = msg.keywords || [];
+      timePattern = msg.timePattern || { format: '' };
+      saveState();
+      render();
+    } else if (msg.type === 'configImported') {
+      if (msg.error) {
+        alert('Import failed: ' + msg.error);
+      } else if (msg.config) {
+        groups = msg.config.groups || [];
+        keywords = msg.config.keywords || [];
+        timePattern = msg.config.timePattern || { format: '' };
+        saveState();
+        render();
+      }
+    } else if (msg.type === 'matchCounts') {
+      matchCounts = msg;
+      render();
+    } else if (msg.type === 'savedConfigsList') {
+      // Update the saved configs dropdown
+      savedConfigsList = msg.configs || [];
+      var sel = document.getElementById('cfg-apply-select');
+      if (sel) {
+        sel.innerHTML = '<option value="">-- Select saved --</option>';
+        var restoredIdx = '';
+        savedConfigsList.forEach(function(c, i) {
+          var opt = document.createElement('option');
+          opt.value = String(i);
+          opt.textContent = c.name;
+          sel.appendChild(opt);
+          if (c.name === selectedSavedConfigName) { restoredIdx = String(i); }
+        });
+        // Restore previous selection by config name if it still exists
+        if (restoredIdx !== '') {
+          sel.value = restoredIdx;
+        }
+      }
+    }
+  });
+
+  render();
+
 })();
 </script>
 </body>
