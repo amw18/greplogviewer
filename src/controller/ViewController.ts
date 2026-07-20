@@ -124,6 +124,7 @@ export class ViewController {
     this.configPanel.onClear(() => this.handleClear());
     this.configPanel.onExportMatchedLines(() => this.exportMatchedLines());
     this.configPanel.onGotoKeywordHit((dir, kwId) => this.gotoKeywordHit(dir, kwId));
+    this.timeline.onDidClick((line) => this.handleTimelineClick(line));
 
     // Config management callbacks
     this.configPanel.onExport((g, tp, kw) => this.handleExport(g, tp, kw));
@@ -134,7 +135,6 @@ export class ViewController {
     this.configPanel.onApply((n, sc) => this.handleApply(n, sc));
     this.configPanel.onDelete((n, sc) => this.handleDelete(n, sc));
     this.configPanel.onSyncConfig((g, tp, kw) => this.handleSyncConfig(g, tp, kw));
-    this.configPanel.onTimelineClick((line) => this.handleTimelineClick(line));
   }
 
   getPanelProvider(): ConfigPanel {
@@ -502,12 +502,6 @@ export class ViewController {
         timeMax: 1,
         keywords: [],
       });
-      this.configPanel.sendTimelineData({
-        type: 'timelineData',
-        timeMin: 0,
-        timeMax: 1,
-        keywords: [],
-      });
       return;
     }
 
@@ -523,12 +517,6 @@ export class ViewController {
     // 超大文件跳过时间线，避免扫描百万行阻塞 UI
     if (end - start > ViewController.TIMELINE_DISABLE_THRESHOLD) {
       this.timeline.sendTimelineData({
-        type: 'timelineData',
-        timeMin: 0,
-        timeMax: 1,
-        keywords: [],
-      });
-      this.configPanel.sendTimelineData({
         type: 'timelineData',
         timeMin: 0,
         timeMax: 1,
@@ -587,7 +575,6 @@ export class ViewController {
       keywords: kwData,
     };
     this.timeline.sendTimelineData(tlMsg);
-    this.configPanel.sendTimelineData(tlMsg);
   }
 
   /**
