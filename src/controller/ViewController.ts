@@ -517,9 +517,11 @@ export class ViewController {
 
     const compiledKws = this.getCompiledKeywordRegexes(keywords);
     const MAX_TIMELINE_POINTS = 5000;
+    const start = scanStart ?? 0;
+    const end = scanEnd ?? lines.length;
 
     // 超大文件跳过时间线，避免扫描百万行阻塞 UI
-    if ((scanEnd ?? lines.length) - (scanStart ?? 0) > ViewController.TIMELINE_DISABLE_THRESHOLD) {
+    if (end - start > ViewController.TIMELINE_DISABLE_THRESHOLD) {
       this.timeline.sendTimelineData({
         type: 'timelineData',
         timeMin: 0,
@@ -538,8 +540,6 @@ export class ViewController {
     for (const { kw, regex } of compiledKws) {
 
       const points: import('../types').TimelinePoint[] = [];
-      const start = scanStart ?? 0;
-      const end = scanEnd ?? lines.length;
 
       for (let i = start; i < end; i++) {
         if (!regex.test(lines[i])) { continue; }
@@ -565,6 +565,12 @@ export class ViewController {
       }
     }
 
+    // 时间轴起点：ring buffer 则用红旗行时间，否则用日志第一个可解析时间戳
+    const logStartTime = this.findLogStartTime(editorId, lines, start, end);
+    if (logStartTime !== undefined) {
+      globalMin = Math.min(globalMin, logStartTime);
+    }
+
     if (globalMin === Infinity || globalMax === -Infinity) {
       globalMin = 0;
       globalMax = 1;
@@ -582,6 +588,31 @@ export class ViewController {
     };
     this.timeline.sendTimelineData(tlMsg);
     this.configPanel.sendTimelineData(tlMsg);
+  }
+
+  /**
+   * 查找日志时间轴起点：
+   * - ring buffer 日志：红旗行（环形起点）的时间戳
+   * - 普通日志：第一个可解析的时间戳
+   */
+  private findLogStartTime(
+    editorId: string,
+    lines: string[],
+    scanStart: number,
+    scanEnd: number
+  ): number | undefined {
+    // ring buffer 起点
+    const ringStart = this.ringBufferModel.getStartLine(editorId);
+    if (ringStart !== undefined && ringStart < lines.length) {
+      const ts = this.timeMatchModel.parseLineTimestamp(lines[ringStart]);
+      if (ts) { return ts.getTime(); }
+    }
+    // 普通日志：从开头找第一个可解析时间戳
+    for (let i = scanStart; i < scanEnd && i < lines.length; i++) {
+      const ts = this.timeMatchModel.parseLineTimestamp(lines[i]);
+      if (ts) { return ts.getTime(); }
+    }
+    return undefined;
   }
 
   /** 对时间线点做均匀采样，控制最大点数 */
