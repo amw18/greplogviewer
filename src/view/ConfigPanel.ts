@@ -1120,13 +1120,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   function tlFmtDur(ms) {
     if (ms < 0) ms = -ms;
     if (ms < 1000) return Math.round(ms) + 'ms';
-    if (ms < 60000) return (ms / 1000).toFixed(1) + 's';
-    var h = Math.floor(ms / 3600000), m = Math.floor((ms % 3600000) / 60000), s = Math.floor((ms % 60000) / 1000);
-    var parts = [];
-    if (h > 0) parts.push(h + 'h');
-    if (m > 0) parts.push(m + 'm');
-    if (s > 0 || parts.length === 0) parts.push(s + 's');
-    return parts.join(' ');
+    return (ms / 1000).toFixed(1) + 's';
   }
 
   function tlSmartTicks(chartW) {
