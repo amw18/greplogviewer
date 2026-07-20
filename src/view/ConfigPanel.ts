@@ -68,6 +68,9 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
         case 'syncConfig':
           this.syncConfigCallback?.(msg.groups, msg.timePattern, msg.keywords);
           break;
+        case 'timelineClick':
+          this.timelineClickCallback?.(msg.lineNumber);
+          break;
       }
     });
 
@@ -137,11 +140,20 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     this.syncConfigCallback = callback;
   }
 
+  onTimelineClick(callback: (lineNumber: number) => void): void {
+    this.timelineClickCallback = callback;
+  }
+
   sendMatchCounts(counts: import('../types').MatchCountsMessage): void {
     this.view?.webview.postMessage(counts);
   }
 
+  sendTimelineData(data: import('../types').TimelineDataMessage): void {
+    this.view?.webview.postMessage(data);
+  }
+
   private syncConfigCallback: ((groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void) | undefined;
+  private timelineClickCallback: ((lineNumber: number) => void) | undefined;
 
   /** 向 webview 发送已保存配置列表 */
   sendSavedConfigsList(configs: { name: string; scope: ConfigScope }[]): void {
@@ -595,6 +607,13 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       html += '</div>';
     }
     html += '<button class="add-btn" data-action="addKeyword" style="display:block;width:100%">+ Add Keyword</button>';
+    // ── Keyword Timeline (canvas, 使用 KeywordTimeline 的改进实现) ──
+    html += '<div id="tl-wrap" style="position:relative;width:100%;height:120px;margin:4px 0;border:1px solid var(--vscode-panel-border);border-radius:4px;overflow:hidden">';
+    html += '<canvas id="tl-canvas" style="display:block;width:100%;height:100%;cursor:crosshair"></canvas>';
+    html += '<div id="tl-tooltip" style="position:fixed;display:none;z-index:9999;background:var(--vscode-editorHoverWidget-background);color:var(--vscode-editorHoverWidget-foreground);border:1px solid var(--vscode-editorHoverWidget-border);padding:2px 5px;border-radius:3px;font-size:11px;pointer-events:none;white-space:nowrap"></div>';
+    html += '<div id="tl-zoom" style="position:absolute;bottom:2px;right:4px;font-size:10px;color:var(--vscode-descriptionForeground);pointer-events:none"></div>';
+    html += '<div id="tl-empty" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--vscode-descriptionForeground);pointer-events:none">Click Go with Keywords to see timeline</div>';
+    html += '</div>';
     var statsHtml = '';
     if (matchCounts) {
       statsHtml = '<span class="count-badge" style="margin-left:auto">'
@@ -609,6 +628,13 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     html += '</div>';
     document.getElementById('app').innerHTML = html;
     vscode.postMessage({ type: 'listSavedConfigs' });
+    // render 重建 DOM 后重新初始化 timeline canvas 并重绘
+    tlCanvas = document.getElementById('tl-canvas');
+    tlTooltip = document.getElementById('tl-tooltip');
+    tlEmpty = document.getElementById('tl-empty');
+    tlZoomEl = document.getElementById('tl-zoom');
+    tlCtx = tlCanvas ? tlCanvas.getContext('2d') : null;
+    tlRefresh();
   }
 
   // ── 关闭所有颜色弹出面板 ──
@@ -1006,6 +1032,10 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     } else if (msg.type === 'matchCounts') {
       matchCounts = msg;
       render();
+    } else if (msg.type === 'timelineData') {
+      tlData = msg;
+      tlViewMin = null; tlViewMax = null;
+      tlRefresh();
     } else if (msg.type === 'savedConfigsList') {
       // Update the saved configs dropdown
       savedConfigsList = msg.configs || [];
@@ -1027,6 +1057,223 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       }
     }
   });
+
+  // ════════════════════════════════════════════════════════
+  // ── Keyword Timeline (改进版：CSS 驱动尺寸 + 轮询 + 正确缩放坐标) ──
+  // ════════════════════════════════════════════════════════
+  var tlData = null, tlViewMin = null, tlViewMax = null;
+  var tlCanvas = document.getElementById('tl-canvas');
+  var tlTooltip = document.getElementById('tl-tooltip');
+  var tlEmpty = document.getElementById('tl-empty');
+  var tlZoomEl = document.getElementById('tl-zoom');
+  var tlCtx = tlCanvas ? tlCanvas.getContext('2d') : null;
+  var tlLastW = 0, tlLastH = 0;
+  var tlRAF = null;
+  var tlPad = { top: 4, right: 50, bottom: 20, left: 105 };
+  var tlDotR = 3.5, tlRowH = 14, tlRowGap = 1;
+  var tlMinZoom = 1000;
+
+  function tlGetFont(size, fallback) {
+    var family = getComputedStyle(document.body).getPropertyValue('--vscode-font-family').trim() || fallback || 'monospace';
+    return size + ' ' + family;
+  }
+
+  function tlResize() {
+    if (!tlCanvas) return;
+    var dpr = window.devicePixelRatio || 1;
+    var w = Math.max(1, tlCanvas.clientWidth || (tlCanvas.parentElement ? tlCanvas.parentElement.clientWidth : 0) || 200);
+    var h = Math.max(1, tlCanvas.clientHeight || (tlCanvas.parentElement ? tlCanvas.parentElement.clientHeight : 0) || 120);
+    tlLastW = w; tlLastH = h;
+    tlCanvas.width = Math.floor(w * dpr);
+    tlCanvas.height = Math.floor(h * dpr);
+    if (tlCtx) tlCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (tlData && tlData.keywords && tlData.keywords.length > 0) { tlScheduleDraw(); }
+  }
+
+  function tlPollSize() {
+    if (!tlCanvas) return;
+    var w = tlCanvas.clientWidth || (tlCanvas.parentElement ? tlCanvas.parentElement.clientWidth : 0);
+    var h = tlCanvas.clientHeight || (tlCanvas.parentElement ? tlCanvas.parentElement.clientHeight : 0);
+    if (w !== tlLastW || h !== tlLastH) { tlResize(); }
+  }
+  setInterval(tlPollSize, 100);
+
+  function tlUpdateLabelWidth() {
+    if (!tlData || !tlData.keywords || tlData.keywords.length === 0) return;
+    if (!tlCtx) return;
+    tlCtx.font = tlGetFont('9px', 'monospace');
+    var maxW = 0;
+    for (var i = 0; i < tlData.keywords.length; i++) {
+      var label = tlData.keywords[i].name || '';
+      if (label.length > 16) label = label.slice(0, 15) + '\u2026';
+      var tw = tlCtx.measureText(label).width;
+      if (tw > maxW) maxW = tw;
+    }
+    tlPad.left = Math.max(50, Math.ceil(maxW) + 12);
+  }
+
+  function tlScheduleDraw() {
+    if (tlRAF) return;
+    tlRAF = requestAnimationFrame(function() { tlRAF = null; tlDraw(); });
+  }
+
+  function tlFmtDur(ms) {
+    if (ms < 0) ms = -ms;
+    if (ms < 1000) return Math.round(ms) + 'ms';
+    if (ms < 60000) return (ms / 1000).toFixed(1) + 's';
+    var h = Math.floor(ms / 3600000), m = Math.floor((ms % 3600000) / 60000), s = Math.floor((ms % 60000) / 1000);
+    var parts = [];
+    if (h > 0) parts.push(h + 'h');
+    if (m > 0) parts.push(m + 'm');
+    if (s > 0 || parts.length === 0) parts.push(s + 's');
+    return parts.join(' ');
+  }
+
+  function tlDraw() {
+    if (!tlCtx || !tlData || !tlData.keywords || tlData.keywords.length === 0) return;
+    if (tlEmpty) tlEmpty.style.display = 'none';
+    if (tlCanvas) tlCanvas.style.display = 'block';
+    tlUpdateLabelWidth();
+    var W = tlLastW, H = tlLastH;
+    if (!W || !H) { tlResize(); W = tlLastW; H = tlLastH; }
+    tlCtx.clearRect(0, 0, W, H);
+    var pl = tlPad.left, pr = tlPad.right, pt = tlPad.top, pb = tlPad.bottom;
+    var pw = W - pl - pr;
+    var kws = tlData.keywords, n = kws.length;
+    var rh = n > 0 ? Math.min(tlRowH, (H - pt - pb) / n) : tlRowH;
+    var vmin = tlViewMin != null ? tlViewMin : tlData.timeMin;
+    var vmax = tlViewMax != null ? tlViewMax : tlData.timeMax;
+    var trange = vmax - vmin || 1;
+    tlCtx.strokeStyle = 'rgba(128,128,128,0.15)'; tlCtx.lineWidth = 1;
+    tlCtx.font = tlGetFont('9px', 'monospace');
+    tlCtx.textAlign = 'right'; tlCtx.textBaseline = 'middle';
+    for (var k = 0; k < n; k++) {
+      var yMid = pt + k * (rh + tlRowGap) + rh / 2;
+      tlCtx.beginPath(); tlCtx.moveTo(pl, yMid); tlCtx.lineTo(W - pr, yMid); tlCtx.stroke();
+      if (k % 2 === 0) { tlCtx.fillStyle = 'rgba(128,128,128,0.03)'; tlCtx.fillRect(pl, yMid - rh/2, pw, rh); }
+      var labelText = kws[k].name || '';
+      if (labelText.length > 16) labelText = labelText.slice(0, 15) + '\u2026';
+      tlCtx.fillStyle = kws[k].color;
+      tlCtx.fillText(labelText, pl - 6, yMid);
+      tlCtx.fillStyle = kws[k].color;
+      for (var j = 0; j < kws[k].points.length; j++) {
+        var p = kws[k].points[j];
+        if (p.time < vmin || p.time > vmax) continue;
+        var frac = (p.time - vmin) / trange;
+        var x = pl + frac * pw;
+        tlCtx.beginPath(); tlCtx.arc(x, yMid, tlDotR, 0, 2 * Math.PI); tlCtx.fill();
+      }
+    }
+    tlCtx.fillStyle = 'rgba(128,128,128,0.6)';
+    tlCtx.textAlign = 'center'; tlCtx.textBaseline = 'top';
+    var ticks = 5;
+    for (var t = 0; t <= ticks; t++) {
+      var tx = pl + (t / ticks) * pw;
+      var tms = vmin + (t / ticks) * trange;
+      tlCtx.fillText('+' + tlFmtDur(tms - tlData.timeMin), tx, H - pb + 4);
+    }
+    if (tlZoomEl) {
+      var totalMs = tlData.timeMax - tlData.timeMin;
+      var viewMs = vmax - vmin;
+      if (viewMs < totalMs) { tlZoomEl.style.display = 'block'; tlZoomEl.textContent = tlFmtDur(viewMs); }
+      else { tlZoomEl.style.display = 'none'; }
+    }
+  }
+
+  function tlPointAt(px, py) {
+    if (!tlData) return null;
+    var W = tlLastW, H = tlLastH;
+    var pl = tlPad.left, pr = tlPad.right, pt = tlPad.top, pb = tlPad.bottom;
+    var pw = W - pl - pr;
+    var kws = tlData.keywords, n = kws.length;
+    var rh = n > 0 ? Math.min(tlRowH, (H - pt - pb) / n) : tlRowH;
+    var vmin = tlViewMin != null ? tlViewMin : tlData.timeMin;
+    var vmax = tlViewMax != null ? tlViewMax : tlData.timeMax;
+    var trange = vmax - vmin || 1;
+    for (var k = 0; k < n; k++) {
+      var yMid = pt + k * (rh + tlRowGap) + rh / 2;
+      for (var j = 0; j < kws[k].points.length; j++) {
+        var p = kws[k].points[j];
+        if (p.time < vmin || p.time > vmax) continue;
+        var frac = (p.time - vmin) / trange;
+        var x = pl + frac * pw;
+        var dx = px - x, dy = py - yMid;
+        if (dx * dx + dy * dy <= tlDotR * tlDotR + 16) return { point: p, keyword: kws[k] };
+      }
+    }
+    return null;
+  }
+
+  function tlZoomAt(mouseX, factor) {
+    if (!tlData) return;
+    var pl = tlPad.left, pr = tlPad.right;
+    var cw = tlLastW - pl - pr;
+    var frac = Math.max(0, Math.min(1, (mouseX - pl) / cw));
+    var vmin = tlViewMin != null ? tlViewMin : tlData.timeMin;
+    var vmax = tlViewMax != null ? tlViewMax : tlData.timeMax;
+    var mt = vmin + frac * (vmax - vmin);
+    var half = (vmax - vmin) * factor / 2;
+    var nmin = mt - half, nmax = mt + half;
+    var span = nmax - nmin;
+    if (span < tlMinZoom) { var mid = (nmin + nmax) / 2; nmin = mid - tlMinZoom / 2; nmax = mid + tlMinZoom / 2; span = tlMinZoom; }
+    if (nmin < tlData.timeMin) { nmin = tlData.timeMin; nmax = nmin + span; }
+    if (nmax > tlData.timeMax) { nmax = tlData.timeMax; nmin = nmax - span; }
+    tlViewMin = Math.max(tlData.timeMin, nmin);
+    tlViewMax = Math.min(tlData.timeMax, Math.max(tlViewMin + tlMinZoom, nmax));
+    tlScheduleDraw();
+  }
+
+  function tlRefresh() {
+    if (tlData && tlData.keywords && tlData.keywords.length > 0) {
+      if (tlEmpty) tlEmpty.style.display = 'none';
+      if (tlCanvas) tlCanvas.style.display = 'block';
+      tlResize();
+      tlDraw();
+    } else {
+      if (tlEmpty) tlEmpty.style.display = 'flex';
+      if (tlCanvas) tlCanvas.style.display = 'none';
+    }
+  }
+
+  // timeline events (delegated to #app)
+  var tlApp = document.getElementById('app');
+  if (tlApp) {
+    tlApp.addEventListener('mousemove', function(e) {
+      if (!tlData || !tlCanvas) return;
+      var r = tlCanvas.getBoundingClientRect();
+      var mx = e.clientX - r.left, my = e.clientY - r.top;
+      if (mx < 0 || my < 0 || mx > r.width || my > r.height) { if (tlTooltip) tlTooltip.style.display = 'none'; return; }
+      var hit = tlPointAt(mx, my);
+      if (hit) {
+        if (tlTooltip) {
+          tlTooltip.style.display = 'block';
+          tlTooltip.style.left = (e.clientX + 12) + 'px';
+          tlTooltip.style.top = (e.clientY + 12) + 'px';
+          tlTooltip.textContent = '+' + tlFmtDur(hit.point.time - tlData.timeMin) + '  L' + hit.point.lineNumber;
+        }
+      } else { if (tlTooltip) tlTooltip.style.display = 'none'; }
+    });
+    tlApp.addEventListener('click', function(e) {
+      if (!tlData || !tlCanvas) return;
+      var r = tlCanvas.getBoundingClientRect();
+      var mx = e.clientX - r.left, my = e.clientY - r.top;
+      if (mx < 0 || my < 0 || mx > r.width || my > r.height) return;
+      var hit = tlPointAt(mx, my);
+      if (hit) { vscode.postMessage({ type: 'timelineClick', lineNumber: hit.point.lineNumber }); }
+    });
+    tlApp.addEventListener('wheel', function(e) {
+      if (!tlData || !tlCanvas) return;
+      var r = tlCanvas.getBoundingClientRect();
+      var mx = e.clientX - r.left, my = e.clientY - r.top;
+      if (mx < 0 || my < 0 || mx > r.width || my > r.height) return;
+      e.preventDefault();
+      var factor = e.deltaY > 0 ? 1.5 : 0.67;
+      tlZoomAt(mx, factor);
+    }, { passive: false });
+  }
+  if (typeof ResizeObserver !== 'undefined' && tlCanvas) {
+    new ResizeObserver(function() { tlResize(); }).observe(tlCanvas);
+  }
 
   render();
 
