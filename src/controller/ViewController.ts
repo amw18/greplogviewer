@@ -59,6 +59,7 @@ export class ViewController {
   private isApplyingFilter = false;  // 防止 Go / keyword 更新期间的 attach 重入
   private lastFilterFingerprint = '';  // 跳过重复过滤
   private lastMatchCounts: import('../types').MatchCountsMessage | undefined;
+  private lastTimelineData: import('../types').TimelineDataMessage | undefined;
   /** 本次会话已完整恢复过过滤+折叠的编辑器，切回时不再重新 foldAll，保留用户手动展开状态 */
   private attachedEditors: Set<string> = new Set();
   private context: vscode.ExtensionContext;
@@ -484,7 +485,7 @@ export class ViewController {
     );
   }
 
-  /** 计算时间线数据并发送到 KeywordTimeline webview */
+  /** 计算时间线数据并发送到配置面板 */
   private sendTimelineData(
     editorId: string,
     lines: string[],
@@ -571,6 +572,7 @@ export class ViewController {
       timeMax: globalMax,
       keywords: kwData,
     };
+    this.lastTimelineData = tlMsg;
     this.configPanel.sendTimelineData(tlMsg);
   }
 
@@ -1523,7 +1525,7 @@ export class ViewController {
 
   /** Test: get last timeline data sent to the timeline webview */
   testGetTimelineData(): import('../types').TimelineDataMessage | undefined {
-    return undefined;
+    return this.lastTimelineData;
   }
 
   /** Test: get detected ring buffer start line for assertion */
