@@ -123,6 +123,7 @@ export class ViewController {
     this.configPanel.onClear(() => this.handleClear());
     this.configPanel.onExportMatchedLines(() => this.exportMatchedLines());
     this.configPanel.onGotoKeywordHit((dir, kwId) => this.gotoKeywordHit(dir, kwId));
+    this.configPanel.onTimelineClick((line) => this.handleTimelineClick(line));
 
     // Config management callbacks
     this.configPanel.onExport((g, tp, kw) => this.handleExport(g, tp, kw));
