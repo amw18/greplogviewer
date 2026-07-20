@@ -12,7 +12,6 @@ import { ConfigController } from './controller/ConfigController';
 import { FilterController } from './controller/FilterController';
 import { ViewController } from './controller/ViewController';
 import { GrepController } from './controller/GrepController';
-import { KeywordTimeline } from './view/KeywordTimeline';
 import { RingBufferModel } from './model/RingBufferModel';
 
 let viewController: ViewController | undefined;
@@ -29,11 +28,9 @@ export function activate(context: vscode.ExtensionContext) {
   const configController = new ConfigController(regexGroupModel, editorStateModel);
   const filterController = new FilterController();
   const configStorageModel = new ConfigStorageModel(context);
+  // ── 折叠区间 Provider（声明式，比逐个 createFoldingRangeFromSelection 快 N 倍）──
+
   const ringBufferModel = new RingBufferModel();
-
-  const timeline = new KeywordTimeline();
-
-  // ── 折叠区间 Provider(声明式,比逐个 createFoldingRangeFromSelection 快 N 倍)──
   const foldChangeEmitter = new vscode.EventEmitter<void>();
   filterResultModel.onChange(() => foldChangeEmitter.fire());
 
@@ -61,7 +58,7 @@ export function activate(context: vscode.ExtensionContext) {
   viewController = new ViewController(
     configController, filterController,
     editorStateModel, filterResultModel, regexGroupModel, timeMatchModel,
-    configStorageModel, timeline,
+    configStorageModel,
     context,
     ringBufferModel,
     registerFoldProvider
@@ -73,12 +70,6 @@ export function activate(context: vscode.ExtensionContext) {
   const sidebarView = vscode.window.registerWebviewViewProvider(
     'greplogviewer.configView',
     panelProvider,
-    { webviewOptions: { retainContextWhenHidden: true } }
-  );
-
-  const timelineView = vscode.window.registerWebviewViewProvider(
-    'greplogviewer.timelineView',
-    timeline,
     { webviewOptions: { retainContextWhenHidden: true } }
   );
 
@@ -188,7 +179,6 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     sidebarView,
-    timelineView,
     { dispose: () => foldProvider?.dispose() },
     grepKeywordCmd,
     grepFunctionCmd,
@@ -222,7 +212,7 @@ export function deactivate() {
 
 /**
  * 将打包的 greplogviewer-config skill 拷贝到用户 ~/.agents/skills/ 目录。
- * 已存在且内容相同时跳过，避免每次激活都写盘。
+ * 已存在且内容相同时跳过,避免每次激活都写盘。
  */
 function installSkill(context: vscode.ExtensionContext): void {
   const bundledSkillPath = path.join(context.extensionPath, 'skills', 'greplogviewer-config', 'SKILL.md');
@@ -233,7 +223,7 @@ function installSkill(context: vscode.ExtensionContext): void {
   try {
     bundledContent = fs.readFileSync(bundledSkillPath, 'utf-8');
   } catch {
-    // 打包文件缺失，静默跳过
+    // 打包文件缺失,静默跳过
     return;
   }
 
@@ -242,13 +232,13 @@ function installSkill(context: vscode.ExtensionContext): void {
     const existing = fs.readFileSync(targetPath, 'utf-8');
     if (existing === bundledContent) { return; }
   } catch {
-    // 不存在，继续拷贝
+    // 不存在,继续拷贝
   }
 
   try {
     fs.mkdirSync(targetDir, { recursive: true });
     fs.writeFileSync(targetPath, bundledContent, 'utf-8');
   } catch {
-    // 权限不足等错误，静默跳过
+    // 权限不足等错误,静默跳过
   }
 }

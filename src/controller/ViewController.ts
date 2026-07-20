@@ -15,7 +15,6 @@ import { RingBufferModel } from '../model/RingBufferModel';
 import { uuid } from '../model/uuid';
 import { ConfigPanel } from '../view/ConfigPanel';
 import { EditorDecorations } from '../view/EditorDecorations';
-import { KeywordTimeline } from '../view/KeywordTimeline';
 
 export class ViewController {
   /** 用于标记范围内被 keyword 匹配但未被 group 匹配的行。这些行不参与折叠也不 dim。 */
@@ -106,7 +105,6 @@ export class ViewController {
     private regexGroupModel: RegexGroupModel,
     private timeMatchModel: TimeMatchModel,
     private configStorageModel: ConfigStorageModel,
-    private timeline: KeywordTimeline,
     context: vscode.ExtensionContext,
     private ringBufferModel: RingBufferModel,
     private reRegisterFoldProvider?: () => void
@@ -124,8 +122,6 @@ export class ViewController {
     this.configPanel.onClear(() => this.handleClear());
     this.configPanel.onExportMatchedLines(() => this.exportMatchedLines());
     this.configPanel.onGotoKeywordHit((dir, kwId) => this.gotoKeywordHit(dir, kwId));
-    this.timeline.onDidClick((line) => this.handleTimelineClick(line));
-    this.configPanel.onTimelineClick((line) => this.handleTimelineClick(line));
 
     // Config management callbacks
     this.configPanel.onExport((g, tp, kw) => this.handleExport(g, tp, kw));
@@ -497,12 +493,6 @@ export class ViewController {
     scanEnd?: number
   ): void {
     if (!keywords || keywords.length === 0) {
-      this.timeline.sendTimelineData({
-        type: 'timelineData',
-        timeMin: 0,
-        timeMax: 1,
-        keywords: [],
-      });
       this.configPanel.sendTimelineData({
         type: 'timelineData',
         timeMin: 0,
@@ -523,12 +513,6 @@ export class ViewController {
 
     // 超大文件跳过时间线，避免扫描百万行阻塞 UI
     if (end - start > ViewController.TIMELINE_DISABLE_THRESHOLD) {
-      this.timeline.sendTimelineData({
-        type: 'timelineData',
-        timeMin: 0,
-        timeMax: 1,
-        keywords: [],
-      });
       this.configPanel.sendTimelineData({
         type: 'timelineData',
         timeMin: 0,
@@ -587,7 +571,6 @@ export class ViewController {
       timeMax: globalMax,
       keywords: kwData,
     };
-    this.timeline.sendTimelineData(tlMsg);
     this.configPanel.sendTimelineData(tlMsg);
   }
 
@@ -1540,7 +1523,7 @@ export class ViewController {
 
   /** Test: get last timeline data sent to the timeline webview */
   testGetTimelineData(): import('../types').TimelineDataMessage | undefined {
-    return this.timeline.getLastTimelineData();
+    return undefined;
   }
 
   /** Test: get detected ring buffer start line for assertion */

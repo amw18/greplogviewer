@@ -18,7 +18,6 @@
   ],
   "activationEvents": [
     "onView:greplogviewer.configView",
-    "onView:greplogviewer.timelineView",
     "onCommand:greplogviewer.grepKeyword",
     "onCommand:greplogviewer.grepFunction",
     "onCommand:greplogviewer.addKeyword",
@@ -41,11 +40,6 @@
         {
           "id": "greplogviewer.configView",
           "name": "GrepLogViewer",
-          "type": "webview"
-        },
-        {
-          "id": "greplogviewer.timelineView",
-          "name": "Keyword Timeline",
           "type": "webview"
         }
       ]
