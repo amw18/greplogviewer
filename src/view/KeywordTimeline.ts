@@ -328,7 +328,8 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
   }
 
   canvas.addEventListener('mousemove', function(e) {
-    const hit = pointAt(e.clientX, e.clientY);
+    const rect = canvas.getBoundingClientRect();
+    const hit = pointAt(e.clientX - rect.left, e.clientY - rect.top);
     if (hit) {
       canvas.style.cursor = 'pointer';
       tooltip.style.display = 'block';
@@ -349,7 +350,8 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
   });
 
   canvas.addEventListener('click', function(e) {
-    const hit = pointAt(e.clientX, e.clientY);
+    const rect = canvas.getBoundingClientRect();
+    const hit = pointAt(e.clientX - rect.left, e.clientY - rect.top);
     if (hit) {
       vscode.postMessage({ type: 'timelineClick', lineNumber: hit.point.lineNumber });
     }
@@ -364,7 +366,8 @@ export class KeywordTimeline implements vscode.WebviewViewProvider {
     if (!data) { return; }
     // deltaY > 0 → zoom out, deltaY < 0 → zoom in
     const factor = e.deltaY > 0 ? 1.5 : 0.67;
-    zoomAt(e.clientX, factor);
+    const rect = canvas.getBoundingClientRect();
+    zoomAt(e.clientX - rect.left, factor);
   }, { passive: false });
 
   window.addEventListener('resize', resize);
