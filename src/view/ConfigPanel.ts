@@ -1129,6 +1129,11 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     return parts.join(' ');
   }
 
+  function tlSmartTicks(chartW) {
+    var maxTicks = Math.max(2, Math.floor(chartW / 30));
+    return Math.max(2, Math.min(10, maxTicks));
+  }
+
   function tlDraw() {
     if (!tlCtx || !tlData || !tlData.keywords || tlData.keywords.length === 0) return;
     if (tlEmpty) tlEmpty.style.display = 'none';
@@ -1137,41 +1142,70 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     var W = tlLastW, H = tlLastH;
     if (!W || !H) { tlResize(); W = tlLastW; H = tlLastH; }
     tlCtx.clearRect(0, 0, W, H);
-    var pl = tlPad.left, pr = tlPad.right, pt = tlPad.top, pb = tlPad.bottom;
+    var pl = tlPad.left, pr = tlPad.right, pt = tlPad.top;
     var pw = W - pl - pr;
     var kws = tlData.keywords, n = kws.length;
-    var rh = n > 0 ? Math.min(tlRowH, (H - pt - pb) / n) : tlRowH;
+    var rh = tlRowH;
+    // chartBottom 货在最后一个 keyword 行下方，时间轴贴近图表而非 frame 底部
+    var chartBottom = pt + n * (rh + tlRowGap) - tlRowGap;
     var vmin = tlViewMin != null ? tlViewMin : tlData.timeMin;
     var vmax = tlViewMax != null ? tlViewMax : tlData.timeMax;
     var trange = vmax - vmin || 1;
-    tlCtx.strokeStyle = 'rgba(128,128,128,0.15)'; tlCtx.lineWidth = 1;
+    // 背景填充
+    var bodyStyle = getComputedStyle(document.body);
+    tlCtx.fillStyle = bodyStyle.backgroundColor || '#1e1e1e';
+    tlCtx.fillRect(0, 0, W, H);
+    var axisColor = bodyStyle.getPropertyValue('--vscode-descriptionForeground') || '#999999';
+    var gridColor = 'rgba(128,128,128,0.35)';
+    // 时间轴 grid + 标签（贴近 chartBottom）
+    var tickCount = tlSmartTicks(pw);
+    tlCtx.font = tlGetFont('8px', 'monospace');
+    tlCtx.textAlign = 'center'; tlCtx.textBaseline = 'top';
+    for (var t = 0; t <= tickCount; t++) {
+      var frac = t / tickCount;
+      var gx = pl + frac * pw;
+      // 主网格线
+      tlCtx.beginPath(); tlCtx.moveTo(gx, pt); tlCtx.lineTo(gx, chartBottom);
+      tlCtx.strokeStyle = gridColor; tlCtx.lineWidth = 1; tlCtx.stroke();
+      // 子网格线
+      if (t < tickCount && pw / tickCount > 40) {
+        for (var s = 1; s <= 4; s++) {
+          var sx = gx + (s / 5) * (pw / tickCount);
+          tlCtx.beginPath(); tlCtx.moveTo(sx, pt); tlCtx.lineTo(sx, chartBottom);
+          tlCtx.strokeStyle = 'rgba(128,128,128,0.12)'; tlCtx.stroke();
+        }
+      }
+      // 时间标签，贴近图表底部
+      var tms = vmin + frac * trange;
+      tlCtx.fillStyle = axisColor;
+      tlCtx.fillText(tlFmtDur(tms - tlData.timeMin), gx, chartBottom + 4);
+    }
+    // keyword 行
     tlCtx.font = tlGetFont('9px', 'monospace');
     tlCtx.textAlign = 'right'; tlCtx.textBaseline = 'middle';
     for (var k = 0; k < n; k++) {
       var yMid = pt + k * (rh + tlRowGap) + rh / 2;
+      // 行底线
+      tlCtx.strokeStyle = 'rgba(128,128,128,0.15)'; tlCtx.lineWidth = 1;
       tlCtx.beginPath(); tlCtx.moveTo(pl, yMid); tlCtx.lineTo(W - pr, yMid); tlCtx.stroke();
+      // 交替背景
       if (k % 2 === 0) { tlCtx.fillStyle = 'rgba(128,128,128,0.03)'; tlCtx.fillRect(pl, yMid - rh/2, pw, rh); }
+      // 标签
       var labelText = kws[k].name || '';
       if (labelText.length > 16) labelText = labelText.slice(0, 15) + '\u2026';
       tlCtx.fillStyle = kws[k].color;
       tlCtx.fillText(labelText, pl - 6, yMid);
+      // 点
       tlCtx.fillStyle = kws[k].color;
       for (var j = 0; j < kws[k].points.length; j++) {
         var p = kws[k].points[j];
         if (p.time < vmin || p.time > vmax) continue;
-        var frac = (p.time - vmin) / trange;
-        var x = pl + frac * pw;
-        tlCtx.beginPath(); tlCtx.arc(x, yMid, tlDotR, 0, 2 * Math.PI); tlCtx.fill();
+        var pfrac = (p.time - vmin) / trange;
+        var px = pl + pfrac * pw;
+        tlCtx.beginPath(); tlCtx.arc(px, yMid, tlDotR, 0, 2 * Math.PI); tlCtx.fill();
       }
     }
-    tlCtx.fillStyle = 'rgba(128,128,128,0.6)';
-    tlCtx.textAlign = 'center'; tlCtx.textBaseline = 'top';
-    var ticks = 5;
-    for (var t = 0; t <= ticks; t++) {
-      var tx = pl + (t / ticks) * pw;
-      var tms = vmin + (t / ticks) * trange;
-      tlCtx.fillText('+' + tlFmtDur(tms - tlData.timeMin), tx, H - pb + 4);
-    }
+    // zoom 指示
     if (tlZoomEl) {
       var totalMs = tlData.timeMax - tlData.timeMin;
       var viewMs = vmax - vmin;
@@ -1182,11 +1216,11 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
 
   function tlPointAt(px, py) {
     if (!tlData) return null;
-    var W = tlLastW, H = tlLastH;
-    var pl = tlPad.left, pr = tlPad.right, pt = tlPad.top, pb = tlPad.bottom;
+    var W = tlLastW;
+    var pl = tlPad.left, pr = tlPad.right, pt = tlPad.top;
     var pw = W - pl - pr;
     var kws = tlData.keywords, n = kws.length;
-    var rh = n > 0 ? Math.min(tlRowH, (H - pt - pb) / n) : tlRowH;
+    var rh = tlRowH;
     var vmin = tlViewMin != null ? tlViewMin : tlData.timeMin;
     var vmax = tlViewMax != null ? tlViewMax : tlData.timeMax;
     var trange = vmax - vmin || 1;
@@ -1249,7 +1283,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
           tlTooltip.style.display = 'block';
           tlTooltip.style.left = (e.clientX + 12) + 'px';
           tlTooltip.style.top = (e.clientY + 12) + 'px';
-          tlTooltip.textContent = '+' + tlFmtDur(hit.point.time - tlData.timeMin) + '  L' + hit.point.lineNumber;
+          tlTooltip.textContent = hit.keyword.name + '  +' + tlFmtDur(hit.point.time - tlData.timeMin) + '  L' + hit.point.lineNumber;
         }
       } else { if (tlTooltip) tlTooltip.style.display = 'none'; }
     });
