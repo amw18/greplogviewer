@@ -247,6 +247,8 @@ export class ViewController {
     const editor = this.currentEditor;
     const editorId = editor.document.uri.toString();
 
+    this.compiledKwRegexes.clear();  // keyword 可能变更，清除正则缓存
+
     // 检测是否只有颜色等纯视觉属性变化（无需重新过滤）
     const oldGroupColors = new Map(this.regexGroupModel.getGroups().map(g => [g.id, g.color]));
     const oldKeywordColors = new Map((this.currentKeywords || []).map(k => [k.id, k.color]));
@@ -304,6 +306,7 @@ export class ViewController {
     const editorId = editor.document.uri.toString();
 
     this.regexGroupModel.setGroups(groups);
+    this.compiledKwRegexes.clear();  // keyword 可能变更，清除正则缓存
 
     // 时间匹配配置：用户留空时自动检测常见格式
     this.timeMatchModel.setConfig(timePattern || { format: '' });
