@@ -529,13 +529,15 @@ export class ViewController {
       const points: import('../types').TimelinePoint[] = [];
 
       for (let i = start; i < end; i++) {
-        if (!regex.test(lines[i])) { continue; }
+        const m = regex.exec(lines[i]);
+        if (!m) { continue; }
         const ts = this.timeMatchModel.parseLineTimestamp(lines[i]);
         if (!ts) { continue; }
         const ms = ts.getTime();
         if (ms < globalMin) { globalMin = ms; }
         if (ms > globalMax) { globalMax = ms; }
-        points.push({ lineNumber: i, time: ms, text: lines[i].length > 120 ? lines[i].slice(0, 120) + '...' : lines[i] });
+        const matchedText = m[0].length > 120 ? m[0].slice(0, 120) + '...' : m[0];
+        points.push({ lineNumber: i, time: ms, text: matchedText });
       }
 
       // 大文件时间线采样，避免渲染和消息传输阻塞
