@@ -216,6 +216,8 @@ export interface TimelinePoint {
   lineNumber: number;
   /** epoch 毫秒时间戳 */
   time: number;
+  /** 行文本内容（截断到 120 字符） */
+  text: string;
 }
 
 /** 时间线图表中一个 keyword 的数据 */

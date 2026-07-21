@@ -630,6 +630,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     vscode.postMessage({ type: 'listSavedConfigs' });
     // render 重建 DOM 后重新初始化 timeline canvas 并重绘
     tlCanvas = document.getElementById('tl-canvas');
+    tlEventsBound = false;
     tlTooltip = document.getElementById('tl-tooltip');
     tlEmpty = document.getElementById('tl-empty');
     tlZoomEl = document.getElementById('tl-zoom');
@@ -1251,6 +1252,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     tlScheduleDraw();
   }
 
+  var tlEventsBound = false;
   function tlRefresh() {
     if (tlData && tlData.keywords && tlData.keywords.length > 0) {
       if (tlEmpty) tlEmpty.style.display = 'none';
@@ -1261,43 +1263,41 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       if (tlEmpty) tlEmpty.style.display = 'flex';
       if (tlCanvas) tlCanvas.style.display = 'none';
     }
-  }
-
-  // timeline events (delegated to #app)
-  var tlApp = document.getElementById('app');
-  if (tlApp) {
-    tlApp.addEventListener('mousemove', function(e) {
-      if (!tlData || !tlCanvas) return;
-      var r = tlCanvas.getBoundingClientRect();
-      var mx = e.clientX - r.left, my = e.clientY - r.top;
-      if (mx < 0 || my < 0 || mx > r.width || my > r.height) { if (tlTooltip) tlTooltip.style.display = 'none'; return; }
-      var hit = tlPointAt(mx, my);
-      if (hit) {
-        if (tlTooltip) {
-          tlTooltip.style.display = 'block';
-          tlTooltip.style.left = (e.clientX + 12) + 'px';
-          tlTooltip.style.top = (e.clientY + 12) + 'px';
-          tlTooltip.textContent = hit.keyword.name + '  +' + tlFmtDur(hit.point.time - tlData.timeMin) + '  L' + hit.point.lineNumber;
-        }
-      } else { if (tlTooltip) tlTooltip.style.display = 'none'; }
-    });
-    tlApp.addEventListener('click', function(e) {
-      if (!tlData || !tlCanvas) return;
-      var r = tlCanvas.getBoundingClientRect();
-      var mx = e.clientX - r.left, my = e.clientY - r.top;
-      if (mx < 0 || my < 0 || mx > r.width || my > r.height) return;
-      var hit = tlPointAt(mx, my);
-      if (hit) { vscode.postMessage({ type: 'timelineClick', lineNumber: hit.point.lineNumber }); }
-    });
-    tlApp.addEventListener('wheel', function(e) {
-      if (!tlData || !tlCanvas) return;
-      var r = tlCanvas.getBoundingClientRect();
-      var mx = e.clientX - r.left, my = e.clientY - r.top;
-      if (mx < 0 || my < 0 || mx > r.width || my > r.height) return;
-      e.preventDefault();
-      var factor = e.deltaY > 0 ? 1.5 : 0.67;
-      tlZoomAt(mx, factor);
-    }, { passive: false });
+    // canvas 元素在 render 后重建，需要重新绑定事件
+    if (tlCanvas && !tlEventsBound) {
+      tlCanvas.addEventListener('mousemove', function(e) {
+        if (!tlData) return;
+        var r = tlCanvas.getBoundingClientRect();
+        var mx = e.clientX - r.left, my = e.clientY - r.top;
+        if (mx < 0 || my < 0 || mx > r.width || my > r.height) { if (tlTooltip) tlTooltip.style.display = 'none'; return; }
+        var hit = tlPointAt(mx, my);
+        if (hit) {
+          if (tlTooltip) {
+            tlTooltip.style.display = 'block';
+            tlTooltip.style.left = (e.clientX + 12) + 'px';
+            tlTooltip.style.top = (e.clientY + 12) + 'px';
+            tlTooltip.textContent = hit.keyword.name + '  +' + tlFmtDur(hit.point.time - tlData.timeMin) + '  L' + hit.point.lineNumber + (hit.point.text ? '  ' + hit.point.text : '');
+          }
+        } else { if (tlTooltip) tlTooltip.style.display = 'none'; }
+      });
+      tlCanvas.addEventListener('click', function(e) {
+        if (!tlData) return;
+        var r = tlCanvas.getBoundingClientRect();
+        var mx = e.clientX - r.left, my = e.clientY - r.top;
+        var hit = tlPointAt(mx, my);
+        if (hit) { vscode.postMessage({ type: 'timelineClick', lineNumber: hit.point.lineNumber }); }
+      });
+      tlCanvas.addEventListener('wheel', function(e) {
+        if (!tlData) return;
+        var r = tlCanvas.getBoundingClientRect();
+        var mx = e.clientX - r.left, my = e.clientY - r.top;
+        if (mx < 0 || my < 0 || mx > r.width || my > r.height) return;
+        e.preventDefault();
+        var factor = e.deltaY > 0 ? 1.5 : 0.67;
+        tlZoomAt(mx, factor);
+      }, { passive: false });
+      tlEventsBound = true;
+    }
   }
   if (typeof ResizeObserver !== 'undefined' && tlCanvas) {
     new ResizeObserver(function() { tlResize(); }).observe(tlCanvas);

@@ -535,7 +535,7 @@ export class ViewController {
         const ms = ts.getTime();
         if (ms < globalMin) { globalMin = ms; }
         if (ms > globalMax) { globalMax = ms; }
-        points.push({ lineNumber: i, time: ms });
+        points.push({ lineNumber: i, time: ms, text: lines[i].length > 120 ? lines[i].slice(0, 120) + '...' : lines[i] });
       }
 
       // 大文件时间线采样，避免渲染和消息传输阻塞
