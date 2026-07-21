@@ -511,24 +511,13 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   function render() {
     var html = '';
 
-    // ── Section: Advance (collapsible, default collapsed) ──
-    var advanceOpen = sectionState['advance'] || false;
-    html += '<div class="section collapsible" id="section-advance">';
-    html += '<button class="section-header" data-action="toggleSection" data-section="advance">';
-    html += '<span class="section-toggle ' + (advanceOpen ? 'open' : '') + '">' + (advanceOpen ? '▼' : '▶') + '</span><span>Advance</span></button>';
-    html += '<div class="section-body ' + (advanceOpen ? '' : 'collapsed') + '">';
-
-    // Time Fmt sub-item (single row, input matches Solution dropdown style)
-    html += '<div class="advance-sub-item">';
+    // ── Time Fmt + Solution（顶层，不再折叠） ──
+    html += '<div class="section">';
     html += '<div class="cfg-mgmt-row">';
     html += '<span class="advance-label">Time Fmt:</span>';
-    html += '<input type="text" id="time-format" value="' + esc(timePattern?.format || '') + '" placeholder="" title="Write the timestamp exactly as it appears. Tokens: YYYY YY MM DD HH mm ss SSS. Optional parts: {...}. Example: [YYYY-MM-DD HH:mm:ss{.SSS}]">';
+    html += '<input type="text" id="time-format" value="' + esc(timePattern?.format || '') + '" placeholder="" style="flex:1;min-width:0" title="Write the timestamp exactly as it appears. Tokens: YYYY YY MM DD HH mm ss SSS. Optional parts: {...}. Example: [YYYY-MM-DD HH:mm:ss{.SSS}]">';
     html += '</div>';
-    html += '</div>';
-
-    // Solution sub-item
-    html += '<div class="advance-sub-item">';
-    html += '<div class="cfg-mgmt-row">';
+    html += '<div class="cfg-mgmt-row" style="margin-top:4px">';
     html += '<span class="advance-label">Solution:</span>';
     html += '<select id="cfg-apply-select" style="flex:1;min-width:0"><option value="">-- Select saved --</option></select>';
     html += '<button class="cfg-btn" id="cfg-apply-btn" title="Apply">▶</button>';
@@ -538,8 +527,6 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     html += '<button class="cfg-btn" id="cfg-import-btn" title="Import">⬇</button>';
     html += '</div>';
     html += '</div>';
-
-    html += '</div></div>';
 
     // ── Section: Pattern Groups ──
     html += '<div class="section">';
