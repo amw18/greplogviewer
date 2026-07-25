@@ -1,7 +1,0 @@
-[    0.000000] boot message
-[CPU1:    1.000000] cpu1 event
-[    2.000000] cpu0 event
-[CPU2:    3.000000] cpu2 event
-[    0.500000] wrap around start
-[CPU1:    1.500000] cpu1 event after wrap
-[    2.500000] cpu0 event after wrap

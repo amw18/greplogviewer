@@ -3,13 +3,27 @@ node_modules/
 out/
 *.vsix
 .vscode-test/
+
+# AI / internal docs
+.agent_doc/
+dev_doc/
+prompts/
+AGENTS.md
 goal.md
 GOAL_*.md
 RULES.md
-prompts/
-AGENTS.md
-dev_doc/
-test/*.sh
+update_goal.md
+plan.md
+vscodeignore.bak
+
+# Test artifacts
 autotest/
 autotest_plugin/
 autotest_workspace/screenshots/
+autotest_workspace/*.log
+test/*.sh
+
+# Autotest workspace (references local paths)
+autotest_workspace/
+# Docs
+docs/

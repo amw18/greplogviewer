@@ -1,9 +1,0 @@
-2024-01-01 00:00:00.000 line0 match A
-2024-01-01 00:00:01.000 line1 unmatched A
-2024-01-01 00:00:02.000 line2 unmatched A
-2024-01-01 00:00:03.000 line3 match A
-2024-01-01 00:00:04.000 line4 match B
-2024-01-01 00:00:05.000 line5 unmatched B
-2024-01-01 00:00:06.000 line6 unmatched B
-2024-01-01 00:00:07.000 line7 match B
-2024-01-01 00:00:08.000 line8 unmatched end
