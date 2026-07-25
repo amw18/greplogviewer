@@ -1,13 +1,13 @@
 {
-  "name": "log--",
+  "name": "log-minus-minus",
   "displayName": "Grep Log Viewer",
   "description": "Regex-based text file viewer with color highlighting and auto-folding",
-  "version": "0.2.14",
+  "version": "0.3.0",
   "publisher": "any-tool",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/amw18/log--"
+    "url": "https://github.com/amw18/log-minus-minus"
   },
   "icon": "icon.png",
   "engines": {
@@ -17,28 +17,28 @@
     "Other"
   ],
   "activationEvents": [
-    "onView:log--.configView",
-    "onCommand:log--.grepKeyword",
-    "onCommand:log--.grepFunction",
-    "onCommand:log--.addKeyword",
-    "onCommand:log--.gotoPrevHit",
-    "onCommand:log--.gotoNextHit",
-    "onCommand:log--._testGo",
-    "onCommand:log--._testSyncConfig",
-    "onCommand:log--._testClear",
-    "onCommand:log--._testReset",
-    "onCommand:log--._testGetState",
-    "onCommand:log--._testOpenFile",
-    "onCommand:log--._testGetVisibleRanges",
-    "onCommand:log--._testGetTimelineData",
-    "onCommand:log--._testGetRingBufferState"
+    "onView:log-minus-minus.configView",
+    "onCommand:log-minus-minus.grepKeyword",
+    "onCommand:log-minus-minus.grepFunction",
+    "onCommand:log-minus-minus.addKeyword",
+    "onCommand:log-minus-minus.gotoPrevHit",
+    "onCommand:log-minus-minus.gotoNextHit",
+    "onCommand:log-minus-minus._testGo",
+    "onCommand:log-minus-minus._testSyncConfig",
+    "onCommand:log-minus-minus._testClear",
+    "onCommand:log-minus-minus._testReset",
+    "onCommand:log-minus-minus._testGetState",
+    "onCommand:log-minus-minus._testOpenFile",
+    "onCommand:log-minus-minus._testGetVisibleRanges",
+    "onCommand:log-minus-minus._testGetTimelineData",
+    "onCommand:log-minus-minus._testGetRingBufferState"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "views": {
       "explorer": [
         {
-          "id": "log--.configView",
+          "id": "log-minus-minus.configView",
           "name": "Log--",
           "type": "webview"
         }
@@ -46,53 +46,53 @@
     },
     "commands": [
       {
-        "command": "log--.grepKeyword",
+        "command": "log-minus-minus.grepKeyword",
         "title": "Grep Keyword"
       },
       {
-        "command": "log--.grepFunction",
+        "command": "log-minus-minus.grepFunction",
         "title": "Grep Function"
       },
       {
-        "command": "log--.addKeyword",
+        "command": "log-minus-minus.addKeyword",
         "title": "Add as Keyword"
       },
       {
-        "command": "log--.gotoPrevHit",
+        "command": "log-minus-minus.gotoPrevHit",
         "title": "Goto Previous Hit"
       },
       {
-        "command": "log--.gotoNextHit",
+        "command": "log-minus-minus.gotoNextHit",
         "title": "Goto Next Hit"
       },
       {
-        "command": "log--.exportMatchedLines",
+        "command": "log-minus-minus.exportMatchedLines",
         "title": "Export Matched Lines"
       }
     ],
     "menus": {
       "editor/context": [
         {
-          "command": "log--.grepKeyword",
+          "command": "log-minus-minus.grepKeyword",
           "when": "editorHasSelection",
           "group": "log--@1"
         },
         {
-          "command": "log--.grepFunction",
+          "command": "log-minus-minus.grepFunction",
           "when": "editorHasSelection",
           "group": "log--@2"
         },
         {
-          "command": "log--.addKeyword",
+          "command": "log-minus-minus.addKeyword",
           "when": "editorHasSelection",
           "group": "log--@3"
         },
         {
-          "command": "log--.gotoPrevHit",
+          "command": "log-minus-minus.gotoPrevHit",
           "group": "log--@4"
         },
         {
-          "command": "log--.gotoNextHit",
+          "command": "log-minus-minus.gotoNextHit",
           "group": "log--@5"
         }
       ]

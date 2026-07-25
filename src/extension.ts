@@ -68,66 +68,66 @@ export function activate(context: vscode.ExtensionContext) {
 
   const panelProvider = viewController.getPanelProvider();
   const sidebarView = vscode.window.registerWebviewViewProvider(
-    'log--.configView',
+    'log-minus-minus.configView',
     panelProvider,
     { webviewOptions: { retainContextWhenHidden: true } }
   );
 
   // 右键菜单命令
-  const grepKeywordCmd = vscode.commands.registerCommand('log--.grepKeyword', () => {
+  const grepKeywordCmd = vscode.commands.registerCommand('log-minus-minus.grepKeyword', () => {
     grepController?.grepKeyword();
   });
-  const grepFunctionCmd = vscode.commands.registerCommand('log--.grepFunction', () => {
+  const grepFunctionCmd = vscode.commands.registerCommand('log-minus-minus.grepFunction', () => {
     grepController?.grepFunction();
   });
-  const addKeywordCmd = vscode.commands.registerCommand('log--.addKeyword', async () => {
+  const addKeywordCmd = vscode.commands.registerCommand('log-minus-minus.addKeyword', async () => {
     const editor = vscode.window.activeTextEditor;
     if (!editor) { return; }
     const text = editor.document.getText(editor.selection.isEmpty ? undefined : editor.selection);
     if (!text) { return; }
     await viewController?.addKeyword(text);
   });
-  const gotoPrevHitCmd = vscode.commands.registerCommand('log--.gotoPrevHit', () => {
+  const gotoPrevHitCmd = vscode.commands.registerCommand('log-minus-minus.gotoPrevHit', () => {
     return viewController?.gotoPrevNextHit('prev');
   });
-  const gotoNextHitCmd = vscode.commands.registerCommand('log--.gotoNextHit', () => {
+  const gotoNextHitCmd = vscode.commands.registerCommand('log-minus-minus.gotoNextHit', () => {
     return viewController?.gotoPrevNextHit('next');
   });
-  const exportMatchedLinesCmd = vscode.commands.registerCommand('log--.exportMatchedLines', () => {
+  const exportMatchedLinesCmd = vscode.commands.registerCommand('log-minus-minus.exportMatchedLines', () => {
     return viewController?.exportMatchedLines();
   });
-  const gotoKeywordHitCmd = vscode.commands.registerCommand('log--.gotoKeywordHit', (args: any) => {
+  const gotoKeywordHitCmd = vscode.commands.registerCommand('log-minus-minus.gotoKeywordHit', (args: any) => {
     return viewController?.gotoKeywordHit(args?.direction || 'next', args?.keywordId);
   });
 
   // ── Test-only commands for autotest automation ──
-  const testGoCmd = vscode.commands.registerCommand('log--._testGo', async (config: any) => {
+  const testGoCmd = vscode.commands.registerCommand('log-minus-minus._testGo', async (config: any) => {
     await viewController?.testGo(config || {});
   });
-  const testSyncConfigCmd = vscode.commands.registerCommand('log--._testSyncConfig', (config: any) => {
+  const testSyncConfigCmd = vscode.commands.registerCommand('log-minus-minus._testSyncConfig', (config: any) => {
     viewController?.testSyncConfig(config || {});
   });
-  const testClearCmd = vscode.commands.registerCommand('log--._testClear', async () => {
+  const testClearCmd = vscode.commands.registerCommand('log-minus-minus._testClear', async () => {
     await viewController?.testClear();
   });
-  const testResetCmd = vscode.commands.registerCommand('log--._testReset', async () => {
+  const testResetCmd = vscode.commands.registerCommand('log-minus-minus._testReset', async () => {
     await viewController?.testReset();
   });
-  const testGetStateCmd = vscode.commands.registerCommand('log--._testGetState', (): any => {
+  const testGetStateCmd = vscode.commands.registerCommand('log-minus-minus._testGetState', (): any => {
     return {
       foldSummaries: viewController?.testGetFoldSummaries() || [],
       foldRanges: viewController?.testGetFoldRanges() || [],
       timeInfo: viewController?.testGetTimeInfo() || {},
     };
   });
-  const testOpenFileCmd = vscode.commands.registerCommand('log--._testOpenFile', async (filePath: string) => {
+  const testOpenFileCmd = vscode.commands.registerCommand('log-minus-minus._testOpenFile', async (filePath: string) => {
     const uri = path.isAbsolute(filePath)
       ? vscode.Uri.file(filePath)
       : vscode.Uri.file(path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '', filePath));
     const doc = await vscode.workspace.openTextDocument(uri);
     await vscode.window.showTextDocument(doc);
   });
-  const testGetVisibleRangesCmd = vscode.commands.registerCommand('log--._testGetVisibleRanges', (): any => {
+  const testGetVisibleRangesCmd = vscode.commands.registerCommand('log-minus-minus._testGetVisibleRanges', (): any => {
     const editor = vscode.window.activeTextEditor;
     if (!editor) { return []; }
     return editor.visibleRanges.map(r => ({
@@ -135,7 +135,7 @@ export function activate(context: vscode.ExtensionContext) {
       end: { line: r.end.line, character: r.end.character },
     }));
   });
-  const testGetEditorInfoCmd = vscode.commands.registerCommand('log--._testGetEditorInfo', (): any => {
+  const testGetEditorInfoCmd = vscode.commands.registerCommand('log-minus-minus._testGetEditorInfo', (): any => {
     const editor = vscode.window.activeTextEditor;
     if (!editor) { return null; }
     const doc = editor.document;
@@ -147,21 +147,21 @@ export function activate(context: vscode.ExtensionContext) {
       cursorLine: editor.selection.active.line,
     };
   });
-  const testGetTimelineDataCmd = vscode.commands.registerCommand('log--._testGetTimelineData', (): any => {
+  const testGetTimelineDataCmd = vscode.commands.registerCommand('log-minus-minus._testGetTimelineData', (): any => {
     return viewController?.testGetTimelineData() || {};
   });
-  const testGetMatchCountsCmd = vscode.commands.registerCommand('log--._testGetMatchCounts', (): any => {
+  const testGetMatchCountsCmd = vscode.commands.registerCommand('log-minus-minus._testGetMatchCounts', (): any => {
     return viewController?.testGetMatchCounts() || {};
   });
-  const testOpenFilteredTempFileCmd = vscode.commands.registerCommand('log--._testOpenFilteredTempFile', async (): Promise<any> => {
+  const testOpenFilteredTempFileCmd = vscode.commands.registerCommand('log-minus-minus._testOpenFilteredTempFile', async (): Promise<any> => {
     await viewController?.testOpenFilteredTempFile();
     const editor = vscode.window.activeTextEditor;
     return editor ? { fileName: editor.document.fileName, lineCount: editor.document.lineCount } : null;
   });
-  const testGetRingBufferStateCmd = vscode.commands.registerCommand('log--._testGetRingBufferState', (): any => {
+  const testGetRingBufferStateCmd = vscode.commands.registerCommand('log-minus-minus._testGetRingBufferState', (): any => {
     return viewController?.testGetRingBufferState?.() ?? {};
   });
-  const testGetSavedConfigsCmd = vscode.commands.registerCommand('log--._testGetSavedConfigs', (): any => {
+  const testGetSavedConfigsCmd = vscode.commands.registerCommand('log-minus-minus._testGetSavedConfigs', (): any => {
     return configStorageModel.listAll();
   });
 

@@ -205,7 +205,7 @@ export class GrepController {
     }
     lines.push(sep);
 
-    const tmpFile = path.join(os.tmpdir(), `log--_func_${Date.now()}.txt`);
+    const tmpFile = path.join(os.tmpdir(), `log-func_${Date.now()}.txt`);
     fs.writeFileSync(tmpFile, lines.join('\n'), 'utf-8');
 
     const catCmd = process.platform === 'win32' ? 'type' : 'cat';

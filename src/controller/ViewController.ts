@@ -430,7 +430,7 @@ export class ViewController {
     const sortedLines = Array.from(matchedLineNumbers).sort((a, b) => a - b);
     const filteredContent = sortedLines.map(i => lines[i]).join('\n');
 
-    const tmpDir = path.join(os.tmpdir(), 'log---filtered');
+    const tmpDir = path.join(os.tmpdir(), 'log-filtered');
     if (!fs.existsSync(tmpDir)) { fs.mkdirSync(tmpDir, { recursive: true }); }
     const baseName = path.basename(editor.document.fileName || 'filtered.log');
     const tmpFile = path.join(tmpDir, `${baseName}.filtered-${Date.now()}.log`);

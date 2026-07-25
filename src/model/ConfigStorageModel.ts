@@ -6,8 +6,8 @@ import * as os from 'os';
 import { EditorConfig, SavedConfigEntry, ConfigScope } from '../types';
 
 export class ConfigStorageModel {
-  private static WORKSPACE_KEY = 'log--.savedConfigs';
-  private static USER_KEY = 'log--.userSavedConfigs';
+  private static WORKSPACE_KEY = 'log-minus-minus.savedConfigs';
+  private static USER_KEY = 'log-minus-minus.userSavedConfigs';
 
   /** agent 写入配置的共享目录 */
   private static FILE_CONFIG_DIR = path.join(os.homedir(), '.agents', 'log-configs');

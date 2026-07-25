@@ -169,7 +169,7 @@ EOF
 
 ## 安装
 
-在 VS Code 扩展商店搜索 **"Log--"**，或从 [Marketplace](https://marketplace.visualstudio.com/items?itemName=any-tool.log--) 安装。
+在 VS Code 扩展商店搜索 **"Log--"**，或从 [Marketplace](https://marketplace.visualstudio.com/items?itemName=any-tool.log-minus-minus) 安装。
 
 ---
 
@@ -177,7 +177,7 @@ EOF
 
 ```bash
 git clone <仓库地址>
-cd log--
+cd log-minus-minus
 npm install
 npm test          # 204 个单元测试
 npx tsc --noEmit  # 类型检查

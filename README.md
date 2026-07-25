@@ -169,7 +169,7 @@ For very large logs (e.g. 1M+ line Android dumps), use **Export** to extract mat
 
 ## Installation
 
-Search **"Log--"** in VS Code Extensions, or install from [Marketplace](https://marketplace.visualstudio.com/items?itemName=any-tool.log--).
+Search **"Log--"** in VS Code Extensions, or install from [Marketplace](https://marketplace.visualstudio.com/items?itemName=any-tool.log-minus-minus).
 
 ---
 
@@ -177,7 +177,7 @@ Search **"Log--"** in VS Code Extensions, or install from [Marketplace](https://
 
 ```bash
 git clone <repo-url>
-cd log--
+cd log-minus-minus
 npm install
 npm test          # 204 unit tests
 npx tsc --noEmit  # type check
