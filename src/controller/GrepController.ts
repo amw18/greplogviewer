@@ -58,7 +58,7 @@ export class GrepController {
 
     let terminal = vscode.window.activeTerminal;
     if (!terminal) {
-      terminal = vscode.window.createTerminal({ name: 'GrepLogViewer', cwd });
+      terminal = vscode.window.createTerminal({ name: 'Log--', cwd });
     }
     terminal.show();
     terminal.sendText(command);
@@ -70,7 +70,7 @@ export class GrepController {
     if (workspaceFolder) {
       return workspaceFolder.uri.fsPath;
     }
-    vscode.window.showWarningMessage('GrepLogViewer: No workspace folder or terminal path available.');
+    vscode.window.showWarningMessage('Log--: No workspace folder or terminal path available.');
     return undefined;
   }
 
@@ -205,7 +205,7 @@ export class GrepController {
     }
     lines.push(sep);
 
-    const tmpFile = path.join(os.tmpdir(), `greplogviewer_func_${Date.now()}.txt`);
+    const tmpFile = path.join(os.tmpdir(), `log--_func_${Date.now()}.txt`);
     fs.writeFileSync(tmpFile, lines.join('\n'), 'utf-8');
 
     const catCmd = process.platform === 'win32' ? 'type' : 'cat';
@@ -213,7 +213,7 @@ export class GrepController {
 
     let terminal = vscode.window.activeTerminal;
     if (!terminal) {
-      terminal = vscode.window.createTerminal({ name: 'GrepLogViewer', cwd: rootPath });
+      terminal = vscode.window.createTerminal({ name: 'Log--', cwd: rootPath });
     }
     terminal.show();
     terminal.sendText(displayCmd);

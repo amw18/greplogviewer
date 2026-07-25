@@ -1,4 +1,4 @@
-// 类型定义 — GrepLogViewer
+// 类型定义 — Log--
 // 所有核心接口和类型，供 Model/Controller/View 层共享
 
 /** 逻辑操作符：表达式之间的逻辑关系 */

@@ -399,7 +399,7 @@ export class ViewController {
     // 相同规则重复 Go 不弹，避免每次操作都打断用户。
     if (filterChanged && !skipLargeFilePrompt && ViewController.isFoldingDisabled(editor, lines.length)) {
       const action = await vscode.window.showInformationMessage(
-        `GrepLogViewer: ${lines.length.toLocaleString()} lines is too large for VS Code folding; highlighting is still applied.`,
+        `Log--: ${lines.length.toLocaleString()} lines is too large for VS Code folding; highlighting is still applied.`,
         'Open filtered results in new tab'
       );
       if (action === 'Open filtered results in new tab') {
@@ -423,14 +423,14 @@ export class ViewController {
       }
     }
     if (matchedLineNumbers.size === 0) {
-      vscode.window.showWarningMessage('GrepLogViewer: No matched lines to export.');
+      vscode.window.showWarningMessage('Log--: No matched lines to export.');
       return;
     }
 
     const sortedLines = Array.from(matchedLineNumbers).sort((a, b) => a - b);
     const filteredContent = sortedLines.map(i => lines[i]).join('\n');
 
-    const tmpDir = path.join(os.tmpdir(), 'greplogviewer-filtered');
+    const tmpDir = path.join(os.tmpdir(), 'log---filtered');
     if (!fs.existsSync(tmpDir)) { fs.mkdirSync(tmpDir, { recursive: true }); }
     const baseName = path.basename(editor.document.fileName || 'filtered.log');
     const tmpFile = path.join(tmpDir, `${baseName}.filtered-${Date.now()}.log`);
@@ -454,7 +454,7 @@ export class ViewController {
     const editorId = editor.document.uri.toString();
     const results = this.filterResultModel.getResults(editorId);
     if (!results || results.length === 0) {
-      vscode.window.showWarningMessage('GrepLogViewer: No filter results. Click Go first.');
+      vscode.window.showWarningMessage('Log--: No filter results. Click Go first.');
       return;
     }
 
@@ -464,7 +464,7 @@ export class ViewController {
       if (r.groupId !== null) { matchedLineNumbers.add(r.lineNumber); }
     }
     if (matchedLineNumbers.size === 0) {
-      vscode.window.showWarningMessage('GrepLogViewer: No matched lines to export.');
+      vscode.window.showWarningMessage('Log--: No matched lines to export.');
       return;
     }
 
@@ -485,7 +485,7 @@ export class ViewController {
     await vscode.languages.setTextDocumentLanguage(doc, 'log');
 
     vscode.window.showInformationMessage(
-      `GrepLogViewer: Exported ${sortedLines.length} matched lines to ${docName}.`
+      `Log--: Exported ${sortedLines.length} matched lines to ${docName}.`
     );
   }
 
@@ -1032,7 +1032,7 @@ export class ViewController {
   /** Export: 将当前配置写入用户指定的本地 JSON 文件 */
   private async handleExport(groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]): Promise<void> {
     const uri = await vscode.window.showSaveDialog({
-      defaultUri: vscode.Uri.file('greplogviewer-config.json'),
+      defaultUri: vscode.Uri.file('log-config.json'),
       filters: { 'JSON Files': ['json'] },
     });
     if (!uri) { return; }

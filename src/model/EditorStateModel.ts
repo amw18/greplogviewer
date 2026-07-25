@@ -31,7 +31,7 @@ export class EditorStateModel {
 
   /** 从 workspaceState 加载配置（兼容旧格式 RegexGroup[]） */
   loadConfig(documentUri: string): EditorConfig | undefined {
-    const raw = this.context.workspaceState.get<EditorConfig | RegexGroup[]>(`greplogviewer.config.${documentUri}`);
+    const raw = this.context.workspaceState.get<EditorConfig | RegexGroup[]>(`log--.config.${documentUri}`);
     if (!raw) { return undefined; }
     // 兼容旧格式：旧版本存的是 RegexGroup[] 数组
     if (Array.isArray(raw)) {
@@ -42,6 +42,6 @@ export class EditorStateModel {
 
   /** 持久化到 workspaceState */
   saveConfig(documentUri: string, config: EditorConfig): void {
-    this.context.workspaceState.update(`greplogviewer.config.${documentUri}`, config);
+    this.context.workspaceState.update(`log--.config.${documentUri}`, config);
   }
 }

@@ -1,4 +1,4 @@
-# GrepLogViewer
+# Log--
 
 > [English](README.md) | [中文](README_CN.md)
 
@@ -10,7 +10,7 @@
 
 ## Overview
 
-GrepLogViewer turns VS Code into a powerful log analysis tool. Define regex groups to color-code log lines, auto-fold irrelevant content, highlight keywords with substring-level coloring, and visualize keyword hit distribution on a timeline — all triggered by a single **Go** button.
+Log-- turns VS Code into a powerful log analysis tool. Define regex groups to color-code log lines, auto-fold irrelevant content, highlight keywords with substring-level coloring, and visualize keyword hit distribution on a timeline — all triggered by a single **Go** button.
 
 Designed for debugging large log files: Android logcat, kernel logs, application traces, and more.
 
@@ -97,13 +97,13 @@ Click **Export** to copy all matched lines to a new unsaved editor (`<filename>_
 
 ## 🤖 AI-Assisted Configuration
 
-GrepLogViewer ships with an **Agent Skill** that lets AI agents (like Pi, Claude Code, or any Agent Skills-compatible tool) automatically configure filter groups, keywords, and time patterns for any log format.
+Log-- ships with an **Agent Skill** that lets AI agents (like Pi, Claude Code, or any Agent Skills-compatible tool) automatically configure filter groups, keywords, and time patterns for any log format.
 
 ### How It Works
 
-1. **On install/update**, the extension copies `SKILL.md` to `~/.agents/skills/greplogviewer-config/`
+1. **On install/update**, the extension copies `SKILL.md` to `~/.agents/skills/log-config/`
 2. The AI agent reads the skill, analyzes your sample log lines, and generates a config JSON
-3. The agent writes the config to `~/.agents/greplogviewer-configs/<name>.json`
+3. The agent writes the config to `~/.agents/log-configs/<name>.json`
 4. The config **automatically appears** in the **Solution** dropdown in the sidebar
 5. You just select it and click **Apply** — no manual import needed
 
@@ -111,8 +111,8 @@ GrepLogViewer ships with an **Agent Skill** that lets AI agents (like Pi, Claude
 
 ```bash
 # The agent writes a config file:
-mkdir -p ~/.agents/greplogviewer-configs
-cat > ~/.agents/greplogviewer-configs/android-crash.json << 'EOF'
+mkdir -p ~/.agents/log-configs
+cat > ~/.agents/log-configs/android-crash.json << 'EOF'
 {
   "groups": [
     { "id": "g1", "name": "Fatal", "color": "#ff0000",
@@ -133,7 +133,7 @@ The config `android-crash` appears in the Solution dropdown as `(file)` scope. C
 
 ### Skill Content
 
-The bundled skill (`skills/greplogviewer-config/SKILL.md`) includes:
+The bundled skill (`skills/log-config/SKILL.md`) includes:
 - Step-by-step configuration procedure for AI agents
 - Common regex patterns by log type (Android, kernel, generic)
 - Named capture hint syntax with practical examples
@@ -159,7 +159,7 @@ For very large logs (e.g. 1M+ line Android dumps), use **Export** to extract mat
 ## Usage
 
 1. **Open** a log file in VS Code
-2. **Configure** regex groups and keywords in the GrepLogViewer sidebar
+2. **Configure** regex groups and keywords in the Log-- sidebar
    - Or use **Solution** dropdown to apply a saved/agent-generated config
 3. **Click Go** — matched lines get colored, unmatched lines fold
 4. **Navigate** — use ↑/↓ on keywords to jump between hits; scroll-wheel on timeline to zoom
@@ -169,7 +169,7 @@ For very large logs (e.g. 1M+ line Android dumps), use **Export** to extract mat
 
 ## Installation
 
-Search **"GrepLogViewer"** in VS Code Extensions, or install from [Marketplace](https://marketplace.visualstudio.com/items?itemName=any-tool.greplogviewer).
+Search **"Log--"** in VS Code Extensions, or install from [Marketplace](https://marketplace.visualstudio.com/items?itemName=any-tool.log--).
 
 ---
 
@@ -177,7 +177,7 @@ Search **"GrepLogViewer"** in VS Code Extensions, or install from [Marketplace](
 
 ```bash
 git clone <repo-url>
-cd greplogviewer
+cd log--
 npm install
 npm test          # 204 unit tests
 npx tsc --noEmit  # type check

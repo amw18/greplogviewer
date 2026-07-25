@@ -1,13 +1,13 @@
 {
-  "name": "greplogviewer",
+  "name": "log--",
   "displayName": "Grep Log Viewer",
   "description": "Regex-based text file viewer with color highlighting and auto-folding",
-  "version": "0.2.13",
+  "version": "0.2.14",
   "publisher": "any-tool",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/amw18/greplogviewer"
+    "url": "https://github.com/amw18/log--"
   },
   "icon": "icon.png",
   "engines": {
@@ -17,83 +17,83 @@
     "Other"
   ],
   "activationEvents": [
-    "onView:greplogviewer.configView",
-    "onCommand:greplogviewer.grepKeyword",
-    "onCommand:greplogviewer.grepFunction",
-    "onCommand:greplogviewer.addKeyword",
-    "onCommand:greplogviewer.gotoPrevHit",
-    "onCommand:greplogviewer.gotoNextHit",
-    "onCommand:greplogviewer._testGo",
-    "onCommand:greplogviewer._testSyncConfig",
-    "onCommand:greplogviewer._testClear",
-    "onCommand:greplogviewer._testReset",
-    "onCommand:greplogviewer._testGetState",
-    "onCommand:greplogviewer._testOpenFile",
-    "onCommand:greplogviewer._testGetVisibleRanges",
-    "onCommand:greplogviewer._testGetTimelineData",
-    "onCommand:greplogviewer._testGetRingBufferState"
+    "onView:log--.configView",
+    "onCommand:log--.grepKeyword",
+    "onCommand:log--.grepFunction",
+    "onCommand:log--.addKeyword",
+    "onCommand:log--.gotoPrevHit",
+    "onCommand:log--.gotoNextHit",
+    "onCommand:log--._testGo",
+    "onCommand:log--._testSyncConfig",
+    "onCommand:log--._testClear",
+    "onCommand:log--._testReset",
+    "onCommand:log--._testGetState",
+    "onCommand:log--._testOpenFile",
+    "onCommand:log--._testGetVisibleRanges",
+    "onCommand:log--._testGetTimelineData",
+    "onCommand:log--._testGetRingBufferState"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "views": {
       "explorer": [
         {
-          "id": "greplogviewer.configView",
-          "name": "GrepLogViewer",
+          "id": "log--.configView",
+          "name": "Log--",
           "type": "webview"
         }
       ]
     },
     "commands": [
       {
-        "command": "greplogviewer.grepKeyword",
+        "command": "log--.grepKeyword",
         "title": "Grep Keyword"
       },
       {
-        "command": "greplogviewer.grepFunction",
+        "command": "log--.grepFunction",
         "title": "Grep Function"
       },
       {
-        "command": "greplogviewer.addKeyword",
+        "command": "log--.addKeyword",
         "title": "Add as Keyword"
       },
       {
-        "command": "greplogviewer.gotoPrevHit",
+        "command": "log--.gotoPrevHit",
         "title": "Goto Previous Hit"
       },
       {
-        "command": "greplogviewer.gotoNextHit",
+        "command": "log--.gotoNextHit",
         "title": "Goto Next Hit"
       },
       {
-        "command": "greplogviewer.exportMatchedLines",
+        "command": "log--.exportMatchedLines",
         "title": "Export Matched Lines"
       }
     ],
     "menus": {
       "editor/context": [
         {
-          "command": "greplogviewer.grepKeyword",
+          "command": "log--.grepKeyword",
           "when": "editorHasSelection",
-          "group": "greplogviewer@1"
+          "group": "log--@1"
         },
         {
-          "command": "greplogviewer.grepFunction",
+          "command": "log--.grepFunction",
           "when": "editorHasSelection",
-          "group": "greplogviewer@2"
+          "group": "log--@2"
         },
         {
-          "command": "greplogviewer.addKeyword",
+          "command": "log--.addKeyword",
           "when": "editorHasSelection",
-          "group": "greplogviewer@3"
+          "group": "log--@3"
         },
         {
-          "command": "greplogviewer.gotoPrevHit",
-          "group": "greplogviewer@4"
+          "command": "log--.gotoPrevHit",
+          "group": "log--@4"
         },
         {
-          "command": "greplogviewer.gotoNextHit",
-          "group": "greplogviewer@5"
+          "command": "log--.gotoNextHit",
+          "group": "log--@5"
         }
       ]
     }

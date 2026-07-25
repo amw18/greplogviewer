@@ -1,14 +1,14 @@
 ---
-name: greplogviewer-config
-description: Configure GrepLogViewer VS Code extension filter groups, keywords, and time patterns for any log format. Use when setting up regex highlighting/folding for log analysis, debugging log files, or when a user wants to filter and colorize large log files.
+name: log-config
+description: Configure Log-- VS Code extension filter groups, keywords, and time patterns for any log format. Use when setting up regex highlighting/folding for log analysis, debugging log files, or when a user wants to filter and colorize large log files.
 ---
 
-# GrepLogViewer Configuration
+# Log-- Configuration
 
-Help users configure the GrepLogViewer VS Code extension to filter, colorize, and
+Help users configure the Log-- VS Code extension to filter, colorize, and
 fold log files using regex groups and keywords.
 
-## What GrepLogViewer Does
+## What Log-- Does
 
 - Matches log lines against regex **groups** (first match wins, colored by group)
 - Folds unmatched lines so only relevant lines are visible
@@ -109,7 +109,7 @@ directory. The extension automatically scans this directory and lists the
 configs in the Advance panel's dropdown - the user just selects and clicks
 Apply, no import needed.
 
-**Directory**: `~/.agents/greplogviewer-configs/`
+**Directory**: `~/.agents/log-configs/`
 
 **File name**: `<config-name>.json` (e.g. `android-crash.json`)
 
@@ -117,8 +117,8 @@ Apply, no import needed.
 
 Example:
 ```bash
-mkdir -p ~/.agents/greplogviewer-configs
-cat > ~/.agents/greplogviewer-configs/android-error.json << 'EOF'
+mkdir -p ~/.agents/log-configs
+cat > ~/.agents/log-configs/android-error.json << 'EOF'
 {
   "groups": [...],
   "timePattern": { "format": "MM-DD HH:mm:ss.SSS" },

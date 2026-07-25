@@ -1,4 +1,4 @@
-# GrepLogViewer
+# Log--
 
 > [English](README.md) | [中文](README_CN.md)
 
@@ -10,7 +10,7 @@
 
 ## 概述
 
-GrepLogViewer 将 VS Code 变成强大的日志分析工具。定义正则组对日志行着色，自动折叠无关内容，用子串级颜色高亮关键字，并在时间线上可视化关键字命中分布 - 所有效果由一个 **Go** 按钮触发。
+Log-- 将 VS Code 变成强大的日志分析工具。定义正则组对日志行着色，自动折叠无关内容，用子串级颜色高亮关键字，并在时间线上可视化关键字命中分布 - 所有效果由一个 **Go** 按钮触发。
 
 适用于调试大型日志文件：Android logcat、内核日志、应用 trace 等。
 
@@ -97,13 +97,13 @@ GrepLogViewer 将 VS Code 变成强大的日志分析工具。定义正则组对
 
 ## 🤖 AI 辅助配置
 
-GrepLogViewer 内置 **Agent Skill**，让 AI agent（如 Pi、Claude Code 或任何兼容 Agent Skills 的工具）自动为任意日志格式配置过滤组、关键字和时间模式。
+Log-- 内置 **Agent Skill**，让 AI agent（如 Pi、Claude Code 或任何兼容 Agent Skills 的工具）自动为任意日志格式配置过滤组、关键字和时间模式。
 
 ### 工作原理
 
-1. **安装/更新插件时**，扩展自动将 `SKILL.md` 拷贝到 `~/.agents/skills/greplogviewer-config/`
+1. **安装/更新插件时**，扩展自动将 `SKILL.md` 拷贝到 `~/.agents/skills/log-config/`
 2. AI agent 读取 skill，分析你的日志样本，生成配置 JSON
-3. Agent 将配置写入 `~/.agents/greplogviewer-configs/<名称>.json`
+3. Agent 将配置写入 `~/.agents/log-configs/<名称>.json`
 4. 配置**自动出现在**侧边栏的 **Solution** 下拉列表中
 5. 你只需选中并点击 **Apply** - 无需手动导入
 
@@ -111,8 +111,8 @@ GrepLogViewer 内置 **Agent Skill**，让 AI agent（如 Pi、Claude Code 或�
 
 ```bash
 # Agent 写入配置文件：
-mkdir -p ~/.agents/greplogviewer-configs
-cat > ~/.agents/greplogviewer-configs/android-crash.json << 'EOF'
+mkdir -p ~/.agents/log-configs
+cat > ~/.agents/log-configs/android-crash.json << 'EOF'
 {
   "groups": [
     { "id": "g1", "name": "Fatal", "color": "#ff0000",
@@ -133,7 +133,7 @@ EOF
 
 ### Skill 内容
 
-内置 skill（`skills/greplogviewer-config/SKILL.md`）包含：
+内置 skill（`skills/log-config/SKILL.md`）包含：
 - AI agent 的逐步配置流程
 - 按日志类型的常见正则（Android、内核、通用应用）
 - 命名捕获 hint 语法及实例
@@ -159,7 +159,7 @@ EOF
 ## 使用方法
 
 1. **打开** VS Code 中的日志文件
-2. **配置** GrepLogViewer 侧边栏中的正则组和关键字
+2. **配置** Log-- 侧边栏中的正则组和关键字
    - 或用 **Solution** 下拉列表应用已保存/agent 生成的配置
 3. **点击 Go** - 匹配行着色，未匹配行折叠
 4. **导航** - 用关键字 ↑/↓ 跳转命中行；滚轮缩放时间线
@@ -169,7 +169,7 @@ EOF
 
 ## 安装
 
-在 VS Code 扩展商店搜索 **"GrepLogViewer"**，或从 [Marketplace](https://marketplace.visualstudio.com/items?itemName=any-tool.greplogviewer) 安装。
+在 VS Code 扩展商店搜索 **"Log--"**，或从 [Marketplace](https://marketplace.visualstudio.com/items?itemName=any-tool.log--) 安装。
 
 ---
 
@@ -177,7 +177,7 @@ EOF
 
 ```bash
 git clone <仓库地址>
-cd greplogviewer
+cd log--
 npm install
 npm test          # 204 个单元测试
 npx tsc --noEmit  # 类型检查
