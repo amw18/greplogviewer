@@ -1,0 +1,117 @@
+{
+  "name": "log-dash",
+  "displayName": "Log--",
+  "description": "Regex-based text file viewer with color highlighting and auto-folding",
+  "version": "0.3.0",
+  "publisher": "any-tool",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/amw18/greplogviewer"
+  },
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:log-minus-minus.configView",
+    "onCommand:log-minus-minus.grepKeyword",
+    "onCommand:log-minus-minus.grepFunction",
+    "onCommand:log-minus-minus.addKeyword",
+    "onCommand:log-minus-minus.gotoPrevHit",
+    "onCommand:log-minus-minus.gotoNextHit",
+    "onCommand:log-minus-minus._testGo",
+    "onCommand:log-minus-minus._testSyncConfig",
+    "onCommand:log-minus-minus._testClear",
+    "onCommand:log-minus-minus._testReset",
+    "onCommand:log-minus-minus._testGetState",
+    "onCommand:log-minus-minus._testOpenFile",
+    "onCommand:log-minus-minus._testGetVisibleRanges",
+    "onCommand:log-minus-minus._testGetTimelineData",
+    "onCommand:log-minus-minus._testGetRingBufferState"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "views": {
+      "explorer": [
+        {
+          "id": "log-minus-minus.configView",
+          "name": "Log--",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "log-minus-minus.grepKeyword",
+        "title": "Grep Keyword"
+      },
+      {
+        "command": "log-minus-minus.grepFunction",
+        "title": "Grep Function"
+      },
+      {
+        "command": "log-minus-minus.addKeyword",
+        "title": "Add as Keyword"
+      },
+      {
+        "command": "log-minus-minus.gotoPrevHit",
+        "title": "Goto Previous Hit"
+      },
+      {
+        "command": "log-minus-minus.gotoNextHit",
+        "title": "Goto Next Hit"
+      },
+      {
+        "command": "log-minus-minus.exportMatchedLines",
+        "title": "Export Matched Lines"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "log-minus-minus.grepKeyword",
+          "when": "editorHasSelection",
+          "group": "log--@1"
+        },
+        {
+          "command": "log-minus-minus.grepFunction",
+          "when": "editorHasSelection",
+          "group": "log--@2"
+        },
+        {
+          "command": "log-minus-minus.addKeyword",
+          "when": "editorHasSelection",
+          "group": "log--@3"
+        },
+        {
+          "command": "log-minus-minus.gotoPrevHit",
+          "group": "log--@4"
+        },
+        {
+          "command": "log-minus-minus.gotoNextHit",
+          "group": "log--@5"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "test": "ts-mocha test/**/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.9.1",
+    "mocha": "^11.7.6",
+    "ts-mocha": "^11.1.0",
+    "typescript": "^5.3.0"
+  }
+}
