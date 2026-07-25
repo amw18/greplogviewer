@@ -1,6 +1,8 @@
 # GrepLogViewer
 
-> Regex-based log viewer for VS Code — color highlighting, auto-folding, keyword timeline, and code grep.
+> [English](README.md) | [中文](README_CN.md)
+
+> Regex-based log viewer for VS Code - color highlighting, auto-folding, keyword timeline, and code grep.
 
 ![screenshot](screenshot.png)
 
@@ -36,7 +38,7 @@ Detects wrap-around start in ring-buffer logs and marks it with a red flag icon.
 
 ### Right-Click Grep
 
-Select text → right-click → **Grep Keyword** / **Grep Function** → searches associated code directories, output to terminal. Supports `;`-separated dirs, `!` exclusion, `${VAR}` environment variables.
+Select text -> right-click -> **Grep Keyword** / **Grep Function** -> searches associated code directories, output to terminal. Supports `;`-separated dirs, `!` exclusion, `${VAR}` environment variables.
 
 ### Export Matched Lines
 
@@ -44,7 +46,7 @@ Click **Export** to copy all matched lines to a new unsaved editor (`<filename>_
 
 ### Config Sharing
 
-Save named configs, export/import as JSON. AI agents can auto-install configs to `~/.agents/greplogviewer-configs/` — they appear in the Solution dropdown automatically.
+Save named configs, export/import as JSON. AI agents can auto-install configs to `~/.agents/greplogviewer-configs/` - they appear in the Solution dropdown automatically.
 
 ### Large File Support
 
