@@ -10,7 +10,7 @@ export class ConfigStorageModel {
   private static USER_KEY = 'log-minus-minus.userSavedConfigs';
 
   /** agent 写入配置的共享目录 */
-  private static FILE_CONFIG_DIR = path.join(os.homedir(), '.agents', 'log-configs');
+  private static FILE_CONFIG_DIR = path.join(os.homedir(), '.log--', 'ai', 'solutions');
 
   constructor(private context: vscode.ExtensionContext) {}
 
@@ -90,7 +90,7 @@ export class ConfigStorageModel {
     return this.scopeState(scope).get<SavedConfigEntry[]>(this.scopeKey(scope)) || [];
   }
 
-  /** 扫描 ~/.agents/log-configs/ 目录下的 JSON 配置文件 */
+  /** 扫描 ~/.log--/ai/solutions/ 目录下的 JSON 配置文件 */
   private readFileConfigs(): SavedConfigEntry[] {
     const dir = ConfigStorageModel.FILE_CONFIG_DIR;
     try {

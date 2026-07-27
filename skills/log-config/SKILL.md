@@ -106,10 +106,10 @@ Leave the Time Fmt field empty to auto-detect. Common explicit formats:
 
 Terminal-based AI agents can write config JSON files directly to a shared
 directory. The extension automatically scans this directory and lists the
-configs in the Advance panel's dropdown - the user just selects and clicks
+configs in the Solution dropdown - the user just selects and clicks
 Apply, no import needed.
 
-**Directory**: `~/.agents/log-configs/`
+**Directory**: `~/.log--/ai/solutions/`
 
 **File name**: `<config-name>.json` (e.g. `android-crash.json`)
 
@@ -117,8 +117,8 @@ Apply, no import needed.
 
 Example:
 ```bash
-mkdir -p ~/.agents/log-configs
-cat > ~/.agents/log-configs/android-error.json << 'EOF'
+mkdir -p ~/.log--/ai/solutions
+cat > ~/.log--/ai/solutions/android-error.json << 'EOF'
 {
   "groups": [...],
   "timePattern": { "format": "MM-DD HH:mm:ss.SSS" },
@@ -127,7 +127,28 @@ cat > ~/.agents/log-configs/android-error.json << 'EOF'
 EOF
 ```
 
-The config appears in the Advance section dropdown as `android-error (file)`.
+The config appears in the Solution dropdown as `android-error (file)`.
+
+### Dynamic Config Management
+
+Agents can dynamically add, update, or remove configs:
+
+- **Add**: Write a new `.json` file to `~/.log--/ai/solutions/`
+- **Update**: Overwrite an existing `.json` file (same name)
+- **Remove**: Delete the `.json` file (user can also delete from the panel)
+- **Target file selection**: When the user mentions a config name or the agent
+generates a new config, write to that file. If the user refers to an existing
+  config by name, update that file. If the user says "add a new config", create
+  a new file with a descriptive name.
+
+### Config File Naming
+
+Use descriptive, kebab-case names:
+- `android-crash.json`
+- `kernel-boot.json`
+- `app-timeout.json`
+
+The filename (without `.json`) becomes the config name shown in the dropdown.
 
 ## Config JSON Structure
 

@@ -18,7 +18,7 @@ let viewController: ViewController | undefined;
 let grepController: GrepController | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
-  // 安装/更新 skill 到 ~/.agents/skills/
+  // 安装/更新 skill 到 ~/.log--/ai/skills/
   installSkill(context);
 
   const regexGroupModel = new RegexGroupModel();
@@ -211,12 +211,12 @@ export function deactivate() {
 }
 
 /**
- * 将打包的 log-config skill 拷贝到用户 ~/.agents/skills/ 目录。
+ * 将打包的 log-config skill 拷贝到用户 ~/.log--/ai/skills/ 目录。
  * 已存在且内容相同时跳过,避免每次激活都写盘。
  */
 function installSkill(context: vscode.ExtensionContext): void {
   const bundledSkillPath = path.join(context.extensionPath, 'skills', 'log-config', 'SKILL.md');
-  const targetDir = path.join(os.homedir(), '.agents', 'skills', 'log-config');
+  const targetDir = path.join(os.homedir(), '.log--', 'ai', 'skills', 'log-config');
   const targetPath = path.join(targetDir, 'SKILL.md');
 
   let bundledContent: string;
