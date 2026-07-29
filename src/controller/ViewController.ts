@@ -1438,7 +1438,6 @@ export class ViewController {
     }
   }
 
-  /** 跳转到当前光标位置的下一个/上一个关键字匹配行 */
   /** 跳转到指定 group 的上一个/下一个命中行 */
   gotoGroupHit(direction: 'prev' | 'next', groupId: string): void {
     const editor = this.currentEditor;
