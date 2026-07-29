@@ -215,13 +215,13 @@ export function deactivate() {
 }
 
 /**
- * 将打包的 log-config skill 拷贝到用户 ~/.log--/ai/skills/ 目录。
+ * 将打包的 log-config skill 拷贝到两个目录：
+ * ~/.log--/ai/skills/log-config/SKILL.md（extension 自身使用）
+ * ~/.agents/skills/log-config/SKILL.md（Pi / AI agent 发现）
  * 已存在且内容相同时跳过,避免每次激活都写盘。
  */
 function installSkill(context: vscode.ExtensionContext): void {
   const bundledSkillPath = path.join(context.extensionPath, 'skills', 'log-config', 'SKILL.md');
-  const targetDir = path.join(os.homedir(), '.log--', 'ai', 'skills', 'log-config');
-  const targetPath = path.join(targetDir, 'SKILL.md');
 
   let bundledContent: string;
   try {
@@ -231,18 +231,25 @@ function installSkill(context: vscode.ExtensionContext): void {
     return;
   }
 
-  // 已存在且内容相同则跳过
-  try {
-    const existing = fs.readFileSync(targetPath, 'utf-8');
-    if (existing === bundledContent) { return; }
-  } catch {
-    // 不存在,继续拷贝
-  }
+  const targetPaths = [
+    path.join(os.homedir(), '.log--', 'ai', 'skills', 'log-config', 'SKILL.md'),
+    path.join(os.homedir(), '.agents', 'skills', 'log-config', 'SKILL.md'),
+  ];
 
-  try {
-    fs.mkdirSync(targetDir, { recursive: true });
-    fs.writeFileSync(targetPath, bundledContent, 'utf-8');
-  } catch {
-    // 权限不足等错误,静默跳过
+  for (const targetPath of targetPaths) {
+    // 已存在且内容相同则跳过
+    try {
+      const existing = fs.readFileSync(targetPath, 'utf-8');
+      if (existing === bundledContent) { continue; }
+    } catch {
+      // 不存在,继续拷贝
+    }
+
+    try {
+      fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+      fs.writeFileSync(targetPath, bundledContent, 'utf-8');
+    } catch {
+      // 权限不足等,静默跳过
+    }
   }
 }
