@@ -3,6 +3,8 @@ node_modules/
 out/
 *.vsix
 .vscode-test/
+.vscode/
+.pi-subagents/
 
 # AI / internal docs
 .agent_doc/
