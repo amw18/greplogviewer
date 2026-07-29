@@ -3,6 +3,8 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { exec } from 'child_process';
+import * as readline from 'readline';
 import { RegexGroup, TimePatternConfig, KeywordConfig, ConfigScope, FoldRange, FilterResult } from '../types';
 import { ConfigController } from './ConfigController';
 import { FilterController } from './FilterController';
@@ -35,12 +37,26 @@ export class ViewController {
   /** 超过此行数禁用时间线，避免扫描百万行阻塞 UI */
   private static readonly TIMELINE_DISABLE_THRESHOLD = 200000;
 
+  /** 超过此阈值不进行内存过滤，直接走 grep 导出路径 */
+  private static readonly GREP_EXPORT_SIZE_THRESHOLD = 20 * 1024 * 1024; // 20 MB
+  private static readonly GREP_EXPORT_LINES_THRESHOLD = 300000;
+
   /** 判断当前文件是否超出 VS Code 折叠能力（按行数或文件大小） */
   private static isFoldingDisabled(editor: vscode.TextEditor, lineCount: number): boolean {
     if (lineCount > ViewController.FOLDING_DISABLED_THRESHOLD) { return true; }
     try {
       const size = fs.statSync(editor.document.uri.fsPath).size;
       return size > ViewController.FOLDING_DISABLED_SIZE_THRESHOLD;
+    } catch {
+      return false;
+    }
+  }
+
+  /** 判断文件是否过大，无法进行内存过滤 */
+  private static isTooLargeForMemory(editor: vscode.TextEditor): boolean {
+    if (editor.document.lineCount > ViewController.GREP_EXPORT_LINES_THRESHOLD) { return true; }
+    try {
+      return fs.statSync(editor.document.uri.fsPath).size > ViewController.GREP_EXPORT_SIZE_THRESHOLD;
     } catch {
       return false;
     }
@@ -308,6 +324,36 @@ export class ViewController {
     this.regexGroupModel.setGroups(groups);
     this.compiledKwRegexes.clear();  // keyword 可能变更，清除正则缓存
 
+    // 关键字配置
+    this.currentKeywords = keywords;
+
+    // 计算过滤指纹，判断是否需要重新过滤
+    const filterFp = this.computeFilterFingerprint(groups);
+    const filterChanged = filterFp !== this.lastFilterFingerprint;
+    this.lastFilterFingerprint = filterFp;
+
+    // ── 超大文件早期拦截：>20MB 或 >30万行直接走 grep 导出，不读内存 ──
+    if (filterChanged && !skipLargeFilePrompt && ViewController.isTooLargeForMemory(editor)) {
+      // 仅持久化配置（不读文件、不过滤）
+      this.timeMatchModel.setConfig(timePattern || { format: '' });
+      this.editorStateModel.saveConfig(editorId, {
+        groups,
+        timePattern: this.timeMatchModel.isConfigured() ? this.timeMatchModel.getConfig() : undefined,
+        keywords,
+      });
+      this.editorStateModel.setActive(editorId, true);
+
+      const lineCount = editor.document.lineCount;
+      const action = await vscode.window.showInformationMessage(
+        `Log--: File too large (${lineCount.toLocaleString()} lines) for inline filtering. Use grep to export matched lines to a smaller file?`,
+        'Open filtered results in new tab'
+      );
+      if (action === 'Open filtered results in new tab') {
+        await this.openFilteredResultsWithGrep(editor, groups, keywords);
+      }
+      return;
+    }
+
     // 时间匹配配置：用户留空时自动检测常见格式
     this.timeMatchModel.setConfig(timePattern || { format: '' });
     const lines = this.readLines(editor);
@@ -315,9 +361,6 @@ export class ViewController {
       const autoTp = this.timeMatchModel.autoDetect(lines);
       if (autoTp) { this.timeMatchModel.setConfig(autoTp); }
     }
-
-    // 关键字配置
-    this.currentKeywords = keywords;
 
     this.editorStateModel.saveConfig(editorId, {
       groups,
@@ -329,11 +372,6 @@ export class ViewController {
 
     // 当前已存在的折叠区间（用于判断是否需要先清除旧折叠）
     const oldRanges = this.filterResultModel.getUnmatchedRanges(editorId);
-
-    // 计算是否只需更新 keyword/时间层（filter config 未变）
-    const filterFp = this.computeFilterFingerprint(groups);
-    const filterChanged = filterFp !== this.lastFilterFingerprint;
-    this.lastFilterFingerprint = filterFp;
 
     let results: FilterResult[];
 
@@ -443,6 +481,222 @@ export class ViewController {
     await this.handleGo(groups, this.timeMatchModel.getConfig(), keywords, true);
 
     // 把焦点切回新打开的临时文件（handleGo 会改变 currentEditor）
+    await vscode.window.showTextDocument(newEditor.document, { viewColumn: newEditor.viewColumn });
+  }
+
+  // ── Grep-based export for huge files (>20MB / >300K lines) ──
+
+  /**
+   * 对超大文件使用 grep 直接过滤磁盘文件，避免 getText() 阻塞。
+   * 优先尝试系统 grep；失败则回退到 Node.js 流式读取。
+   */
+  private async openFilteredResultsWithGrep(
+    editor: vscode.TextEditor,
+    groups: RegexGroup[],
+    keywords?: KeywordConfig[]
+  ): Promise<void> {
+    const filePath = editor.document.uri.fsPath;
+    const enabledGroups = groups.filter(g => g.enabled !== false);
+    if (enabledGroups.length === 0) {
+      vscode.window.showWarningMessage('Log--: No enabled groups to filter.');
+      return;
+    }
+
+    const tmpDir = path.join(os.tmpdir(), 'log-filtered');
+    if (!fs.existsSync(tmpDir)) { fs.mkdirSync(tmpDir, { recursive: true }); }
+    const baseName = path.basename(filePath || 'filtered.log');
+    const tmpFile = path.join(tmpDir, `${baseName}.filtered-${Date.now()}.log`);
+
+    const shellCmd = this.buildGrepShellCommand(filePath, enabledGroups, tmpFile);
+    if (!shellCmd) {
+      await this.openFilteredResultsWithStream(editor, enabledGroups, keywords, tmpFile);
+      return;
+    }
+
+    const grepOk = await this.tryGrepExport(shellCmd, tmpFile, filePath);
+    if (!grepOk) {
+      await this.openFilteredResultsWithStream(editor, enabledGroups, keywords, tmpFile);
+      return;
+    }
+
+    await this.openAndApplyOnTempFile(tmpFile, groups, keywords);
+  }
+
+  /** 构建 grep shell 命令 */
+  private buildGrepShellCommand(filePath: string, groups: RegexGroup[], outputFile: string): string | null {
+    const qPath = `"${filePath.replace(/"/g, '\\"')}"`;
+    const qOut = `"${outputFile.replace(/"/g, '\\"')}"`;
+
+    const groupCmds: string[] = [];
+    for (const g of groups) {
+      const cmd = this.buildSingleGroupGrep(g, qPath);
+      if (cmd) { groupCmds.push(cmd); }
+    }
+
+    if (groupCmds.length === 0) { return null; }
+
+    if (groupCmds.length === 1) {
+      return `${groupCmds[0]} > ${qOut}`;
+    }
+    const joined = groupCmds.join('; ');
+    const isWin = process.platform === 'win32';
+    if (isWin) {
+      const tmpFiles: string[] = [];
+      const lines: string[] = [];
+      for (let i = 0; i < groupCmds.length; i++) {
+        const tmpF = outputFile + `.tmp${i}`;
+        tmpFiles.push(tmpF);
+        lines.push(`${groupCmds[i]} > "${tmpF.replace(/"/g, '\\"')}"`);
+      }
+      const psFiles = tmpFiles.map(f => `'${f.replace(/'/g, "''")}'`).join(',');
+      const psOut = outputFile.replace(/'/g, "''");
+      lines.push(`powershell -Command "Get-Content ${psFiles} | Sort-Object -Unique | Set-Content '${psOut}'"`);
+      lines.push(`del ${tmpFiles.map(f => `"${f.replace(/"/g, '\\"')}"`).join(' ')}`);
+      return lines.join(' && ');
+    }
+    return `{ ${joined}; } | sort -u > ${qOut}`;
+  }
+
+  /** 为单个 RegexGroup 构建 grep 命令 */
+  private buildSingleGroupGrep(group: RegexGroup, qPath: string): string | null {
+    const enabledExprs = group.expressions.filter(e => e.enabled !== false && e.pattern);
+    if (enabledExprs.length === 0) { return null; }
+
+    // 按顶层 OR 分裂
+    const orGroups: { pattern: string }[][] = [];
+    let current: { pattern: string }[] = [];
+    for (const expr of enabledExprs) {
+      current.push({ pattern: expr.pattern });
+      if (expr.operator === 'or' && current.length > 0) {
+        orGroups.push(current);
+        current = [];
+      }
+    }
+    if (current.length > 0) { orGroups.push(current); }
+
+    const pipelines: string[] = [];
+    for (const orGroup of orGroups) {
+      if (orGroup.length === 1) {
+        const safePat = this.shellEscapePattern(orGroup[0].pattern);
+        pipelines.push(`grep -E ${safePat} ${qPath}`);
+      } else {
+        const parts = orGroup.map(e => `grep -E ${this.shellEscapePattern(e.pattern)}`);
+        pipelines.push(`${parts.join(' | ')} ${qPath}`);
+      }
+    }
+
+    if (pipelines.length === 1) { return pipelines[0]; }
+    const isWin = process.platform === 'win32';
+    if (isWin) {
+      return `(${pipelines.join(' & ')})`;
+    }
+    return `{ ${pipelines.join('; ')}; } | sort -u`;
+  }
+
+  /** 对 shell 单引号包裹的模式进行转义 */
+  private shellEscapePattern(pattern: string): string {
+    return `'${pattern.replace(/'/g, "'\\''")}'`;
+  }
+
+  /** 执行 grep 命令，成功返回 true */
+  private async tryGrepExport(shellCmd: string, outputFile: string, _sourceFile: string): Promise<boolean> {
+    const isWin = process.platform === 'win32';
+    const shell = isWin ? 'cmd.exe' : '/bin/sh';
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        exec(shellCmd, {
+          timeout: 120000,
+          maxBuffer: 50 * 1024 * 1024,
+          shell: shell,
+        }, (error, _stdout, _stderr) => {
+          // grep 返回 1 = 无匹配，不算错误
+          if (error && (error as any).code !== 1) {
+            reject(error);
+            return;
+          }
+          resolve();
+        });
+      });
+      return true;
+    } catch (err: any) {
+      console.error(`Log--: grep export failed: ${err.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * 回退方案：Node.js 流式 readline 逐行过滤，不加载整个文件到内存。
+   */
+  private async openFilteredResultsWithStream(
+    editor: vscode.TextEditor,
+    groups: RegexGroup[],
+    keywords: KeywordConfig[] | undefined,
+    outputFile?: string
+  ): Promise<void> {
+    const filePath = editor.document.uri.fsPath;
+    // 通过 bracket 访问 private 方法
+    const compiled = (this.filterController as any).compileGroups(groups) as any[];
+
+    const tmpDir = path.join(os.tmpdir(), 'log-filtered');
+    if (!fs.existsSync(tmpDir)) { fs.mkdirSync(tmpDir, { recursive: true }); }
+    const baseName = path.basename(filePath || 'filtered.log');
+    const tmpFile = outputFile || path.join(tmpDir, `${baseName}.filtered-${Date.now()}.log`);
+
+    const writeStream = fs.createWriteStream(tmpFile, { encoding: 'utf-8' });
+
+    let matchedCount = 0;
+    let lineNum = 0;
+
+    try {
+      const fileStream = fs.createReadStream(filePath, { encoding: 'utf-8', highWaterMark: 64 * 1024 });
+      const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
+
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: 'Filtering large file with streaming...', cancellable: true },
+        async (progress, token) => {
+          for await (const line of rl) {
+            if (token.isCancellationRequested) { break; }
+
+            for (const cg of compiled) {
+              if ((this.filterController as any).matchGroupCompiled(line, cg.exprs)) {
+                writeStream.write(line + '\n');
+                matchedCount++;
+                break;
+              }
+            }
+
+            lineNum++;
+            if (lineNum % 100000 === 0) {
+              progress.report({ message: `${lineNum.toLocaleString()} lines scanned, ${matchedCount.toLocaleString()} matched` });
+              await new Promise(r => setImmediate(r));
+            }
+          }
+        }
+      );
+    } finally {
+      writeStream.end();
+      await new Promise<void>(r => writeStream.on('finish', r));
+    }
+
+    if (matchedCount === 0) {
+      vscode.window.showWarningMessage('Log--: No matched lines found in streaming filter.');
+      try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
+      return;
+    }
+
+    await this.openAndApplyOnTempFile(tmpFile, groups, keywords);
+  }
+
+  /** 打开临时文件并应用配置 */
+  private async openAndApplyOnTempFile(
+    tmpFile: string,
+    groups: RegexGroup[],
+    keywords?: KeywordConfig[]
+  ): Promise<void> {
+    const doc = await vscode.workspace.openTextDocument(tmpFile);
+    const newEditor = await vscode.window.showTextDocument(doc);
+    await this.handleGo(groups, this.timeMatchModel.getConfig(), keywords, true);
     await vscode.window.showTextDocument(newEditor.document, { viewColumn: newEditor.viewColumn });
   }
 

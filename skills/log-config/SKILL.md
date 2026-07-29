@@ -1,158 +1,89 @@
 ---
 name: log-config
-description: Configure Log-- VS Code extension filter groups, keywords, and time patterns for any log format. Use when setting up regex highlighting/folding for log analysis, debugging log files, or when a user wants to filter and colorize large log files.
+description: Configure Log-- VS Code extension to filter, colorize, and fold log files using regex groups and keywords. Use when a user needs to set up log filtering, highlight errors, extract fields, or analyze structured/unstructured logs.
 ---
 
-# Log-- Configuration
+# Log Configuration
 
-Help users configure the Log-- VS Code extension to filter, colorize, and
-fold log files using regex groups and keywords.
+Help users configure the Log-- VS Code extension for any log format by defining
+regex groups (line-level filtering + color), keywords (substring highlighting),
+and time patterns (fold annotations). The extension folds unmatched lines so
+only relevant content is visible.
 
-## What Log-- Does
+## When to Use
 
-- Matches log lines against regex **groups** (first match wins, colored by group)
-- Folds unmatched lines so only relevant lines are visible
-- Highlights **keywords** as colored substrings within visible lines
-- Parses **time patterns** to show fold duration annotations
-- Detects ring-buffer wrap-around (red flag at start line)
-- Exports matched lines to a new unsaved editor
-- Per-keyword ↑/↓ navigation between hit lines
+- User wants to filter / colorize log files in VS Code
+- User mentions "Log--", "GrepLogViewer", "log filtering", "log highlighting"
+- User pastes log samples and asks to extract or highlight patterns
+- User wants to navigate between keyword hits or export matched lines
 
-## Configuration Procedure
+## Procedure
 
-### 1. Collect sample log lines
+### Step 1: Analyze sample lines
 
-Ask the user to paste 5–10 representative lines. Identify:
-- Timestamp format
-- Log levels (ERROR, WARN, INFO, etc.)
-- Tags / modules / PIDs
-- Any structured fields worth extracting
+Ask for 5–10 representative log lines. Identify:
 
-### 2. Define regex groups
+| Element | Example | Used for |
+|---------|---------|----------|
+| Timestamp | `07-21 14:32:01.123` | Time pattern, fold annotations, timeline |
+| Log level | `E/`, `ERROR`, `WARNING` | Regex groups |
+| Module/tag | `AudioTrack`, `SurfaceFlinger` | Keywords or groups |
+| PIDs/TIDs | `(1234)`, `pid=5678` | Keyword extraction with named captures |
+| Structured fields | `latency=42ms`, `ret=-1` | Keyword extraction |
 
-Groups are evaluated top-to-bottom; the first matching group wins. Each group
-has a color and one or more expressions (combined with AND / OR / NOT).
+### Step 2: Define regex groups
 
-Common patterns by log type:
+Groups match entire lines by priority (top-to-bottom, first match wins).
+Each group has a name, hex color, and one or more regex expressions
+combined left-to-right with AND/OR operators.
 
-**Android logcat** (`MM-DD HH:mm:ss.SSS LEVEL/TAG(PID): msg`):
-- Fatal: `FATAL|ASSERT`
-- Error: ` E /|ERROR`
-- Warn: ` W /|WARN`
-- Info: ` I /|INFO`
+**Principles:**
+- Put more specific / critical groups first (FATAL → ERROR → WARN)
+- Use `|` alternation within one expression for equivalent levels
+- Use AND across expressions to narrow (e.g. `ERROR` AND `timeout`)
+- Single-expression groups cover 90% of use cases
 
-**Kernel** (`[  s.SSSSSS] msg`):
-- Error: `err|ERROR|panic|BUG`
-- Warn: `warn|WARNING`
-- Info: `info|INFO`
+**Color convention:**
+- Errors: `#ff4444`, Fatal: `#ff0000`
+- Warnings: `#ffaa00`
+- Info: `#44aaff`
+- Debug/Trace: `#888888`
 
-**Generic application logs**:
-- Error: `ERROR|FATAL|Exception|Traceback|CRASH`
-- Warn: `WARN|WARNING|DEPRECATED`
-- Info: `INFO|DEBUG|TRACE`
+### Step 3: Define keywords (optional)
 
-### 3. Define keywords (optional)
+Keywords highlight substrings within visible lines without affecting
+line-level matching. Each keyword:
 
-Keywords highlight specific substrings across visible lines. Each keyword has:
+| Field | Required | Description |
+|-------|----------|-------------|
+| `pattern` | yes | JS regex pattern |
+| `flags` | no | `i` (case-insensitive), `m` (multiline), `s` (dotall) |
+| `color` | yes | Hex color for the matched substring text |
+| `matchScope` | no | `matched` = only group-matched lines; `full` = all lines, prevents folding |
+| `hint` | no | Label after line; `{{name}}` expands to named capture group `(?<name>...)` |
 
-| Field | Description |
-|-------|-------------|
-| `pattern` | Regex pattern (supports named captures `(?<name>...)`) |
-| `flags` | e.g. `i` for case-insensitive, `m` for multiline |
-| `color` | Hex color (e.g. `#ff6600`) |
-| `matchScope` | `matched` = only within group-matched lines; `full` = scan all lines (keyword-only lines stay visible, not folded) |
-| `hint` | Optional label shown after the line. Supports `{{name}}` placeholders to reference named capture groups. |
+**Use `matchScope: "full"` only** for critical signals (crashes, timeouts, ANRs) —
+every matching line stays visible and unfolded.
 
-**Named capture hint example**:
+### Step 4: Set time pattern
 
-Pattern: `(?<pid>\d+)\s+(?<tag>\w+):`
-Hint: `pid={{pid}} tag={{tag}}`
-Result on line `1234 MyTag: message`: displays `keyword hint: pid=1234 tag=MyTag`
+Leave empty for auto-detection (covers ISO 8601, Android, kernel, time-only).
+Set explicitly only if auto-detect fails:
 
-**Practical keyword examples**:
+| Format string | Matches |
+|---------------|---------|
+| `YYYY-MM-DD HH:mm:ss.SSS` | `2024-07-21 14:32:01.123` |
+| `MM-DD HH:mm:ss.SSS` | `07-21 14:32:01.123` |
+| `HH:mm:ss.SSS` | `14:32:01.123` |
+| `[*:    s.SSSSSS]` | `[  123.456789]` (kernel) |
 
-| Use case | Pattern | Flags | Hint |
-|----------|---------|-------|------|
-| Timeout detection | `timeout\|timed out` | `i` | `timeout` |
-| Extract PID | `(?<pid>\d{4,})` | | `pid={{pid}}` |
-| ANR detection | `ANR in (?<app>\S+)` | | `ANR: {{app}}` |
-| Crash package | `FATAL EXCEPTION.*?at (?<cls>\S+)` | `s` | `{{cls}}` |
+### Step 5: Write config and apply
 
-Use `matchScope: "full"` sparingly on large files — every matched line stays
-unfolded.
+Write the config JSON to `~/.log--/ai/solutions/<name>.json` (the extension
+auto-discovers files here). Then tell the user: select from the Solution
+dropdown at the top of the panel → click Apply (▶) → Go.
 
-### 4. Set time pattern
-
-Leave the Time Fmt field empty to auto-detect. Common explicit formats:
-
-| Log type | Format |
-|----------|--------|
-| Android logcat | `MM-DD HH:mm:ss.SSS` |
-| Android (no ms) | `MM-DD HH:mm:ss` |
-| ISO 8601 | `YYYY-MM-DD HH:mm:ss.SSS` |
-| Time only | `HH:mm:ss.SSS` |
-| Kernel | auto-detected (`[S+]`) |
-
-### 5. Apply and verify
-
-1. Click **Go** — matched lines get colored, unmatched lines fold.
-2. Check the match-counts badge (e.g. `12/1000`).
-3. Fold annotations show `▼ N lines │ ~duration │ +elapsed`.
-4. If nothing matches, test the regex in a JS console first.
-5. Use ↑/↓ buttons on each keyword to jump between hits.
-6. Click **Export** to copy matched lines to a new unsaved editor.
-
-## How AI Agents Can Auto-Install Configs
-
-Terminal-based AI agents can write config JSON files directly to a shared
-directory. The extension automatically scans this directory and lists the
-configs in the Solution dropdown - the user just selects and clicks
-Apply, no import needed.
-
-**Directory**: `~/.log--/ai/solutions/`
-
-**File name**: `<config-name>.json` (e.g. `android-crash.json`)
-
-**File format**: Same as the Config JSON Structure below.
-
-Example:
-```bash
-mkdir -p ~/.log--/ai/solutions
-cat > ~/.log--/ai/solutions/android-error.json << 'EOF'
-{
-  "groups": [...],
-  "timePattern": { "format": "MM-DD HH:mm:ss.SSS" },
-  "keywords": [...]
-}
-EOF
-```
-
-The config appears in the Solution dropdown as `android-error (file)`.
-
-### Dynamic Config Management
-
-Agents can dynamically add, update, or remove configs:
-
-- **Add**: Write a new `.json` file to `~/.log--/ai/solutions/`
-- **Update**: Overwrite an existing `.json` file (same name)
-- **Remove**: Delete the `.json` file (user can also delete from the panel)
-- **Target file selection**: When the user mentions a config name or the agent
-generates a new config, write to that file. If the user refers to an existing
-  config by name, update that file. If the user says "add a new config", create
-  a new file with a descriptive name.
-
-### Config File Naming
-
-Use descriptive, kebab-case names:
-- `android-crash.json`
-- `kernel-boot.json`
-- `app-timeout.json`
-
-The filename (without `.json`) becomes the config name shown in the dropdown.
-
-## Config JSON Structure
-
-Configs can be exported / imported as JSON:
+## Config JSON Reference
 
 ```json
 {
@@ -160,21 +91,13 @@ Configs can be exported / imported as JSON:
     {
       "id": "g-error",
       "name": "Errors",
-      "color": "#ff0000",
+      "color": "#ff4444",
       "expressions": [
-        { "id": "e1", "pattern": "ERROR|FATAL", "flags": "", "operator": "and" }
-      ]
-    },
-    {
-      "id": "g-warn",
-      "name": "Warnings",
-      "color": "#ffaa00",
-      "expressions": [
-        { "id": "e2", "pattern": "WARN|WARNING", "flags": "", "operator": "and" }
+        {"id": "e1", "pattern": "ERROR|FATAL|Exception|panic", "flags": "", "operator": "and"}
       ]
     }
   ],
-  "timePattern": { "format": "MM-DD HH:mm:ss.SSS" },
+  "timePattern": {"format": "MM-DD HH:mm:ss.SSS"},
   "keywords": [
     {
       "id": "kw-timeout",
@@ -183,46 +106,83 @@ Configs can be exported / imported as JSON:
       "color": "#ff6600",
       "enabled": true,
       "matchScope": "full",
-      "hint": "timeout"
-    },
-    {
-      "id": "kw-pid",
-      "pattern": "(?<pid>\\d{4,})",
-      "flags": "",
-      "color": "#00aaff",
-      "enabled": true,
-      "matchScope": "matched",
-      "hint": "pid={{pid}}"
+      "hint": "TIMEOUT"
     }
   ]
 }
 ```
 
-## Panel Layout
+**Groups** (`groups[]`): priority-ordered line matchers.
+- `id`: unique string (prefix `g-`)
+- `expressions[]`: combined left-to-right with `operator` (`and`|`or`). First expression's operator is ignored.
 
-| Section | Controls |
-|---------|----------|
-| Regex Groups | Add/remove groups and expressions, color per group, flags multi-select |
-| Keyword Highlight | Add/remove keywords, ↑/↓ per-keyword hit navigation, hint with `{{capture}}` |
-| Advance | Time Fmt, saved configs (Apply / Delete / Save / Export / Import) |
-| Action bar | Go \| Clear \| Reset \| Export (matched lines → new editor) |
+**Keywords** (`keywords[]`): substring highlighters.
+- `id`: unique string (prefix `kw-`)
+- `matchScope`: `matched` (default, only group-matched lines) or `full` (all lines, prevents folding)
+- `hint`: `{{name}}` expands to the captured group `(?<name>...)` value
+
+**Config file directory**: `~/.log--/ai/solutions/` — write JSON files here,
+they appear in the Solution dropdown at the top of the panel automatically.
+Use kebab-case filenames (e.g. `android-crash.json`, `kernel-boot.json`).
+
+## Auto-Install Configs (Agent-Only)
+
+AI agents can programmatically manage configs by writing JSON files to
+`~/.log--/ai/solutions/`. The extension scans this directory and lists
+found configs in the Advance panel dropdown — no manual import needed.
+
+**Directory**: `~/.log--/ai/solutions/`
+
+**Operations**:
+- **Add**: write a new `<name>.json` file
+- **Update**: overwrite an existing file
+- **Delete**: remove the file (or user clicks ✕ in the Solution row)
+- **Target selection**: if user mentions an existing config name, update
+  that file; if user says "add a new config", create a new file
+
+**Naming**: kebab-case, descriptive (e.g. `android-crash.json`,
+`kernel-boot.json`, `app-timeout.json`). The filename without `.json`
+becomes the config name in the Solution dropdown.
+
+**Example — create a config from scratch**:
+
+```bash
+mkdir -p ~/.log--/ai/solutions
+cat > ~/.log--/ai/solutions/android-error.json << 'EOF'
+{
+  "groups": [
+    {
+      "id": "g-error",
+      "name": "Errors",
+      "color": "#ff4444",
+      "expressions": [
+        {"id": "e1", "pattern": "ERROR|FATAL|Exception", "flags": "", "operator": "and"}
+      ]
+    }
+  ],
+  "timePattern": {"format": "MM-DD HH:mm:ss.SSS"},
+  "keywords": []
+}
+EOF
+```
+
+After writing, tell the user: in the panel, select the config from the
+Solution dropdown at the top, click Apply (▶), then Go.
 
 ## Large File Handling
 
-| File size | Behavior |
+| Threshold | Strategy |
 |-----------|----------|
-| < 10万行 | Full features (filter, fold, timeline, dim) |
-| 10万–30万行 | Async chunked filter + progress, timeline disabled >20万行 |
-| >20MB or >30万行 | Folding skipped (VS Code limit), Export to filtered editor offered |
-| >50MB | VS Code refuses to sync file to extensions (hard limit) |
+| <10万 lines | Full features: filter, fold, dim, timeline |
+| 10万–30万 lines | Async chunked filter; timeline disabled >20万 lines |
+| >20MB or >30万 lines | Go shows prompt → click button to grep-export matched lines to a temp file, then full features on the smaller file |
+| >50MB | VS Code refuses extension access (hard platform limit) |
 
 ## Pitfalls
 
-- Groups are priority-ordered; put most specific first.
-- `matchScope: "full"` keyword lines are never folded — use sparingly.
-- Named captures require `(?<name>...)` syntax (JS regex, not Python `(?P<name>...)`).
-- `{{name}}` in hint references named capture group `name`; unmatched groups show empty string.
-- Files >20 MB or >300 k lines: VS Code disables folding; use **Export**.
-- VS Code refuses to sync files >50 MB to extensions (hard limit).
-- Time auto-detect samples only the first few lines.
-- Switching to another file and back preserves fold state within the same session.
+- Groups are **priority-ordered** — FATAL must be above ERROR, etc.
+- `matchScope: "full"` keyword lines **never fold** — use for critical signals only.
+- Named captures use `(?<name>...)` (JS regex), not `(?P<name>...)` (Python).
+- Files >20MB or >30万 lines: Go prompts for grep export instead of inline filtering.
+- Time auto-detect samples first 20 lines only.
+- Switching files within a session preserves fold state.

@@ -28,6 +28,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     webviewView.webview.html = this.buildHtml();
 
     webviewView.webview.onDidReceiveMessage((msg: WebviewMessage) => {
+      try {
       switch (msg.type) {
         case 'go':
           this.goCallback?.(msg.groups, msg.timePattern, msg.keywords);
@@ -71,6 +72,9 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
         case 'timelineClick':
           this.timelineClickCallback?.(msg.lineNumber);
           break;
+      }
+      } catch (err: any) {
+        console.error('Log--: Webview message handler error:', err.message || err);
       }
     });
 
