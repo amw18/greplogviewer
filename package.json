@@ -2,7 +2,7 @@
   "name": "log-dash",
   "displayName": "Log--",
   "description": "Regex-based text file viewer with color highlighting and auto-folding",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "any-tool",
   "license": "MIT",
   "repository": {
