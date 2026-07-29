@@ -139,6 +139,7 @@ export class ViewController {
     this.configPanel.onClear(() => this.handleClear());
     this.configPanel.onExportMatchedLines(() => this.exportMatchedLines());
     this.configPanel.onGotoKeywordHit((dir, kwId) => this.gotoKeywordHit(dir, kwId));
+    this.configPanel.onGotoGroupHit((dir, gId) => this.gotoGroupHit(dir, gId));
     this.configPanel.onTimelineClick((line) => this.handleTimelineClick(line));
 
     // Config management callbacks
@@ -1438,6 +1439,43 @@ export class ViewController {
   }
 
   /** 跳转到当前光标位置的下一个/上一个关键字匹配行 */
+  /** 跳转到指定 group 的上一个/下一个命中行 */
+  gotoGroupHit(direction: 'prev' | 'next', groupId: string): void {
+    const editor = this.currentEditor;
+    if (!editor) { return; }
+    const editorId = editor.document.uri.toString();
+    if (!this.editorStateModel.isActive(editorId)) { return; }
+
+    const results = this.filterResultModel.getResults(editorId);
+    if (!results || results.length === 0) { return; }
+
+    // 收集该 group 所有命中行
+    const hitLines: number[] = [];
+    for (const r of results) {
+      if (r.groupId === groupId) { hitLines.push(r.lineNumber); }
+    }
+    if (hitLines.length === 0) { return; }
+    hitLines.sort((a, b) => a - b);
+
+    const currentLine = editor.selection.active.line;
+    let targetLine: number | undefined;
+    if (direction === 'next') {
+      for (const l of hitLines) { if (l > currentLine) { targetLine = l; break; } }
+      if (targetLine === undefined) { targetLine = hitLines[0]; }
+    } else {
+      for (let i = hitLines.length - 1; i >= 0; i--) {
+        if (hitLines[i] < currentLine) { targetLine = hitLines[i]; break; }
+      }
+      if (targetLine === undefined) { targetLine = hitLines[hitLines.length - 1]; }
+    }
+
+    if (targetLine !== undefined) {
+      const pos = new vscode.Position(targetLine, 0);
+      editor.selection = new vscode.Selection(pos, pos);
+      editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+    }
+  }
+
   /** 跳转到指定 keyword 的上一个/下一个命中行 */
   gotoKeywordHit(direction: 'next' | 'prev', keywordId?: string): void {
     this.handleGotoKeywordMatch(direction, keywordId);

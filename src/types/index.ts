@@ -260,6 +260,7 @@ export interface MatchCountsMessage {
 export interface GotoGroupMatchMessage {
   type: 'gotoGroupMatch';
   direction: 'prev' | 'next';
+  groupId: string;
 }
 
 export interface ExportMatchedLinesMessage {

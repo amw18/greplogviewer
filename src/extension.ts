@@ -99,6 +99,9 @@ export function activate(context: vscode.ExtensionContext) {
   const gotoKeywordHitCmd = vscode.commands.registerCommand('log-minus-minus.gotoKeywordHit', (args: any) => {
     return viewController?.gotoKeywordHit(args?.direction || 'next', args?.keywordId);
   });
+  const gotoGroupHitCmd = vscode.commands.registerCommand('log-minus-minus.gotoGroupHit', (args: any) => {
+    return viewController?.gotoGroupHit(args?.direction || 'next', args?.groupId || '');
+  });
 
   // ── Test-only commands for autotest automation ──
   const testGoCmd = vscode.commands.registerCommand('log-minus-minus._testGo', async (config: any) => {
@@ -187,6 +190,7 @@ export function activate(context: vscode.ExtensionContext) {
     gotoNextHitCmd,
     exportMatchedLinesCmd,
     gotoKeywordHitCmd,
+    gotoGroupHitCmd,
     testGoCmd,
     testSyncConfigCmd,
     testClearCmd,

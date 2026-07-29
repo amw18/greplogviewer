@@ -38,16 +38,22 @@ Each group has a name, hex color, and one or more regex expressions
 combined left-to-right with AND/OR operators.
 
 **Principles:**
+- Keep groups to **≤5** for performance and visual clarity
 - Put more specific / critical groups first (FATAL → ERROR → WARN)
 - Use `|` alternation within one expression for equivalent levels
 - Use AND across expressions to narrow (e.g. `ERROR` AND `timeout`)
 - Single-expression groups cover 90% of use cases
 
-**Color convention:**
-- Errors: `#ff4444`, Fatal: `#ff0000`
-- Warnings: `#ffaa00`
-- Info: `#44aaff`
-- Debug/Trace: `#888888`
+**Color convention** (high contrast, easily distinguishable):
+- Fatal/Crash: `#ff0000` (red)
+- Error: `#ff4444` (bright red)
+- Warning: `#ffaa00` (amber)
+- Info: `#44aaff` (blue)
+- Debug/Trace: `#888888` (gray)
+- Extra: `#00cc66` (green), `#cc44ff` (purple)
+
+Avoid similar shades (e.g. don't use `#ff4444` and `#ff6666` together).
+Each group color should be visually distinct at a glance.
 
 ### Step 3: Define keywords (optional)
 

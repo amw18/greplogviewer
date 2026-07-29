@@ -64,13 +64,18 @@ export class GrepController {
     terminal.sendText(command);
   }
 
-  /** 获取搜索根路径：当前终端 cwd 或 workspace root */
+  /** 获取搜索根路径：workspace root → 当前文件所在目录 */
   private getSearchPath(): string | undefined {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
     if (workspaceFolder) {
       return workspaceFolder.uri.fsPath;
     }
-    vscode.window.showWarningMessage('Log--: No workspace folder or terminal path available.');
+    // 回退到当前活动编辑器文件所在目录
+    const editor = vscode.window.activeTextEditor;
+    if (editor && editor.document.uri.scheme === 'file') {
+      return path.dirname(editor.document.uri.fsPath);
+    }
+    vscode.window.showWarningMessage('Log--: No workspace folder or file directory available for grep.');
     return undefined;
   }
 

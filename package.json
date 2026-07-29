@@ -23,6 +23,7 @@
     "onCommand:log-minus-minus.addKeyword",
     "onCommand:log-minus-minus.gotoPrevHit",
     "onCommand:log-minus-minus.gotoNextHit",
+    "onCommand:log-minus-minus.gotoGroupHit",
     "onCommand:log-minus-minus._testGo",
     "onCommand:log-minus-minus._testSyncConfig",
     "onCommand:log-minus-minus._testClear",
@@ -68,6 +69,10 @@
       {
         "command": "log-minus-minus.exportMatchedLines",
         "title": "Export Matched Lines"
+      },
+      {
+        "command": "log-minus-minus.gotoGroupHit",
+        "title": "Goto Group Hit"
       }
     ],
     "menus": {
@@ -86,14 +91,6 @@
           "command": "log-minus-minus.addKeyword",
           "when": "editorHasSelection",
           "group": "log--@3"
-        },
-        {
-          "command": "log-minus-minus.gotoPrevHit",
-          "group": "log--@4"
-        },
-        {
-          "command": "log-minus-minus.gotoNextHit",
-          "group": "log--@5"
         }
       ]
     }

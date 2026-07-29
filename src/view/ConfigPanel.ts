@@ -9,6 +9,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   private clearCallback: (() => void) | undefined;
   private exportMatchedCallback: (() => void) | undefined;
   private gotoKeywordHitCallback: ((direction: 'next' | 'prev', keywordId: string) => void) | undefined;
+  private gotoGroupHitCallback: ((direction: 'prev' | 'next', groupId: string) => void) | undefined;
   private exportCallback: ((groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void) | undefined;
   private importCallback: (() => void) | undefined;
   private saveCallback: ((name: string, groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void) | undefined;
@@ -44,6 +45,9 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
           break;
         case 'gotoKeywordMatch':
           this.gotoKeywordHitCallback?.(msg.direction, msg.keywordId || '');
+          break;
+        case 'gotoGroupMatch':
+          this.gotoGroupHitCallback?.(msg.direction, msg.groupId || '');
           break;
         case 'exportConfig':
           this.exportCallback?.(msg.groups, msg.timePattern, msg.keywords);
@@ -110,6 +114,10 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   }
   onGotoKeywordHit(callback: (direction: 'next' | 'prev', keywordId: string) => void): void {
     this.gotoKeywordHitCallback = callback;
+  }
+
+  onGotoGroupHit(callback: (direction: 'prev' | 'next', groupId: string) => void): void {
+    this.gotoGroupHitCallback = callback;
   }
 
   onExport(callback: (groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void): void {
@@ -552,6 +560,8 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
         html += flagsPickerHtml('expr', gi, 0, null, g.expressions[0].flags);
       }
       html += colorPickerHtml('gi', gi, g.color);
+      html += '<button class="kw-nav-btn" data-action="groupGotoPrev" data-group-id="' + g.id + '" title="Previous group hit">\u2191</button>';
+      html += '<button class="kw-nav-btn" data-action="groupGotoNext" data-group-id="' + g.id + '" title="Next group hit">\u2193</button>';
       html += '<button class="remove-btn" data-action="removeGroup" data-gi="' + gi + '">&times;</button>';
       html += '<button class="add-btn" data-action="addExpr" data-gi="' + gi + '" style="font-size:10px;padding:1px 4px">+</button>';
       html += '</div>';
@@ -599,7 +609,8 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     }
     html += '<button class="add-btn" data-action="addKeyword" style="display:block;width:100%">+ Add Keyword</button>';
     // ── Keyword Timeline (canvas, 使用 KeywordTimeline 的改进实现) ──
-    html += '<div id="tl-wrap" style="position:relative;width:100%;height:120px;margin:4px 0;border:1px solid var(--vscode-panel-border);border-radius:4px;overflow:hidden">';
+    var tlHeight = Math.max(80, Math.min(300, keywords.length * 28 + 60));
+    html += '<div id="tl-wrap" style="position:relative;width:100%;height:' + tlHeight + 'px;margin:4px 0;border:1px solid var(--vscode-panel-border);border-radius:4px;overflow:hidden">';
     html += '<canvas id="tl-canvas" style="display:block;width:100%;height:100%;cursor:crosshair"></canvas>';
     html += '<div id="tl-tooltip" style="position:fixed;display:none;z-index:9999;background:var(--vscode-editorHoverWidget-background);color:var(--vscode-editorHoverWidget-foreground);border:1px solid var(--vscode-editorHoverWidget-border);padding:2px 5px;border-radius:3px;font-size:11px;pointer-events:none;white-space:nowrap"></div>';
     html += '<div id="tl-zoom" style="position:absolute;bottom:2px;right:4px;font-size:10px;color:var(--vscode-descriptionForeground);pointer-events:none"></div>';
@@ -861,6 +872,10 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       var kwId = btn.dataset.kwId;
       var dir = action === 'kwGotoPrev' ? 'prev' : 'next';
       vscode.postMessage({ type: 'gotoKeywordMatch', direction: dir, keywordId: kwId });
+    } else if (action === 'groupGotoPrev' || action === 'groupGotoNext') {
+      var gId = btn.dataset.groupId;
+      var gDir = action === 'groupGotoPrev' ? 'prev' : 'next';
+      vscode.postMessage({ type: 'gotoGroupMatch', direction: gDir, groupId: gId });
     }
     else if (action === 'toggleSection') {
       var secId = btn.dataset.section;
