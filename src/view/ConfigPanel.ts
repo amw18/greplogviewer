@@ -10,6 +10,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   private exportMatchedCallback: (() => void) | undefined;
   private gotoKeywordHitCallback: ((direction: 'next' | 'prev', keywordId: string) => void) | undefined;
   private gotoGroupHitCallback: ((direction: 'prev' | 'next', groupId: string) => void) | undefined;
+  private keywordBadgeClickCallback: ((keywordId: string, targetIndex: number) => void) | undefined;
   private exportCallback: ((groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void) | undefined;
   private importCallback: (() => void) | undefined;
   private saveCallback: ((name: string, groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void) | undefined;
@@ -48,6 +49,9 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
           break;
         case 'gotoGroupMatch':
           this.gotoGroupHitCallback?.(msg.direction, msg.groupId || '');
+          break;
+        case 'keywordBadgeClick':
+          this.keywordBadgeClickCallback?.(msg.keywordId || '', msg.targetIndex ?? 0);
           break;
         case 'exportConfig':
           this.exportCallback?.(msg.groups, msg.timePattern, msg.keywords);
@@ -118,6 +122,14 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
 
   onGotoGroupHit(callback: (direction: 'prev' | 'next', groupId: string) => void): void {
     this.gotoGroupHitCallback = callback;
+  }
+
+  onKeywordBadgeClick(callback: (keywordId: string, targetIndex: number) => void): void {
+    this.keywordBadgeClickCallback = callback;
+  }
+
+  sendKeywordCursorInfo(msg: { type: 'keywordCursorInfo'; infos: { keywordId: string; currentIndex: number }[] }): void {
+    this.view?.webview.postMessage(msg);
   }
 
   onExport(callback: (groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[]) => void): void {
@@ -311,6 +323,8 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     padding: 0 5px; border-radius: 8px; line-height: 16px;
     white-space: nowrap; flex-shrink: 0; }
   .count-badge.zero { opacity: 0.4; }
+  .kw-count-badge[data-kw-clickable] { cursor: pointer; }
+  .kw-count-badge[data-kw-clickable]:hover { filter: brightness(1.3); }
 
   /* ── Flags 选择器 ── */
   .flags-trigger { display: inline-flex; align-items: center; justify-content: center;
@@ -376,6 +390,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   var savedConfigsList = [];
   var selectedSavedConfigName = '';  // 记住用户在下拉框中选择的配置名
   var matchCounts = null;  // { totalLines, totalMatched, groupCounts, keywordCounts }
+  var kwLineNums = {};  // keywordId → lineNumber[]
 
   function saveState() { vscode.setState({ groups, timePattern, keywords, sectionState }); }
 
@@ -600,7 +615,7 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       html += '<input type="text" class="hint" value="' + esc(kw.hint || '') + '" data-ki="' + ki + '" placeholder="hint">';
       var kc = matchCounts && matchCounts.keywordCounts ? (matchCounts.keywordCounts[kw.id] || 0) : -1;
       if (kc >= 0) {
-        html += '<span class="count-badge' + (kc === 0 ? ' zero' : '') + '">' + kc + '</span>';
+        html += '<span class="count-badge kw-count-badge' + (kc === 0 ? ' zero' : '') + '" data-kw-id="' + kw.id + '" data-kw-total="' + kc + '"' + (kc === 0 ? '' : ' data-kw-clickable="1"') + '>' + kc + '</span>';
       }
       html += '<button class="kw-nav-btn" data-action="kwGotoPrev" data-kw-id="' + kw.id + '" title="Previous hit">\u2191</button>';
       html += '<button class="kw-nav-btn" data-action="kwGotoNext" data-kw-id="' + kw.id + '" title="Next hit">\u2193</button>';
@@ -795,6 +810,20 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
 
     // ── 点击其他区域关闭所有面板 ──
     closeAllPopovers();
+
+    // ── Keyword 计数 badge 点击：跳转到该 keyword 指定匹配行 ──
+    var badge = e.target.closest('.kw-count-badge[data-kw-clickable]');
+    if (badge) {
+      var bkId = badge.dataset.kwId;
+      var bkIdx = parseInt(badge.dataset.kwIdx || '0', 10);
+      if (bkId) {
+        vscode.postMessage({ type: 'keywordBadgeClick', keywordId: bkId, targetIndex: bkIdx });
+        // 同时滚动 timeline 到对应行
+        var lineNum = kwLineNums[bkId] ? kwLineNums[bkId][bkIdx] : undefined;
+        if (lineNum !== undefined) { tlCenterOnLine(lineNum); }
+      }
+      return;
+    }
 
     var btn = e.target.closest('button, input[data-action]'); if (!btn) return;
     var action = btn.dataset.action;
@@ -1038,7 +1067,21 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       }
     } else if (msg.type === 'matchCounts') {
       matchCounts = msg;
+      if (msg.keywordLineNumbers) { kwLineNums = msg.keywordLineNumbers; }
       render();
+    } else if (msg.type === 'keywordCursorInfo') {
+      if (msg.infos) {
+        msg.infos.forEach(function(info) {
+          var total = kwLineNums[info.keywordId] ? kwLineNums[info.keywordId].length : 0;
+          if (total === 0) { return; }
+          var displayIdx = info.currentIndex + 1;  // 1-based display
+          var badge = document.querySelector('.kw-count-badge[data-kw-id="' + info.keywordId + '"]');
+          if (badge) {
+            badge.textContent = displayIdx + '/' + total;
+            badge.setAttribute('data-kw-idx', String(info.currentIndex));
+          }
+        });
+      }
     } else if (msg.type === 'timelineData') {
       tlData = msg;
       tlViewMin = null; tlViewMax = null;
@@ -1259,6 +1302,25 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
   }
 
   var tlEventsBound = false;
+  // 将 timeline 视图居中到指定行号对应的时间点
+  function tlCenterOnLine(lineNum) {
+    if (!tlData || !tlData.keywords) return;
+    var foundTime = null;
+    for (var k = 0; k < tlData.keywords.length; k++) {
+      var pts = tlData.keywords[k].points;
+      for (var p = 0; p < pts.length; p++) {
+        if (pts[p].lineNumber === lineNum) { foundTime = pts[p].time; break; }
+      }
+      if (foundTime !== null) break;
+    }
+    if (foundTime === null) return;
+    var halfRange = (tlData.timeMax - tlData.timeMin) * 0.1;
+    if (halfRange < 1000) halfRange = 1000;  // 最小 1 秒范围
+    tlViewMin = Math.max(tlData.timeMin, foundTime - halfRange);
+    tlViewMax = Math.min(tlData.timeMax, foundTime + halfRange);
+    tlDraw();
+  }
+
   function tlRefresh() {
     if (tlData && tlData.keywords && tlData.keywords.length > 0) {
       if (tlEmpty) tlEmpty.style.display = 'none';

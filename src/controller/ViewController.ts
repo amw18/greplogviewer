@@ -74,6 +74,9 @@ export class ViewController {
   private currentKeywords?: KeywordConfig[];
   private isApplyingFilter = false;  // 防止 Go / keyword 更新期间的 attach 重入
   private lastFilterFingerprint = '';  // 跳过重复过滤
+  /** 每个 keyword id → 命中行号数组（已排序），供光标索引计算 */
+  private keywordLineNumbersByKw: Record<string, number[]> = {};
+  private cursorListener: vscode.Disposable | undefined;
   private lastMatchCounts: import('../types').MatchCountsMessage | undefined;
   private lastTimelineData: import('../types').TimelineDataMessage | undefined;
   /** 本次会话已完整恢复过过滤+折叠的编辑器，切回时不再重新 foldAll，保留用户手动展开状态 */
@@ -151,6 +154,14 @@ export class ViewController {
     this.configPanel.onApply((n, sc) => this.handleApply(n, sc));
     this.configPanel.onDelete((n, sc) => this.handleDelete(n, sc));
     this.configPanel.onSyncConfig((g, tp, kw) => this.handleSyncConfig(g, tp, kw));
+    this.configPanel.onKeywordBadgeClick((kwId, idx) => this.handleKeywordBadgeClick(kwId, idx));
+
+    // 光标移动时更新 keyword 匹配索引
+    this.cursorListener = vscode.window.onDidChangeTextEditorSelection((e) => {
+      if (e.textEditor === this.currentEditor) {
+        this.sendKeywordCursorInfo(e.textEditor);
+      }
+    });
   }
 
   getPanelProvider(): ConfigPanel {
@@ -899,6 +910,7 @@ export class ViewController {
     }
 
     const keywordCounts: Record<string, number> = {};
+    const keywordLineNumbers: Record<string, number[]> = {};
     if (keywords && keywords.length > 0) {
       const start = scanStart ?? 0;
       const end = scanEnd ?? lines.length;
@@ -906,12 +918,17 @@ export class ViewController {
       for (const { kw, regex } of compiledKws) {
         if (!regex) { continue; }
         let count = 0;
+        const lineNums: number[] = [];
         for (let i = start; i < end; i++) {
-          if (regex.test(lines[i])) { count++; matchedSet.add(i); }
+          if (regex.test(lines[i])) { count++; matchedSet.add(i); lineNums.push(i); }
         }
-        if (count > 0) { keywordCounts[kw.id] = count; }
+        if (count > 0) {
+          keywordCounts[kw.id] = count;
+          keywordLineNumbers[kw.id] = lineNums;
+        }
       }
     }
+    this.keywordLineNumbersByKw = keywordLineNumbers;
 
     const msg: import('../types').MatchCountsMessage = {
       type: 'matchCounts',
@@ -919,6 +936,7 @@ export class ViewController {
       totalMatched: matchedSet.size,
       groupCounts,
       keywordCounts,
+      keywordLineNumbers,
     };
     this.sendMatchCountsMessage(msg);
   }
@@ -927,6 +945,46 @@ export class ViewController {
   private sendMatchCountsMessage(msg: import('../types').MatchCountsMessage): void {
     this.lastMatchCounts = msg;
     this.configPanel.sendMatchCounts(msg);
+  }
+
+  /** 根据当前光标位置计算各 keyword 的匹配索引并发送到 webview */
+  private sendKeywordCursorInfo(editor: vscode.TextEditor): void {
+    const keywords = this.currentKeywords;
+    if (!keywords || keywords.length === 0) { return; }
+    if (Object.keys(this.keywordLineNumbersByKw).length === 0) { return; }
+
+    const currentLine = editor.selection.active.line;
+    const infos: { keywordId: string; currentIndex: number }[] = [];
+
+    for (const kw of keywords) {
+      const lineNums = this.keywordLineNumbersByKw[kw.id];
+      if (!lineNums || lineNums.length === 0) { continue; }
+      // 找离当前行最近的匹配，优先级：当前行命中 → 前面最近的 → 后面最近的
+      let bestIdx = 0;
+      let bestDist = Infinity;
+      for (let i = 0; i < lineNums.length; i++) {
+        const dist = Math.abs(lineNums[i] - currentLine);
+        if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+      }
+      infos.push({ keywordId: kw.id, currentIndex: bestIdx });
+    }
+
+    if (infos.length > 0) {
+      this.configPanel.sendKeywordCursorInfo({ type: 'keywordCursorInfo', infos });
+    }
+  }
+
+  /** 点击 keyword badge 跳转到该 keyword 的第 targetIndex 个命中行 */
+  private handleKeywordBadgeClick(keywordId: string, targetIndex: number): void {
+    const editor = this.currentEditor;
+    if (!editor) { return; }
+    const lineNums = this.keywordLineNumbersByKw[keywordId];
+    if (!lineNums || targetIndex < 0 || targetIndex >= lineNums.length) { return; }
+
+    const targetLine = lineNums[targetIndex];
+    const pos = new vscode.Position(targetLine, 0);
+    editor.selection = new vscode.Selection(pos, pos);
+    editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
   }
 
   /** 测试用：获取最近一次发送的匹配计数 */
@@ -1175,6 +1233,7 @@ export class ViewController {
     this.ringBufferModel.clear(editorId);
     this.filterResultModel.clearProtectedLines(editorId);
     this.lastFilterFingerprint = '';  // 清除后必须重置指纹，否则再次 Go 会误判为未变更
+    this.keywordLineNumbersByKw = {};
     this.decorations.clear();
     this.decorations.clearTimeAnnotations();
 
@@ -1207,6 +1266,7 @@ export class ViewController {
     this.filterResultModel.clearProtectedLines(editorId);
     this.ringBufferModel.clear(editorId);
     this.lastFilterFingerprint = '';  // 重置后必须清空指纹缓存
+    this.keywordLineNumbersByKw = {};
     this.decorations.clear();
     this.decorations.clearTimeAnnotations();
 
@@ -1906,6 +1966,7 @@ export class ViewController {
   }
 
   dispose(): void {
+    this.cursorListener?.dispose();
     this.decorations.dispose();
   }
 }

@@ -255,6 +255,21 @@ export interface MatchCountsMessage {
   totalMatched: number;
   groupCounts: Record<string, number>;
   keywordCounts: Record<string, number>;
+  /** 每个 keyword 的命中行号列表（已排序），供 webview 计算光标位置索引 */
+  keywordLineNumbers?: Record<string, number[]>;
+}
+
+/** Extension → Webview：光标所在的 keyword 匹配索引 */
+export interface KeywordCursorInfoMessage {
+  type: 'keywordCursorInfo';
+  infos: { keywordId: string; currentIndex: number }[];
+}
+
+/** Webview → Extension：点击 keyword 计数 badge */
+export interface KeywordBadgeClickMessage {
+  type: 'keywordBadgeClick';
+  keywordId: string;
+  targetIndex: number;
 }
 
 export interface GotoGroupMatchMessage {
@@ -271,8 +286,9 @@ export type WebviewMessage = GoMessage | ResetMessage | ClearMessage
   | ExportConfigMessage | ImportConfigMessage | SaveConfigMessage | RequestSaveConfigMessage
   | ListSavedConfigsMessage | ApplySavedConfigMessage | DeleteSavedConfigMessage
   | GotoKeywordMatchMessage | GotoGroupMatchMessage
-  | TimelineClickMessage | SyncConfigMessage | ExportMatchedLinesMessage;
+  | TimelineClickMessage | SyncConfigMessage | ExportMatchedLinesMessage
+  | KeywordBadgeClickMessage;
 
 export type ExtensionMessage = UpdateConfigMessage
   | ConfigImportedMessage | SavedConfigsListMessage | ConfigAppliedMessage
-  | TimelineDataMessage | MatchCountsMessage;
+  | TimelineDataMessage | MatchCountsMessage | KeywordCursorInfoMessage;
