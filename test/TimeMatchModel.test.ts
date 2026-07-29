@@ -679,5 +679,21 @@ describe('TimeMatchModel', () => {
       ];
       assert.strictEqual(model.detectRingBufferStartLine(lines), 3);
     });
+
+    it('多核微小时差 + 真正的 ring buffer 反转：取最大回退差值', () => {
+      model.setConfig({ format: 'HH:mm:ss.SSS' });
+      const lines = [
+        '10:00:00.000 core0 msg',
+        '10:00:00.002 core1 msg',   // core1 稍快
+        '10:00:00.001 core0 msg',   // 微反转 1ms（多核打印时差）
+        '10:00:00.004 core1 msg',
+        '10:00:00.003 core0 msg',   // 微反转 1ms
+        '10:00:00.005 core1 msg',
+        '09:59:50.000 core0 msg',   // 真正 ring buffer 回绕 ~10s
+        '09:59:50.002 core1 msg',
+      ];
+      // 微反转（1ms）和真正回绕（~10s），应取后者（line 6）
+      assert.strictEqual(model.detectRingBufferStartLine(lines), 6);
+    });
   });
 });

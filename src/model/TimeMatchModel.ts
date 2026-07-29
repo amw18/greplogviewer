@@ -238,36 +238,35 @@ export class TimeMatchModel {
 
   /**
    * 检测 ring buffer 日志的时间起点行。
-   * 从第一行（或第一个可解析时间戳的行）开始作为时间原点，
-   * 向下扫描，返回第一个时间戳小于上一可解析行时间戳的行号。
+   * 扫描全文，收集所有时间回退点（忽略无时间戳行），
+   * 取回退差值最大的行为真正起点。
+   * 多核日志中偶有微秒/毫秒级的时间反差，取最大差值可过滤这些噪音。
    * @param lines 文档所有行
    * @returns 起点行号（0-based），未识别返回 undefined
    */
   detectRingBufferStartLine(lines: string[]): number | undefined {
     if (!this.isConfigured() || lines.length === 0) { return undefined; }
 
-    let previousTime: Date | null = null;
-    let previousLine = -1;
+    let previousTimeMs: number | null = null;
+    let bestLine: number | undefined;
+    let bestDiff = 0;
 
-    // Step 1: 确定默认时间原点（第一行或可解析时间戳的第一行）
     for (let i = 0; i < lines.length; i++) {
       const t = this.parseLineTimestamp(lines[i]);
-      if (t) { previousTime = t; previousLine = i; break; }
-    }
-    if (!previousTime) { return undefined; }
-
-    // Step 2: 从原点继续向下扫描，寻找第一个相对时间为负值的行
-    for (let i = previousLine + 1; i < lines.length; i++) {
-      const t = this.parseLineTimestamp(lines[i]);
       if (!t) { continue; }
-      if (t.getTime() < previousTime.getTime()) {
-        return i;
+
+      const ms = t.getTime();
+      if (previousTimeMs !== null && ms < previousTimeMs) {
+        const diff = previousTimeMs - ms;
+        if (diff > bestDiff) {
+          bestDiff = diff;
+          bestLine = i;
+        }
       }
-      previousTime = t;
-      previousLine = i;
+      previousTimeMs = ms;
     }
 
-    return undefined;
+    return bestLine;
   }
 
   // ===== 格式字符串解析 =====
