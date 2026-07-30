@@ -26,7 +26,18 @@ export class ViewController {
   private static readonly LARGE_FILE_THRESHOLD = 100000;
 
   /** 超过此行数启用异步分块过滤，避免同步正则阻塞 UI */
-  private static readonly ASYNC_FILTER_THRESHOLD = 1000000;
+  private static readonly ASYNC_FILTER_THRESHOLD = 50000;
+
+  /** 超过此行数在 handleGo 中显示整体进度通知 */
+  private static readonly PROGRESS_THRESHOLD = 50000;
+
+  /** 计时日志：打印带时间戳的步骤信息到 developer console */
+  private static logStep(step: string, startMs?: number): number {
+    const now = Date.now();
+    const elapsed = startMs ? ` (+${now - startMs}ms)` : '';
+    console.log(`[Log--] ${step}${elapsed}`);
+    return now;
+  }
 
   /** 超过此行数 VS Code 通常会禁用折叠，插件只做高亮和导航 */
   private static readonly FOLDING_DISABLED_THRESHOLD = 300000;
@@ -339,6 +350,7 @@ export class ViewController {
     }
     const editor = this.currentEditor;
     const editorId = editor.document.uri.toString();
+    const t0 = ViewController.logStep(`Go START (${editor.document.lineCount.toLocaleString()} lines, ${groups.length} groups)`);
 
     this.regexGroupModel.setGroups(groups);
     this.compiledKwRegexes.clear();  // keyword 可能变更，清除正则缓存
@@ -376,9 +388,41 @@ export class ViewController {
       return;
     }
 
+    // 大文件显示整体进度通知
+    const showProgress = editor.document.lineCount > ViewController.PROGRESS_THRESHOLD;
+    if (showProgress) {
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: 'Log--', cancellable: false },
+        (progress) => this.handleGoCore(editor, editorId, groups, timePattern, keywords, filterChanged, skipLargeFilePrompt, progress, t0)
+      );
+    } else {
+      await this.handleGoCore(editor, editorId, groups, timePattern, keywords, filterChanged, skipLargeFilePrompt, undefined, t0);
+    }
+  }
+
+  /** handleGo 的核心逻辑，可选地带进度报告 */
+  private async handleGoCore(
+    editor: vscode.TextEditor,
+    editorId: string,
+    groups: RegexGroup[],
+    timePattern: TimePatternConfig | undefined,
+    keywords: KeywordConfig[] | undefined,
+    filterChanged: boolean,
+    skipLargeFilePrompt: boolean,
+    progress: vscode.Progress<{ message?: string }> | undefined,
+    t0: number
+  ): Promise<void> {
+    const report = (msg: string) => {
+      ViewController.logStep(msg, t0);
+      progress?.report({ message: msg });
+    };
+
     // 时间匹配配置：用户留空时自动检测常见格式
     this.timeMatchModel.setConfig(timePattern || { format: '' });
+    report('Reading file...');
     const lines = this.readLines(editor);
+    await new Promise(r => setImmediate(r));
+
     if (!this.timeMatchModel.isConfigured()) {
       const autoTp = this.timeMatchModel.autoDetect(lines);
       if (autoTp) { this.timeMatchModel.setConfig(autoTp); }
@@ -398,6 +442,7 @@ export class ViewController {
     let results: FilterResult[];
 
     if (filterChanged) {
+      report(`Filtering ${lines.length.toLocaleString()} lines...`);
       results = await this.runFilterWithProgress(lines, groups);
     } else {
       // 重用已有过滤结果，但重置 keyword 可见标记（旧标记可能已过期）。
@@ -418,6 +463,9 @@ export class ViewController {
     const scanEnd = lines.length;
 
     // 范围内被 keyword 匹配但未被 group 匹配的行 → 标记为可见，不参与折叠
+    if (keywords && keywords.length > 0) {
+      report('Marking keyword lines...');
+    }
     this.markKeywordVisibleLines(results, lines, keywords, scanStart, scanEnd);
 
     this.isApplyingFilter = true;
@@ -425,6 +473,7 @@ export class ViewController {
       if (filterChanged) {
         // 过滤规则变化时才需要清除旧折叠并重新应用
         if (oldRanges.length > 0) {
+          report('Clearing old folds...');
           await this.clearFoldingState(editor);
         }
         if (lines.length <= ViewController.LARGE_FILE_THRESHOLD) {
@@ -432,15 +481,18 @@ export class ViewController {
           this.reRegisterFoldProvider?.();
           await new Promise(r => setTimeout(r, 100));
         }
+        report('Applying fold annotations...');
         this.filterResultModel.setResults(editorId, results);
         this.applyFoldAnnotations(editor, editorId, lines, keywords);
         this.applyRingBufferStart(editor, lines);
+        report('Folding unmatched lines...');
         await this.applyFolding(editor);
       } else {
         // 过滤规则未变：只更新 decorations（keywords/colors 可能变了），跳过昂贵的 fold/unfold
         this.filterResultModel.setResults(editorId, results);
       }
 
+      report('Applying decorations...');
       this.decorations.apply(results, editor, keywords, scanStart, scanEnd, undefined, lines);
     } finally {
       this.isApplyingFilter = false;
@@ -450,10 +502,17 @@ export class ViewController {
     this.attachedEditors.add(editorId);
 
     // 发送时间线图表数据
+    if (keywords && keywords.length > 0) {
+      report('Computing timeline...');
+    }
     this.sendTimelineData(editorId, lines, keywords, scanStart, scanEnd);
 
-    // 发送匹配行数统计
+    if (keywords && keywords.length > 0) {
+      report('Counting matches...');
+    }
     this.sendMatchCounts(editorId, lines, keywords, scanStart, scanEnd);
+
+    report('Done');
 
     // 超大文件提示：仅当过滤规则变化且文件超出 VS Code 折叠能力时才提示。
     // 相同规则重复 Go 不弹，避免每次操作都打断用户。
@@ -1382,22 +1441,14 @@ export class ViewController {
     }
   }
 
-  /** 根据文件大小选择同步或异步过滤，超大文件在状态栏显示进度（不抢焦点） */
+  /**
+   * 根据文件大小选择同步或异步过滤。
+   * >50K 行用异步分块，避免阻塞 UI；整体进度由 handleGoCore 的 withProgress 统一管理。
+   */
   private async runFilterWithProgress(lines: string[], groups: RegexGroup[]): Promise<FilterResult[]> {
     if (lines.length > ViewController.ASYNC_FILTER_THRESHOLD) {
-      const chunkSize = 250000;
-      let lastReported = -1;
-      return vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Window, title: 'Filtering large log...', cancellable: false },
-        async progress => this.filterController.filterAsync(lines, groups, (processed, total) => {
-          // 每 10% 报告一次，降低进度刷新频率
-          const reportInterval = Math.max(100000, Math.floor(total / 10));
-          if (processed - lastReported >= reportInterval || processed === total) {
-            lastReported = processed;
-            progress.report({ message: `${processed.toLocaleString()} / ${total.toLocaleString()} lines` });
-          }
-        }, chunkSize)
-      );
+      // 异步分块过滤，不单独弹进度（由 handleGoCore 统一管理）
+      return this.filterController.filterAsync(lines, groups, undefined, 50000);
     }
     return this.filterController.filter(lines, groups);
   }
