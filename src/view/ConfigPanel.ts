@@ -83,7 +83,6 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
       }
       } catch (err: any) {
         const msg = err?.message || String(err);
-        console.error('Log--: Webview message handler error:', msg, err?.stack);
         vscode.window.showErrorMessage(`Log-- error: ${msg}`);
       }
     });

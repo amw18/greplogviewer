@@ -15,6 +15,7 @@ import { TimeMatchModel } from '../model/TimeMatchModel';
 import { ConfigStorageModel } from '../model/ConfigStorageModel';
 import { RingBufferModel } from '../model/RingBufferModel';
 import { uuid } from '../model/uuid';
+import { log } from '../model/Logger';
 import { ConfigPanel } from '../view/ConfigPanel';
 import { EditorDecorations } from '../view/EditorDecorations';
 
@@ -31,11 +32,11 @@ export class ViewController {
   /** 超过此行数在 handleGo 中显示整体进度通知 */
   private static readonly PROGRESS_THRESHOLD = 50000;
 
-  /** 计时日志：打印带时间戳的步骤信息到 developer console */
+  /** 计时日志：输出到 Output 面板的 Log-- 频道 */
   private static logStep(step: string, startMs?: number): number {
     const now = Date.now();
     const elapsed = startMs ? ` (+${now - startMs}ms)` : '';
-    console.log(`[Log--] ${step}${elapsed}`);
+    log(`${step}${elapsed}`);
     return now;
   }
 
@@ -388,19 +389,19 @@ export class ViewController {
       return;
     }
 
-    // 大文件显示整体进度通知
+    // 大文件显示进度 spinner（状态栏，不抢焦点）
     const showProgress = editor.document.lineCount > ViewController.PROGRESS_THRESHOLD;
     if (showProgress) {
       await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: 'Log--', cancellable: false },
-        (progress) => this.handleGoCore(editor, editorId, groups, timePattern, keywords, filterChanged, skipLargeFilePrompt, progress, t0)
+        { location: vscode.ProgressLocation.Window, title: 'Log--: Processing...', cancellable: false },
+        () => this.handleGoCore(editor, editorId, groups, timePattern, keywords, filterChanged, skipLargeFilePrompt, t0)
       );
     } else {
-      await this.handleGoCore(editor, editorId, groups, timePattern, keywords, filterChanged, skipLargeFilePrompt, undefined, t0);
+      await this.handleGoCore(editor, editorId, groups, timePattern, keywords, filterChanged, skipLargeFilePrompt, t0);
     }
   }
 
-  /** handleGo 的核心逻辑，可选地带进度报告 */
+  /** handleGo 的核心逻辑 */
   private async handleGoCore(
     editor: vscode.TextEditor,
     editorId: string,
@@ -409,13 +410,10 @@ export class ViewController {
     keywords: KeywordConfig[] | undefined,
     filterChanged: boolean,
     skipLargeFilePrompt: boolean,
-    progress: vscode.Progress<{ message?: string }> | undefined,
     t0: number
   ): Promise<void> {
-    const report = (msg: string) => {
-      ViewController.logStep(msg, t0);
-      progress?.report({ message: msg });
-    };
+    // 阶段日志输出到 Output 面板，不更新进度 UI（spinner 自动显示）
+    const report = (msg: string) => { ViewController.logStep(msg, t0); };
 
     // 时间匹配配置：用户留空时自动检测常见格式
     this.timeMatchModel.setConfig(timePattern || { format: '' });
@@ -701,7 +699,7 @@ export class ViewController {
       });
       return true;
     } catch (err: any) {
-      console.error(`Log--: grep export failed: ${err.message}`);
+      log(`grep export failed: ${err.message}`);
       return false;
     }
   }
@@ -1435,7 +1433,7 @@ export class ViewController {
       this.linesCache = { editorId, version, lines };
       return lines;
     } catch (err: any) {
-      console.error('Log--: readLines failed:', err.message || err);
+      log(`readLines failed: ${err.message || err}`);
       vscode.window.showErrorMessage(`Log--: Failed to read file content. ${err.message || 'The file may be too large.'}`);
       return [];
     }

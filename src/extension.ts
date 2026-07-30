@@ -14,11 +14,13 @@ import { ViewController } from './controller/ViewController';
 import { GrepController } from './controller/GrepController';
 import { RingBufferModel } from './model/RingBufferModel';
 import { TaskWatcher } from './controller/TaskWatcher';
+import { initLogger } from './model/Logger';
 
 let viewController: ViewController | undefined;
 let grepController: GrepController | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
+  initLogger(context);
   // 安装/更新 skill 到 ~/.log--/ai/skills/
   installSkill(context);
 
