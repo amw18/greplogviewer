@@ -68,13 +68,16 @@ export class ViewController {
   private static isTooLargeForMemory(editor: vscode.TextEditor): boolean {
     const lc = editor.document.lineCount;
     if (lc > ViewController.GREP_EXPORT_LINES_THRESHOLD) {
+      log(`isTooLargeForMemory: lineCount ${lc} > ${ViewController.GREP_EXPORT_LINES_THRESHOLD}`);
       return true;
     }
     try {
       const sz = fs.statSync(editor.document.uri.fsPath).size;
       const result = sz > ViewController.GREP_EXPORT_SIZE_THRESHOLD;
+      log(`isTooLargeForMemory: size=${(sz / 1024 / 1024).toFixed(1)}MB, threshold=${ViewController.GREP_EXPORT_SIZE_THRESHOLD / 1024 / 1024}MB, result=${result}`);
       return result;
-    } catch (err: any) {
+    } catch {
+      log(`isTooLargeForMemory: stat failed, returning false`);
       return false;
     }
   }
@@ -366,6 +369,7 @@ export class ViewController {
 
     // ── 超大文件早期拦截：>20MB 或 >30万行不读内存，直接走 grep 导出 ──
     const tooLarge = ViewController.isTooLargeForMemory(editor);
+    ViewController.logStep(`lineCount=${editor.document.lineCount}, tooLarge=${tooLarge}, filterChanged=${filterChanged}, skipLargeFilePrompt=${skipLargeFilePrompt}`, t0);
     if (tooLarge && !skipLargeFilePrompt) {
       // 仅持久化配置（不读文件、不过滤）
       this.timeMatchModel.setConfig(timePattern || { format: '' });
@@ -391,7 +395,9 @@ export class ViewController {
 
     // 大文件显示进度 spinner（状态栏，不抢焦点）
     const showProgress = editor.document.lineCount > ViewController.PROGRESS_THRESHOLD;
+    ViewController.logStep(`showProgress=${showProgress} (lineCount=${editor.document.lineCount} > ${ViewController.PROGRESS_THRESHOLD})`, t0);
     if (showProgress) {
+      ViewController.logStep('Creating withProgress...', t0);
       await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Window, title: 'Log--: Processing...', cancellable: false },
         () => this.handleGoCore(editor, editorId, groups, timePattern, keywords, filterChanged, skipLargeFilePrompt, t0)
@@ -412,13 +418,18 @@ export class ViewController {
     skipLargeFilePrompt: boolean,
     t0: number
   ): Promise<void> {
-    // 阶段日志输出到 Output 面板，不更新进度 UI（spinner 自动显示）
+    // 阶段日志输出到 Output 面板
     const report = (msg: string) => { ViewController.logStep(msg, t0); };
+
+    report('handleGoCore entered');
 
     // 时间匹配配置：用户留空时自动检测常见格式
     this.timeMatchModel.setConfig(timePattern || { format: '' });
     report('Reading file...');
+    // 先让出事件循环，让 spinner 有机会渲染
+    await new Promise(r => setTimeout(r, 0));
     const lines = this.readLines(editor);
+    report(`readLines done: ${lines.length} lines`);
     await new Promise(r => setImmediate(r));
 
     if (!this.timeMatchModel.isConfigured()) {
