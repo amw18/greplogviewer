@@ -292,8 +292,6 @@ export interface AITask {
   file?: string;
   /** 要应用的配置名（对应 ~/.log--/ai/solutions/<config>.json） */
   config?: string;
-  /** 原始日志文件路径（用于关联配置） */
-  originalFile?: string;
 }
 
 export type WebviewMessage = GoMessage | ResetMessage | ClearMessage

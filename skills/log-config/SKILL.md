@@ -135,7 +135,7 @@ Use kebab-case filenames (e.g. `android-crash.json`, `kernel-boot.json`).
 
 AI agents can programmatically manage configs by writing JSON files to
 `~/.log--/ai/solutions/`. The extension scans this directory and lists
-found configs in the Advance panel dropdown — no manual import needed.
+found configs in the Solution dropdown - no manual import needed.
 
 **Directory**: `~/.log--/ai/solutions/`
 
@@ -233,16 +233,17 @@ EOF
 # Filter errors for each module into separate files
 mkdir -p ~/.log--/ai/results/split
 for module in Audio Video Camera; do
-  grep -E "$module" /path/to/huge.log > ~/.log--/ai/results/split/${module,,}.log
+  lower=$(echo "$module" | tr '[:upper:]' '[:lower:]')
+  grep -E "$module" /path/to/huge.log > ~/.log--/ai/results/split/${lower}.log
   # Write config with the module name as a group
-  cat > ~/.log--/ai/solutions/${module,,}-filter.json << CFG
+  cat > ~/.log--/ai/solutions/${lower}-filter.json << CFG
 {"groups":[{"id":"g1","name":"$module","color":"#44aaff",
   "expressions":[{"id":"e1","pattern":"$module","flags":"","operator":"and"}]}],
   "keywords":[]}
 CFG
   # Notify extension to open this split file
-  cat > ~/.log--/ai/tasks/open-${module,,}.json << TASK
-{"action":"open_filtered","file":"$HOME/.log--/ai/results/split/${module,,}.log","config":"${module,,}-filter"}
+  cat > ~/.log--/ai/tasks/open-${lower}.json << TASK
+{"action":"open_filtered","file":"$HOME/.log--/ai/results/split/${lower}.log","config":"${lower}-filter"}
 TASK
   sleep 3  # 等待扩展处理上一个任务
 done
