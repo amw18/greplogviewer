@@ -29,20 +29,20 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
     webviewView.webview.options = { enableScripts: true };
     webviewView.webview.html = this.buildHtml();
 
-    webviewView.webview.onDidReceiveMessage((msg: WebviewMessage) => {
+    webviewView.webview.onDidReceiveMessage(async (msg: WebviewMessage) => {
       try {
       switch (msg.type) {
         case 'go':
-          this.goCallback?.(msg.groups, msg.timePattern, msg.keywords);
+          await this.goCallback?.(msg.groups, msg.timePattern, msg.keywords);
           break;
         case 'reset':
-          this.resetCallback?.();
+          await this.resetCallback?.();
           break;
         case 'clear':
-          this.clearCallback?.();
+          await this.clearCallback?.();
           break;
         case 'exportMatchedLines':
-          this.exportMatchedCallback?.();
+          await this.exportMatchedCallback?.();
           break;
         case 'gotoKeywordMatch':
           this.gotoKeywordHitCallback?.(msg.direction, msg.keywordId || '');
@@ -57,22 +57,22 @@ export class ConfigPanel implements vscode.WebviewViewProvider {
           this.exportCallback?.(msg.groups, msg.timePattern, msg.keywords);
           break;
         case 'importConfig':
-          this.importCallback?.();
+          await this.importCallback?.();
           break;
         case 'saveConfig':
-          this.saveCallback?.(msg.name, msg.groups, msg.timePattern, msg.keywords);
+          await this.saveCallback?.(msg.name, msg.groups, msg.timePattern, msg.keywords);
           break;
         case 'requestSaveConfig':
-          this.requestSaveCallback?.(msg.groups, msg.timePattern, msg.keywords);
+          await this.requestSaveCallback?.(msg.groups, msg.timePattern, msg.keywords);
           break;
         case 'listSavedConfigs':
           this.listSavedCallback?.();
           break;
         case 'applySavedConfig':
-          this.applyCallback?.(msg.name, msg.scope);
+          await this.applyCallback?.(msg.name, msg.scope);
           break;
         case 'deleteSavedConfig':
-          this.deleteCallback?.(msg.name, msg.scope);
+          await this.deleteCallback?.(msg.name, msg.scope);
           break;
         case 'syncConfig':
           this.syncConfigCallback?.(msg.groups, msg.timePattern, msg.keywords);
