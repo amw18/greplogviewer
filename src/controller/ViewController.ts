@@ -344,8 +344,9 @@ export class ViewController {
     const filterChanged = filterFp !== this.lastFilterFingerprint;
     this.lastFilterFingerprint = filterFp;
 
-    // ── 超大文件早期拦截：>20MB 或 >30万行直接走 grep 导出，不读内存 ──
-    if (filterChanged && !skipLargeFilePrompt && ViewController.isTooLargeForMemory(editor)) {
+    // ── 超大文件早期拦截：>20MB 或 >30万行不读内存，直接走 grep 导出 ──
+    const tooLarge = ViewController.isTooLargeForMemory(editor);
+    if (tooLarge && !skipLargeFilePrompt) {
       // 仅持久化配置（不读文件、不过滤）
       this.timeMatchModel.setConfig(timePattern || { format: '' });
       this.editorStateModel.saveConfig(editorId, {
@@ -355,13 +356,16 @@ export class ViewController {
       });
       this.editorStateModel.setActive(editorId, true);
 
-      const lineCount = editor.document.lineCount;
-      const action = await vscode.window.showInformationMessage(
-        `Log--: File too large (${lineCount.toLocaleString()} lines) for inline filtering. Use grep to export matched lines to a smaller file?`,
-        'Open filtered results in new tab'
-      );
-      if (action === 'Open filtered results in new tab') {
-        await this.openFilteredResultsWithGrep(editor, groups, keywords);
+      if (filterChanged) {
+        // 首次或配置变更时提示
+        const lineCount = editor.document.lineCount;
+        const action = await vscode.window.showInformationMessage(
+          `Log--: File too large (${lineCount.toLocaleString()} lines) for inline filtering. Use grep to export matched lines to a smaller file?`,
+          'Open filtered results in new tab'
+        );
+        if (action === 'Open filtered results in new tab') {
+          await this.openFilteredResultsWithGrep(editor, groups, keywords);
+        }
       }
       return;
     }
@@ -1317,9 +1321,15 @@ export class ViewController {
     if (this.linesCache && this.linesCache.editorId === editorId && this.linesCache.version === version) {
       return this.linesCache.lines;
     }
-    const lines = editor.document.getText().split('\n');
-    this.linesCache = { editorId, version, lines };
-    return lines;
+    try {
+      const lines = editor.document.getText().split('\n');
+      this.linesCache = { editorId, version, lines };
+      return lines;
+    } catch (err: any) {
+      console.error('Log--: readLines failed:', err.message || err);
+      vscode.window.showErrorMessage(`Log--: Failed to read file content. ${err.message || 'The file may be too large.'}`);
+      return [];
+    }
   }
 
   /** 根据文件大小选择同步或异步过滤，超大文件在状态栏显示进度（不抢焦点） */
