@@ -54,10 +54,18 @@ export class ViewController {
 
   /** 判断文件是否过大，无法进行内存过滤 */
   private static isTooLargeForMemory(editor: vscode.TextEditor): boolean {
-    if (editor.document.lineCount > ViewController.GREP_EXPORT_LINES_THRESHOLD) { return true; }
+    const lc = editor.document.lineCount;
+    if (lc > ViewController.GREP_EXPORT_LINES_THRESHOLD) {
+      console.log(`Log--: isTooLargeForMemory → true (lineCount=${lc} > ${ViewController.GREP_EXPORT_LINES_THRESHOLD})`);
+      return true;
+    }
     try {
-      return fs.statSync(editor.document.uri.fsPath).size > ViewController.GREP_EXPORT_SIZE_THRESHOLD;
-    } catch {
+      const sz = fs.statSync(editor.document.uri.fsPath).size;
+      const result = sz > ViewController.GREP_EXPORT_SIZE_THRESHOLD;
+      console.log(`Log--: isTooLargeForMemory → ${result} (size=${(sz/1024/1024).toFixed(1)}MB, threshold=${ViewController.GREP_EXPORT_SIZE_THRESHOLD/1024/1024}MB, lineCount=${lc})`);
+      return result;
+    } catch (err: any) {
+      console.log(`Log--: isTooLargeForMemory → false (stat failed: ${err.message}, lineCount=${lc})`);
       return false;
     }
   }
@@ -329,9 +337,14 @@ export class ViewController {
 
   /** Go: 应用过滤 + 颜色高亮 + 创建折叠 + 时间标注 */
   private async handleGo(groups: RegexGroup[], timePattern?: TimePatternConfig, keywords?: KeywordConfig[], skipLargeFilePrompt = false): Promise<void> {
-    if (!this.currentEditor) { return; }
+    console.log(`Log--: handleGo ENTRY — groups=${groups.length}, keywords=${keywords?.length || 0}, skipPrompt=${skipLargeFilePrompt}, hasEditor=${!!this.currentEditor}`);
+    if (!this.currentEditor) {
+      console.log('Log--: handleGo — no currentEditor, returning');
+      return;
+    }
     const editor = this.currentEditor;
     const editorId = editor.document.uri.toString();
+    console.log(`Log--: handleGo — editor: ${editorId}, fsPath: ${editor.document.uri.fsPath}, scheme: ${editor.document.uri.scheme}, lineCount: ${editor.document.lineCount}`);
 
     this.regexGroupModel.setGroups(groups);
     this.compiledKwRegexes.clear();  // keyword 可能变更，清除正则缓存
@@ -346,7 +359,9 @@ export class ViewController {
 
     // ── 超大文件早期拦截：>20MB 或 >30万行不读内存，直接走 grep 导出 ──
     const tooLarge = ViewController.isTooLargeForMemory(editor);
+    console.log(`Log--: handleGo — tooLarge=${tooLarge}, skipLargeFilePrompt=${skipLargeFilePrompt}, filterChanged=${filterChanged}, groups=${groups.length}`);
     if (tooLarge && !skipLargeFilePrompt) {
+      console.log('Log--: handleGo — entering huge file path, saving config only');
       // 仅持久化配置（不读文件、不过滤）
       this.timeMatchModel.setConfig(timePattern || { format: '' });
       this.editorStateModel.saveConfig(editorId, {
@@ -357,12 +372,13 @@ export class ViewController {
       this.editorStateModel.setActive(editorId, true);
 
       if (filterChanged) {
-        // 首次或配置变更时提示
+        console.log('Log--: handleGo — showing huge file prompt');
         const lineCount = editor.document.lineCount;
         const action = await vscode.window.showInformationMessage(
           `Log--: File too large (${lineCount.toLocaleString()} lines) for inline filtering. Use grep to export matched lines to a smaller file?`,
           'Open filtered results in new tab'
         );
+        console.log(`Log--: handleGo — prompt result: ${action}`);
         if (action === 'Open filtered results in new tab') {
           await this.openFilteredResultsWithGrep(editor, groups, keywords);
         }
@@ -370,9 +386,11 @@ export class ViewController {
       return;
     }
 
+    console.log('Log--: handleGo — proceeding to readLines()...');
     // 时间匹配配置：用户留空时自动检测常见格式
     this.timeMatchModel.setConfig(timePattern || { format: '' });
     const lines = this.readLines(editor);
+    console.log(`Log--: handleGo — readLines done, got ${lines.length} lines`);
     if (!this.timeMatchModel.isConfigured()) {
       const autoTp = this.timeMatchModel.autoDetect(lines);
       if (autoTp) { this.timeMatchModel.setConfig(autoTp); }
