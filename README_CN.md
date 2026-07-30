@@ -1,18 +1,14 @@
 # Log--
 
-> [English](README.md) | [中文](README_CN.md)
+[English](README.md) | [中文](README_CN.md)
 
-> 基于正则表达式的 VS Code 日志查看器 - 颜色高亮、自动折叠、关键字时间线、代码跳转，以及 AI 辅助配置。
+> **log + AI = log--** : 基于正则表达式的 VS Code 日志查看器。 
+> - *AI帮你配置* -- 专注于你关心的log，其他的都折叠起来。
+> - *AI帮你分析* -- 可视化推理链，每一步点击直达关键行。
+
+适用于调试大型日志文件：*Android logcat、内核日志、应用 trace 等*。
 
 ![screenshot](screenshot.png)
-
----
-
-## 概述
-
-AI帮你配置 -- 只保留你关心的log，其他的都折叠起来。
-
-适用于调试大型日志文件：Android logcat、内核日志、应用 trace 等。
 
 ---
 
@@ -20,111 +16,43 @@ AI帮你配置 -- 只保留你关心的log，其他的都折叠起来。
 
 ### 🎨 分组着色 自动折叠
 
-定义多个正则组，每组有颜色和多个表达式（支持 AND / OR / NOT 逻辑组合）。匹配行整行高亮；未匹配行**自动折叠**，只保留相关内容。
+定义多个正则组分别着色，聚焦问题；未匹配行**自动折叠**，想看就看。
 
 ### 🔍 关键字
 
-实时显示当前最近匹配。
+**匹配转译** - 把数字定义转成具体含义注释到行末。
+**实时定位** - 永远显示光标行最靠近第几个匹配项，轻松跳转。
+**timeline** - 你关心的信息在图表时间上的分布，点击直达。
 
-### ⏱️ 时间标注与自动检测
+### AI+证据
 
-配置时间格式，或**留空**自动检测。支持格式：
-
-| 日志类型 | 格式 | 示例 |
-|----------|------|------|
-| Android logcat | `MM-DD HH:mm:ss.SSS` | `01-23 12:00:00.123` |
-| Android（无毫秒） | `MM-DD HH:mm:ss` | `01-23 12:00:00` |
-| ISO 8601 | `YYYY-MM-DD HH:mm:ss.SSS` | `2024-01-23 12:00:00.123` |
-| 内核 | 自动检测 | `[  1.234567]` |
-| 仅时间 | `HH:mm:ss.SSS` | `12:00:00.123` |
-
-每个折叠区域显示：`▼ N lines │ ~时长 │ +经过时间`
-
-### 📊 关键字时间线
-
-内嵌在侧边栏的 canvas 时间线图表，展示各关键字命中在时间轴上的分布。
-
-- **滚轮缩放** - 在鼠标位置缩放，智能 tick 数量 + 子网格线
-- **悬停 tooltip** - 显示关键字名、时间偏移、行号、匹配子串
-- **点击跳转** - 点击任意点跳转到编辑器对应行
-- **自动适应** - CSS 驱动 canvas 尺寸 + 100ms 轮询兜底，适应面板变化
-- 时间轴起点为日志首个时间戳（或 ring-buffer 回绕点）
+内置 **Agent Skill** ， 帮你配置，帮你分析，还要把证据整理成流程图，点击直达关键行。
 
 ### 🚩 Ring Buffer 检测
 
-检测环形缓冲区日志中的时间回绕（时间戳重置）。检测到的起点行用红旗图标标记，并保护不被折叠。
+检测环形缓冲区日志中的时间回绕（时间戳重置）。检测到的起点行用红旗图标标记。
 
 ### 🖱️ 右键 Grep
 
-在任意文件中选中文本 -> 右键 -> **Grep Keyword** / **Grep Function**：
+editor 看log, terminal 找定义，可兼得。
 
-- 搜索关联的代码目录（每个正则组可配置 `associatedDirs`）
-- 结果输出到终端，用 `>>>` 分隔
-- 支持分号分隔多目录、`!` 排除、`${VAR}` 环境变量
-- `Grep Function` 可跨文件查找多行函数定义
 
-### 📤 导出匹配行
-
-点击 **Export** 将所有匹配行复制到新的未保存编辑器（`<文件名>_matched{n}`）：
-- 以源文件名 + 计数器命名
-- 自动设置 `log` 语言，支持语法高亮
-- 适用于大文件无法折叠的场景
-
-### 💾 配置共享与管理
-
-- **保存 / 应用 / 删除** 命名配置（User 或 Workspace 范围）
-- **导出 / 导入** JSON 文件
-- 配置通过 VS Code 的 workspace/global state 跨会话持久化
 
 ---
-
-## 🤖 AI 辅助配置
-
-Log-- 内置 **Agent Skill**，让 AI agent（如 Pi、Claude Code 或任何兼容 Agent Skills 的工具）自动为任意日志格式配置过滤组、关键字和时间模式。
-
-### 工作原理
-
-1. **安装/更新插件时**，扩展自动将 `SKILL.md` 拷贝到 `~/.agents/skills/log-config/`
-2. AI agent 读取 skill，分析你的日志样本，生成配置 JSON
-3. Agent 将配置写入 `~/.agents/log-configs/<名称>.json`
-4. 配置**自动出现在**侧边栏的 **Solution** 下拉列表中
-5. 你只需选中并点击 **Apply** - 无需手动导入
 
 ### 示例：Agent 工作流
 
-```bash
-# Agent 写入配置文件：
-mkdir -p ~/.agents/log-configs
-cat > ~/.agents/log-configs/android-crash.json << 'EOF'
-{
-  "groups": [
-    { "id": "g1", "name": "Fatal", "color": "#ff0000",
-      "expressions": [{"id":"e1","pattern":"FATAL|ASSERT","flags":"","operator":"and"}] },
-    { "id": "g2", "name": "Error", "color": "#ff6600",
-      "expressions": [{"id":"e2","pattern":" E /|ERROR","flags":"","operator":"and"}] }
-  ],
-  "timePattern": { "format": "MM-DD HH:mm:ss.SSS" },
-  "keywords": [
-    { "id": "kw1", "pattern": "ANR in (?<app>\\S+)", "flags": "",
-      "color": "#ff00ff", "matchScope": "full", "hint": "ANR: {{app}}" }
-  ]
-}
-EOF
-```
+“xxx文件是一份可能由音频模块导致crash的log, 请用log--帮我过滤掉无关模块的log, 然后分析crash的来龙去脉，画出可跳转到对应行的关键流程图”
 
-配置 `android-crash` 会以 `(file)` 范围出现在 Solution 下拉列表中。点击 **Apply** 加载，再点 **Go** 过滤。
+## 使用方法
 
-### Skill 内容
+1. **打开** VS Code 中的日志文件。
+2. **配置** Log-- 侧边栏中的正则组和关键字。
+   - 或用 **Solution** 下拉列表应用已保存/agent 生成的配置。
+3. *点击* **Go** - 匹配行着色，未匹配行折叠。
+4. **导航** - 用关键字 ↑/↓ 跳转命中行；滚轮缩放时间线。
+5. **导入&导出** - 成员间共享配置。
 
-内置 skill（`skills/log-config/SKILL.md`）包含：
-- AI agent 的逐步配置流程
-- 按日志类型的常见正则（Android、内核、通用应用）
-- 命名捕获 hint 语法及实例
-- 配置 JSON 结构参考
-- 大文件处理指南
-- 注意事项和验证步骤
-
----
 
 ## 📏 大文件支持
 
@@ -137,49 +65,6 @@ EOF
 
 对于超大日志（如 100 万+ 行的 Android dump），用 **Export** 提取匹配行到较小的编辑器，折叠即可正常工作。
 
----
-
-## 使用方法
-
-1. **打开** VS Code 中的日志文件
-2. **配置** Log-- 侧边栏中的正则组和关键字
-   - 或用 **Solution** 下拉列表应用已保存/agent 生成的配置
-3. **点击 Go** - 匹配行着色，未匹配行折叠
-4. **导航** - 用关键字 ↑/↓ 跳转命中行；滚轮缩放时间线
-5. **导出** - 点击 Export 将匹配行复制到新编辑器
-
----
-
-## 安装
-
-在 VS Code 扩展商店搜索 **"Log--"**，或从 [Marketplace](https://marketplace.visualstudio.com/items?itemName=any-tool.log-minus-minus) 安装。
-
----
-
-## 开发
-
-```bash
-git clone <仓库地址>
-cd log-minus-minus
-npm install
-npm test          # 204 个单元测试
-npx tsc --noEmit  # 类型检查
-# 在 VS Code 中按 F5 启动扩展调试
-```
-
-### 架构
-
-MVC 分层架构：
-- **Model**：`RegexGroupModel`、`FilterResultModel`、`TimeMatchModel`、`ConfigStorageModel`、`RingBufferModel`
-- **Controller**：`FilterController`（正则引擎）、`GrepController`（代码搜索）、`ViewController`（协调器）
-- **View**：`ConfigPanel`（侧边栏 webview，含内嵌时间线）、`EditorDecorations`（高亮/折叠标注）
-
-### 关键设计决策
-
-- 使用 **FoldingRangeProvider** 声明式折叠（非手动 `createFoldingRangeFromSelection`）
-- 使用 **WebviewViewProvider** 侧边栏（不抢编辑器焦点）
-- **Go 按钮触发**所有效果 - 激活或切换编辑器时不自动生效
-- **会话感知 attach**：切回已过滤文件时保留折叠状态
 
 ---
 
