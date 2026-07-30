@@ -1014,6 +1014,41 @@ export class ViewController {
     return this.lastMatchCounts;
   }
 
+  /**
+   * 处理 AI agent 提交的任务（来自 TaskWatcher）。
+   * 支持 open_filtered（打开过滤后文件+应用配置）和 apply_config（应用命名配置）。
+   */
+  async handleAITask(task: import('../types').AITask): Promise<void> {
+    if (task.action === 'apply_config') {
+      await this.applyNamedConfig(task.config || '');
+    } else if (task.action === 'open_filtered') {
+      if (!task.file) { throw new Error('Missing file path'); }
+      const uri = vscode.Uri.file(task.file);
+      const doc = await vscode.workspace.openTextDocument(uri);
+      await vscode.window.showTextDocument(doc);
+      // 等待编辑器附加
+      await new Promise(r => setTimeout(r, 500));
+      if (task.config) {
+        await this.applyNamedConfig(task.config);
+      }
+    }
+  }
+
+  /** 从 ~/.log--/ai/solutions/<name>.json 加载配置并应用 */
+  private async applyNamedConfig(name: string): Promise<void> {
+    if (!name) { throw new Error('Missing config name'); }
+    const configPath = path.join(os.homedir(), '.log--', 'ai', 'solutions', `${name}.json`);
+    if (!fs.existsSync(configPath)) { throw new Error(`Config not found: ${name}`); }
+    const raw = fs.readFileSync(configPath, 'utf-8');
+    const cfg = JSON.parse(raw);
+    await this.handleGo(
+      cfg.groups || [],
+      cfg.timePattern,
+      cfg.keywords,
+      true  // skip large file prompt
+    );
+  }
+
   /** 测试用：直接触发大文件过滤结果导出到临时文件 */
   async testOpenFilteredTempFile(): Promise<void> {
     if (!this.currentEditor) { return; }

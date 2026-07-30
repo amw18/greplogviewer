@@ -175,6 +175,102 @@ EOF
 After writing, tell the user: in the panel, select the config from the
 Solution dropdown at the top, click Apply (▶), then Go.
 
+## Notifying the Extension (Task Protocol)
+
+AI agents can notify the extension to take actions by writing **task files**
+to `~/.log--/ai/tasks/`. The extension watches this directory and processes
+new `.json` files within 2 seconds. This works regardless of whether the AI
+is running as a VS Code plugin or in a terminal.
+
+**Directory**: `~/.log--/ai/tasks/`
+
+**Task format** (`<id>.json`, e.g. `task-001.json`):
+
+```json
+{
+  "action": "open_filtered",
+  "file": "/absolute/path/to/filtered.log",
+  "config": "my-config"
+}
+```
+
+**Supported actions**:
+
+| Action | Effect | Required fields |
+|--------|--------|-----------------|
+| `open_filtered` | Open a file and apply a config | `file`, `config` |
+| `apply_config` | Apply a named config to the current editor | `config` |
+
+**Lifecycle**:
+- Extension polls `~/.log--/ai/tasks/` every 2 seconds
+- **Success**: task file is deleted after processing
+- **Error**: task file is renamed to `<id>.json.error` with error details
+
+### Workflow: Filter a huge log and open in extension
+
+```bash
+# Step 1: Create a config (or reuse existing)
+cat > ~/.log--/ai/solutions/my-filter.json << 'EOF'
+{"groups":[{"id":"g1","name":"Errors","color":"#ff4444",
+  "expressions":[{"id":"e1","pattern":"ERROR|FATAL","flags":"","operator":"and"}]}],
+  "timePattern":{"format":""},"keywords":[]}
+EOF
+
+# Step 2: Use grep to filter the huge file (avoids loading into memory)
+mkdir -p ~/.log--/ai/results
+PATTERNS='ERROR|FATAL|Exception|panic'
+grep -E "$PATTERNS" /path/to/huge.log > ~/.log--/ai/results/filtered.log
+
+# Step 3: Notify extension to open filtered file with config
+cat > ~/.log--/ai/tasks/open-filtered.json << 'EOF'
+{"action":"open_filtered","file":"$HOME/.log--/ai/results/filtered.log","config":"my-filter"}
+EOF
+```
+
+### Workflow: Split a log by module into multiple files
+
+```bash
+# Filter errors for each module into separate files
+mkdir -p ~/.log--/ai/results/split
+for module in Audio Video Camera; do
+  grep -E "$module" /path/to/huge.log > ~/.log--/ai/results/split/${module,,}.log
+  # Write config with the module name as a group
+  cat > ~/.log--/ai/solutions/${module,,}-filter.json << CFG
+{"groups":[{"id":"g1","name":"$module","color":"#44aaff",
+  "expressions":[{"id":"e1","pattern":"$module","flags":"","operator":"and"}]}],
+  "keywords":[]}
+CFG
+  # Notify extension to open this split file
+  cat > ~/.log--/ai/tasks/open-${module,,}.json << TASK
+{"action":"open_filtered","file":"$HOME/.log--/ai/results/split/${module,,}.log","config":"${module,,}-filter"}
+TASK
+  sleep 3  # 等待扩展处理上一个任务
+done
+```
+
+### Workflow: Analyze then update config
+
+```bash
+# After analysis, update an existing config with new findings
+cat > ~/.log--/ai/solutions/my-filter.json << 'EOF'
+{"groups":[
+  {"id":"g1","name":"Fatal","color":"#ff0000",
+    "expressions":[{"id":"e1","pattern":"FATAL|ASSERT|SIGSEGV","flags":"","operator":"and"}]},
+  {"id":"g2","name":"Error","color":"#ff4444",
+    "expressions":[{"id":"e2","pattern":"ERROR|Exception","flags":"","operator":"and"}]},
+  {"id":"g3","name":"Audio","color":"#00cc66",
+    "expressions":[{"id":"e3","pattern":"AudioTrack|AudioFlinger","flags":"","operator":"and"}]}
+],"keywords":[
+  {"id":"kw1","pattern":"(?<latency>\\d+)ms","flags":"","color":"#ffaa00","enabled":true,"matchScope":"matched","hint":"latency={{latency}}ms"}
+]}
+EOF
+
+# Notify extension to apply updated config
+cat > ~/.log--/ai/tasks/update-config.json << 'EOF'
+{"action":"apply_config","config":"my-filter"}
+EOF
+```
+
 ## Large File Handling
 
 | Threshold | Strategy |

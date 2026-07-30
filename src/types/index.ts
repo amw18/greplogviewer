@@ -282,6 +282,20 @@ export interface ExportMatchedLinesMessage {
   type: 'exportMatchedLines';
 }
 
+// ── AI Task Protocol ──
+
+/** AI → Extension: task written to ~/.log--/ai/tasks/<id>.json */
+export interface AITask {
+  /** 任务类型 */
+  action: 'open_filtered' | 'apply_config';
+  /** 要打开的文件绝对路径（open_filtered） */
+  file?: string;
+  /** 要应用的配置名（对应 ~/.log--/ai/solutions/<config>.json） */
+  config?: string;
+  /** 原始日志文件路径（用于关联配置） */
+  originalFile?: string;
+}
+
 export type WebviewMessage = GoMessage | ResetMessage | ClearMessage
   | ExportConfigMessage | ImportConfigMessage | SaveConfigMessage | RequestSaveConfigMessage
   | ListSavedConfigsMessage | ApplySavedConfigMessage | DeleteSavedConfigMessage

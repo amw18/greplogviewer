@@ -13,6 +13,7 @@ import { FilterController } from './controller/FilterController';
 import { ViewController } from './controller/ViewController';
 import { GrepController } from './controller/GrepController';
 import { RingBufferModel } from './model/RingBufferModel';
+import { TaskWatcher } from './controller/TaskWatcher';
 
 let viewController: ViewController | undefined;
 let grepController: GrepController | undefined;
@@ -65,6 +66,12 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   grepController = new GrepController(viewController);
+
+  // ── AI Task Watcher：监听 ~/.log--/ai/tasks/ 目录 ──
+  const taskWatcher = new TaskWatcher(async (task, taskPath) => {
+    await viewController?.handleAITask(task);
+  });
+  taskWatcher.start();
 
   const panelProvider = viewController.getPanelProvider();
   const sidebarView = vscode.window.registerWebviewViewProvider(
@@ -206,7 +213,8 @@ export function activate(context: vscode.ExtensionContext) {
     testGetSavedConfigsCmd,
     editorChangeListener,
     docChangeListener,
-    { dispose: () => viewController?.dispose() }
+    { dispose: () => viewController?.dispose() },
+    { dispose: () => taskWatcher.dispose() }
   );
 }
 
