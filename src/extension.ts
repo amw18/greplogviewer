@@ -15,6 +15,9 @@ import { GrepController } from './controller/GrepController';
 import { RingBufferModel } from './model/RingBufferModel';
 import { TaskWatcher } from './controller/TaskWatcher';
 import { setLogger, log } from './model/Logger';
+import { BookmarkModel } from './model/BookmarkModel';
+import { BookmarkController } from './controller/BookmarkController';
+import { BookmarkTreeProvider } from './view/BookmarkTreeProvider';
 
 let viewController: ViewController | undefined;
 let grepController: GrepController | undefined;
@@ -83,6 +86,37 @@ export function activate(context: vscode.ExtensionContext) {
     await viewController?.handleAITask(task);
   });
   taskWatcher.start();
+
+  // ── Bookmarks ──
+  const bookmarkModel = new BookmarkModel(context);
+  const bookmarkTreeProvider = new BookmarkTreeProvider(bookmarkModel);
+  const bookmarkTreeView = vscode.window.createTreeView('log-minus-minus.bookmarksView', {
+    treeDataProvider: bookmarkTreeProvider,
+    showCollapseAll: true,
+  });
+  // 获取行对应 group 颜色的回调
+  const bookmarkController = new BookmarkController(bookmarkModel, (filePath, line) => {
+    return viewController?.getGroupColorForLine(filePath, line);
+  });
+
+  const addBookmarkCmd = vscode.commands.registerCommand('log-minus-minus.addBookmark', () => {
+    bookmarkController.addBookmark();
+  });
+  const gotoBookmarkCmd = vscode.commands.registerCommand('log-minus-minus.gotoBookmark', (id: string) => {
+    bookmarkController.gotoBookmark(id);
+  });
+  const deleteBookmarkCmd = vscode.commands.registerCommand('log-minus-minus.deleteBookmark', (item: any) => {
+    bookmarkController.deleteBookmark(item?.id || item);
+  });
+  const editBookmarkLabelCmd = vscode.commands.registerCommand('log-minus-minus.editBookmarkLabel', (item: any) => {
+    bookmarkController.editLabel(item?.id || item);
+  });
+  const editBookmarkColorCmd = vscode.commands.registerCommand('log-minus-minus.editBookmarkColor', (item: any) => {
+    bookmarkController.editColor(item?.id || item);
+  });
+  const moveBookmarkCmd = vscode.commands.registerCommand('log-minus-minus.moveBookmark', (item: any) => {
+    bookmarkController.moveBookmark(item?.id || item);
+  });
 
   const panelProvider = viewController.getPanelProvider();
   const sidebarView = vscode.window.registerWebviewViewProvider(
@@ -225,7 +259,15 @@ export function activate(context: vscode.ExtensionContext) {
     editorChangeListener,
     docChangeListener,
     { dispose: () => viewController?.dispose() },
-    { dispose: () => taskWatcher.dispose() }
+    { dispose: () => taskWatcher.dispose() },
+    bookmarkTreeView,
+    addBookmarkCmd,
+    gotoBookmarkCmd,
+    deleteBookmarkCmd,
+    editBookmarkLabelCmd,
+    editBookmarkColorCmd,
+    moveBookmarkCmd,
+    { dispose: () => bookmarkController.dispose() }
   );
 }
 

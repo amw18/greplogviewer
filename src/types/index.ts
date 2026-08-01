@@ -304,3 +304,31 @@ export type WebviewMessage = GoMessage | ResetMessage | ClearMessage
 export type ExtensionMessage = UpdateConfigMessage
   | ConfigImportedMessage | SavedConfigsListMessage | ConfigAppliedMessage
   | TimelineDataMessage | MatchCountsMessage | KeywordCursorInfoMessage;
+
+// ── Bookmark ──
+
+/** 单个书签节点（支持树形嵌套） */
+export interface Bookmark {
+  /** 唯一 ID */
+  id: string;
+  /** 书签标题（用户输入的标注或行内容） */
+  label: string;
+  /** 文件绝对路径 */
+  filePath: string;
+  /** 行号（0-based） */
+  line: number;
+  /** 图标颜色（hex），默认 #4488ff */
+  color: string;
+  /** 父书签 ID（顶层为 null） */
+  parentId: string | null;
+  /** 子书签 ID 列表（有序） */
+  children: string[];
+}
+
+/** 文件根节点 */
+export interface BookmarkFileRoot {
+  filePath: string;
+  fileName: string;
+  /** 该文件下的顶层书签 ID 列表（有序） */
+  bookmarks: string[];
+}

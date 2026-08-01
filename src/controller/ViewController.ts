@@ -193,6 +193,16 @@ export class ViewController {
     return this.currentEditor;
   }
 
+  /** 获取指定文件某行匹配的 group 颜色（供 BookmarkController 使用） */
+  getGroupColorForLine(filePath: string, line: number): string | undefined {
+    const editorId = vscode.Uri.file(filePath).toString();
+    const results = this.filterResultModel.getResults(editorId);
+    if (!results) { return undefined; }
+    const r = results.find(r => r.lineNumber === line && r.groupId && r.groupId !== '__kw_visible__');
+    if (!r || !r.groupId) { return undefined; }
+    return this.regexGroupModel.getGroups().find(g => g.id === r.groupId)?.color;
+  }
+
   /** 切换编辑器，激活状态则恢复效果，否则只加载配置 */
   async attach(editor: vscode.TextEditor): Promise<void> {
     this.decorations.clear();

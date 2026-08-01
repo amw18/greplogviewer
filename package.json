@@ -42,6 +42,19 @@
           "id": "log-minus-minus.configView",
           "name": "Log--",
           "type": "webview"
+        },
+        {
+          "id": "log-minus-minus.bookmarksView",
+          "name": "Bookmarks"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "log-minus-minus",
+          "title": "Log--",
+          "icon": "assets/bookmark.svg"
         }
       ]
     },
@@ -73,6 +86,30 @@
       {
         "command": "log-minus-minus.gotoGroupHit",
         "title": "Goto Group Hit"
+      },
+      {
+        "command": "log-minus-minus.addBookmark",
+        "title": "Add Bookmark"
+      },
+      {
+        "command": "log-minus-minus.gotoBookmark",
+        "title": "Go to Bookmark"
+      },
+      {
+        "command": "log-minus-minus.deleteBookmark",
+        "title": "Delete Bookmark"
+      },
+      {
+        "command": "log-minus-minus.editBookmarkLabel",
+        "title": "Edit Bookmark Label"
+      },
+      {
+        "command": "log-minus-minus.editBookmarkColor",
+        "title": "Edit Bookmark Color"
+      },
+      {
+        "command": "log-minus-minus.moveBookmark",
+        "title": "Move Bookmark Under..."
       }
     ],
     "menus": {
@@ -91,6 +128,37 @@
           "command": "log-minus-minus.addKeyword",
           "when": "editorHasSelection",
           "group": "log--@3"
+        },
+        {
+          "command": "log-minus-minus.addBookmark",
+          "group": "log--@4"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "log-minus-minus.gotoBookmark",
+          "when": "view == log-minus-minus.bookmarksView && viewItem =~ /^bookmark/",
+          "group": "bookmark@1"
+        },
+        {
+          "command": "log-minus-minus.editBookmarkLabel",
+          "when": "view == log-minus-minus.bookmarksView && viewItem =~ /^bookmark/",
+          "group": "bookmark@2"
+        },
+        {
+          "command": "log-minus-minus.editBookmarkColor",
+          "when": "view == log-minus-minus.bookmarksView && viewItem =~ /^bookmark/",
+          "group": "bookmark@3"
+        },
+        {
+          "command": "log-minus-minus.moveBookmark",
+          "when": "view == log-minus-minus.bookmarksView && viewItem =~ /^bookmark/",
+          "group": "bookmark@4"
+        },
+        {
+          "command": "log-minus-minus.deleteBookmark",
+          "when": "view == log-minus-minus.bookmarksView && viewItem =~ /^bookmark/",
+          "group": "bookmark@5"
         }
       ]
     }
