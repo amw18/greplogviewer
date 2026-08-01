@@ -109,7 +109,7 @@ export function activate(context: vscode.ExtensionContext) {
   // 双击编辑标注：用 selection 事件检测双击
   let lastClickTime = 0;
   let lastClickedId: string | undefined;
-  bookmarkTreeView.onDidChangeSelection(e => {
+  const selectionDisposable = bookmarkTreeView.onDidChangeSelection(e => {
     const sel = e.selection[0];
     // 只处理书签节点（非文件节点）
     if (!sel || 'type' in sel || !('id' in sel)) { return; }
@@ -126,7 +126,7 @@ export function activate(context: vscode.ExtensionContext) {
   });
 
   // group 颜色联动：过滤结果变化时同步书签颜色
-  filterResultModel.onChange(() => {
+  const colorSyncDisposable = filterResultModel.onChange(() => {
     bookmarkController.syncAllColors();
   });
 
@@ -302,6 +302,8 @@ export function activate(context: vscode.ExtensionContext) {
     editBookmarkColorCmd,
     moveBookmarkCmd,
     deleteBookmarkAtCursorCmd,
+    selectionDisposable,
+    colorSyncDisposable,
     { dispose: () => bookmarkController.dispose() }
   );
 }
