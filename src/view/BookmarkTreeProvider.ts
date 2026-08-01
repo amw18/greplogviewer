@@ -48,12 +48,26 @@ export class BookmarkTreeProvider implements vscode.TreeDataProvider<BookmarkNod
 
     item.iconPath = this.makeColorIcon(bm.color);
 
+    item.command = {
+      command: 'log-minus-minus.gotoBookmark',
+      arguments: [bm.id],
+      title: 'Go to Bookmark',
+    };
+
     return item;
   }
 
-  /** 判断书签是否显示在非原始文件的树下（跨文件嵌套） */
+  /** 判断书签是否显示在非原始文件的树下 */
   private isCrossFile(bm: Bookmark): boolean {
-    return bm.treeFilePath !== bm.filePath;
+    if (!bm.parentId) { return false; }
+    // 找到顶层祖先，看是否属于不同文件
+    let ancestor = bm;
+    while (ancestor.parentId) {
+      const parent = this.model.getBookmark(ancestor.parentId);
+      if (!parent) { break; }
+      ancestor = parent;
+    }
+    return ancestor.filePath !== bm.filePath;
   }
 
   getChildren(element?: BookmarkNode): BookmarkNode[] {
@@ -106,6 +120,7 @@ export class BookmarkDragAndDrop implements vscode.TreeDragAndDropController<Boo
 
     if (!target || isFileNode(target)) {
       // 拖到文件根或空白：移到文件顶层
+      const fp = target ? target.filePath : undefined;
       for (const id of ids) {
         const bm = this.model.getBookmark(id);
         if (bm) {

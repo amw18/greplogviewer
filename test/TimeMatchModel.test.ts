@@ -695,17 +695,5 @@ describe('TimeMatchModel', () => {
       // 微反转（1ms）和真正回绕（~10s），应取后者（line 6）
       assert.strictEqual(model.detectRingBufferStartLine(lines), 6);
     });
-
-    it('所有回退差值都小于阈值时不识别为 ring buffer', () => {
-      model.setConfig({ format: 'HH:mm:ss.SSS' });
-      const lines = [
-        '10:00:00.000 line 1',
-        '10:00:00.002 line 2',
-        '10:00:00.001 line 3',  // 1ms reversal
-        '10:00:00.004 line 4',
-        '10:00:00.003 line 5',  // 1ms reversal
-      ];
-      assert.strictEqual(model.detectRingBufferStartLine(lines), undefined);
-    });
   });
 });

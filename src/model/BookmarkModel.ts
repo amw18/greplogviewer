@@ -1,6 +1,4 @@
 // BookmarkModel - 全局书签存储，支持树形嵌套，持久化到 globalState
-// treeFilePath 跟踪书签在树中的位置（可能与 filePath 不同，用于跨文件嵌套）
-// filePath 始终指向书签原始文件（用于导航），不随移动改变
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { Bookmark } from '../types';
@@ -11,7 +9,7 @@ const STORAGE_KEY = 'log--.bookmarks';
 
 interface StoredData {
   bookmarks: Record<string, Bookmark>;
-  /** treeFilePath -> 顶层书签 ID 列表 */
+  /** filePath -> 顶层书签 ID 列表 */
   fileRoots: Record<string, string[]>;
 }
 
@@ -29,33 +27,11 @@ export class BookmarkModel {
     const data = this.context.globalState.get<StoredData>(STORAGE_KEY);
     if (!data) { return; }
     for (const [id, bm] of Object.entries(data.bookmarks)) {
-      // 向后兼容：旧书签没有 treeFilePath，默认等于 filePath
-      if (!bm.treeFilePath) { bm.treeFilePath = bm.filePath; }
       this.bookmarks.set(id, bm);
     }
-    // 旧数据 fileRoots key 可能是 filePath，需要迁移到 treeFilePath
     for (const [fp, ids] of Object.entries(data.fileRoots)) {
-      // 检查是否有 bookmark 使用这个 fp 作为 treeFilePath
       this.fileRoots.set(fp, ids);
     }
-    this.migrateFileRoots();
-  }
-
-  /** 迁移旧 fileRoots：如果 key 是某个 bookmark 的 filePath 而非 treeFilePath，更新 */
-  private migrateFileRoots(): void {
-    const newRoots = new Map<string, string[]>();
-    for (const [oldKey, ids] of this.fileRoots) {
-      // 取第一个 bookmark 的 treeFilePath 作为新 key
-      let newKey = oldKey;
-      for (const id of ids) {
-        const bm = this.bookmarks.get(id);
-        if (bm && bm.treeFilePath) { newKey = bm.treeFilePath; break; }
-      }
-      const existing = newRoots.get(newKey) || [];
-      existing.push(...ids);
-      newRoots.set(newKey, existing);
-    }
-    this.fileRoots = newRoots;
   }
 
   private save(): void {
@@ -69,13 +45,6 @@ export class BookmarkModel {
 
   /** 添加书签；返回创建的书签 */
   addBookmark(filePath: string, line: number, label: string, color: string, parentId: string | null): Bookmark {
-    // treeFilePath 默认等于 filePath，有 parent 时继承 parent 的 treeFilePath
-    let treeFilePath = filePath;
-    if (parentId) {
-      const parent = this.bookmarks.get(parentId);
-      if (parent) { treeFilePath = parent.treeFilePath; }
-    }
-
     const bm: Bookmark = {
       id: uuid(),
       label,
@@ -84,7 +53,6 @@ export class BookmarkModel {
       color,
       parentId,
       children: [],
-      treeFilePath,
     };
     this.bookmarks.set(bm.id, bm);
 
@@ -94,9 +62,9 @@ export class BookmarkModel {
         parent.children.push(bm.id);
       }
     } else {
-      const roots = this.fileRoots.get(treeFilePath) || [];
+      const roots = this.fileRoots.get(filePath) || [];
       roots.push(bm.id);
-      this.fileRoots.set(treeFilePath, roots);
+      this.fileRoots.set(filePath, roots);
     }
 
     log(`Bookmark added: "${label}" at ${path.basename(filePath)}:${line + 1}`);
@@ -114,7 +82,22 @@ export class BookmarkModel {
       this.deleteBookmark(childId);
     }
 
-    this.removeFromParent(id);
+    // 从父节点移除引用
+    if (bm.parentId) {
+      const parent = this.bookmarks.get(bm.parentId);
+      if (parent) {
+        parent.children = parent.children.filter(c => c !== id);
+      }
+    } else {
+      const roots = this.fileRoots.get(bm.filePath);
+      if (roots) {
+        this.fileRoots.set(bm.filePath, roots.filter(r => r !== id));
+        if (this.fileRoots.get(bm.filePath)!.length === 0) {
+          this.fileRoots.delete(bm.filePath);
+        }
+      }
+    }
+
     this.bookmarks.delete(id);
     log(`Bookmark deleted: "${bm.label}"`);
     this.save();
@@ -134,14 +117,29 @@ export class BookmarkModel {
           const parent = this.bookmarks.get(bm.parentId);
           if (parent) { parent.children.push(childId); }
         } else {
-          const roots = this.fileRoots.get(bm.treeFilePath) || [];
+          const roots = this.fileRoots.get(bm.filePath) || [];
           roots.push(childId);
-          this.fileRoots.set(bm.treeFilePath, roots);
+          this.fileRoots.set(bm.filePath, roots);
         }
       }
     }
 
-    this.removeFromParent(id);
+    // 从父节点移除被删书签引用
+    if (bm.parentId) {
+      const parent = this.bookmarks.get(bm.parentId);
+      if (parent) {
+        parent.children = parent.children.filter(c => c !== id);
+      }
+    } else {
+      const roots = this.fileRoots.get(bm.filePath);
+      if (roots) {
+        this.fileRoots.set(bm.filePath, roots.filter(r => r !== id));
+        if (this.fileRoots.get(bm.filePath)!.length === 0) {
+          this.fileRoots.delete(bm.filePath);
+        }
+      }
+    }
+
     this.bookmarks.delete(id);
     log(`Bookmark deleted (children kept): "${bm.label}"`);
     this.save();
@@ -163,7 +161,8 @@ export class BookmarkModel {
     this.save();
   }
 
-  /** 移动书签到新父节点下（parentId=null 表示移到文件根层） */
+  /** 移动书签到新父节点下（parentId=null 表示移到文件根层）
+   *  注意：filePath 始终指向书签原始文件，不随移动改变 */
   moveBookmark(id: string, newParentId: string | null): void {
     const bm = this.bookmarks.get(id);
     if (!bm) { return; }
@@ -175,17 +174,11 @@ export class BookmarkModel {
 
     if (newParentId) {
       const parent = this.bookmarks.get(newParentId);
-      if (parent) {
-        parent.children.push(id);
-        // 跨文件移动：继承 parent 的 treeFilePath
-        bm.treeFilePath = parent.treeFilePath;
-        this.updateChildrenTreeFilePath(id, parent.treeFilePath);
-      }
+      if (parent) { parent.children.push(id); }
     } else {
-      // 移到根层：treeFilePath 不变（留在当前树位置）
-      const roots = this.fileRoots.get(bm.treeFilePath) || [];
+      const roots = this.fileRoots.get(bm.filePath) || [];
       roots.push(id);
-      this.fileRoots.set(bm.treeFilePath, roots);
+      this.fileRoots.set(bm.filePath, roots);
     }
     this.save();
   }
@@ -203,12 +196,8 @@ export class BookmarkModel {
     if (asChild) {
       bm.parentId = targetId;
       target.children.push(id);
-      bm.treeFilePath = target.treeFilePath;
-      this.updateChildrenTreeFilePath(id, target.treeFilePath);
     } else {
       bm.parentId = target.parentId;
-      bm.treeFilePath = target.treeFilePath;
-      this.updateChildrenTreeFilePath(id, target.treeFilePath);
       if (target.parentId) {
         const parent = this.bookmarks.get(target.parentId);
         if (parent) {
@@ -216,16 +205,16 @@ export class BookmarkModel {
           parent.children.splice(idx + 1, 0, id);
         }
       } else {
-        const roots = this.fileRoots.get(target.treeFilePath) || [];
+        const roots = this.fileRoots.get(target.filePath) || [];
         const idx = roots.indexOf(targetId);
         roots.splice(idx + 1, 0, id);
-        this.fileRoots.set(target.treeFilePath, roots);
+        this.fileRoots.set(target.filePath, roots);
       }
     }
     this.save();
   }
 
-  /** 从父节点移除书签引用（使用 treeFilePath 查找 fileRoots） */
+  /** 从父节点移除书签引用（不删除书签本身） */
   private removeFromParent(id: string): void {
     const bm = this.bookmarks.get(id);
     if (!bm) { return; }
@@ -235,23 +224,13 @@ export class BookmarkModel {
         parent.children = parent.children.filter(c => c !== id);
       }
     } else {
-      const roots = this.fileRoots.get(bm.treeFilePath);
+      const roots = this.fileRoots.get(bm.filePath);
       if (roots) {
-        this.fileRoots.set(bm.treeFilePath, roots.filter(r => r !== id));
-        if (this.fileRoots.get(bm.treeFilePath)!.length === 0) {
-          this.fileRoots.delete(bm.treeFilePath);
+        this.fileRoots.set(bm.filePath, roots.filter(r => r !== id));
+        if (this.fileRoots.get(bm.filePath)!.length === 0) {
+          this.fileRoots.delete(bm.filePath);
         }
       }
-    }
-  }
-
-  /** 递归更新子书签的 treeFilePath */
-  private updateChildrenTreeFilePath(id: string, treeFilePath: string): void {
-    const bm = this.bookmarks.get(id);
-    if (!bm) { return; }
-    bm.treeFilePath = treeFilePath;
-    for (const childId of bm.children) {
-      this.updateChildrenTreeFilePath(childId, treeFilePath);
     }
   }
 
@@ -263,12 +242,12 @@ export class BookmarkModel {
     return this.isDescendant(candidate.parentId, ancestorId);
   }
 
-  /** 获取指定树文件的顶层书签 ID */
-  getFileRoots(treeFilePath: string): string[] {
-    return this.fileRoots.get(treeFilePath) || [];
+  /** 获取指定文件的所有顶层书签 ID */
+  getFileRoots(filePath: string): string[] {
+    return this.fileRoots.get(filePath) || [];
   }
 
-  /** 获取所有有书签的树文件路径 */
+  /** 获取所有有书签的文件路径 */
   getAllFiles(): string[] {
     return Array.from(this.fileRoots.keys());
   }
@@ -278,8 +257,8 @@ export class BookmarkModel {
     return this.bookmarks.get(id);
   }
 
-  /** 获取指定树文件的所有书签（含子书签，按 treeFilePath 过滤） */
-  getBookmarksForFile(treeFilePath: string): Bookmark[] {
+  /** 获取指定文件的所有书签（含子书签） */
+  getBookmarksForFile(filePath: string): Bookmark[] {
     const result: Bookmark[] = [];
     const collect = (ids: string[]) => {
       for (const id of ids) {
@@ -290,16 +269,7 @@ export class BookmarkModel {
         }
       }
     };
-    collect(this.fileRoots.get(treeFilePath) || []);
-    return result;
-  }
-
-  /** 获取指向指定文件的所有书签（按 filePath 过滤，用于 gutter/颜色/光标操作） */
-  getBookmarksPointingToFile(filePath: string): Bookmark[] {
-    const result: Bookmark[] = [];
-    for (const bm of this.bookmarks.values()) {
-      if (bm.filePath === filePath) { result.push(bm); }
-    }
+    collect(this.fileRoots.get(filePath) || []);
     return result;
   }
 

@@ -6,12 +6,9 @@ export class FilterResultModel {
   private protectedLinesMap = new Map<string, Set<number>>();
   private changeListeners: Array<() => void> = [];
 
-  /** 注册变更监听（供 extension.ts 绑定 vscode.EventEmitter），返回 dispose */
-  onChange(listener: () => void): { dispose(): void } {
+  /** 注册变更监听（供 extension.ts 绑定 vscode.EventEmitter） */
+  onChange(listener: () => void): void {
     this.changeListeners.push(listener);
-    return { dispose: () => {
-      this.changeListeners = this.changeListeners.filter(l => l !== listener);
-    } };
   }
 
   /**
