@@ -44,13 +44,13 @@ export class ViewController {
   private static readonly FOLDING_DISABLED_THRESHOLD = 300000;
 
   /** 超过此文件大小（字节）也视为超大文件，避免行长短导致 VS Code 折叠失效 */
-  private static readonly FOLDING_DISABLED_SIZE_THRESHOLD = 20 * 1024 * 1024; // 20 MB
+  private static readonly FOLDING_DISABLED_SIZE_THRESHOLD = 200 * 1024 * 1024; // 200 MB (临时调高用于测试)
 
   /** 超过此行数禁用时间线，避免扫描百万行阻塞 UI */
   private static readonly TIMELINE_DISABLE_THRESHOLD = 200000;
 
   /** 超过此阈值不进行内存过滤，直接走 grep 导出路径 */
-  private static readonly GREP_EXPORT_SIZE_THRESHOLD = 20 * 1024 * 1024; // 20 MB
+  private static readonly GREP_EXPORT_SIZE_THRESHOLD = 200 * 1024 * 1024; // 200 MB (临时调高用于测试)
   private static readonly GREP_EXPORT_LINES_THRESHOLD = 300000;
 
   /** 判断当前文件是否超出 VS Code 折叠能力（按行数或文件大小） */
@@ -493,7 +493,6 @@ export class ViewController {
         report('Applying fold annotations...');
         this.filterResultModel.setResults(editorId, results);
         this.applyFoldAnnotations(editor, editorId, lines, keywords);
-        this.applyRingBufferStart(editor, lines);
         report('Folding unmatched lines...');
         await this.applyFolding(editor);
       } else {
@@ -503,6 +502,8 @@ export class ViewController {
 
       report('Applying decorations...');
       this.decorations.apply(results, editor, keywords, scanStart, scanEnd, undefined, lines);
+      // decorations.apply() 会 clear() 所有装饰（含红旗），必须在之后重新应用 ring buffer
+      this.applyRingBufferStart(editor, lines);
     } finally {
       this.isApplyingFilter = false;
     }
@@ -1290,14 +1291,19 @@ export class ViewController {
     this.filterResultModel.clearProtectedLines(editorId);
     this.decorations.clearRingBufferFlag();
 
-    if (!this.timeMatchModel.isConfigured()) { return; }
+    if (!this.timeMatchModel.isConfigured()) {
+      log('applyRingBufferStart: time format not configured, skipping');
+      return;
+    }
 
     const startLine = this.timeMatchModel.detectRingBufferStartLine(lines);
+    log(`applyRingBufferStart: detectRingBufferStartLine returned ${startLine}`);
     if (startLine === undefined) { return; }
 
     this.ringBufferModel.setStartLine(editorId, startLine);
     this.filterResultModel.setProtectedLines(editorId, new Set([startLine]));
     this.decorations.showRingBufferFlag(startLine, editor);
+    log(`applyRingBufferStart: flag shown at line ${startLine}`);
   }
 
   /**

@@ -1,6 +1,7 @@
 // TimeMatchModel — 时间匹配引擎：直接从行文本开头逐字符解析时间戳
 // 仅按需解析折叠边界行，不扫描全文
 import { TimePatternConfig, FoldRange } from '../types';
+import { log } from './Logger';
 
 /** 格式解析内部节点 */
 type FormatSegment =
@@ -250,20 +251,31 @@ export class TimeMatchModel {
     let previousTimeMs: number | null = null;
     let bestLine: number | undefined;
     let bestDiff = 0;
+    let parsedCount = 0;
+    let reversalCount = 0;
+    const reversals: { line: number; diff: number }[] = [];
 
     for (let i = 0; i < lines.length; i++) {
       const t = this.parseLineTimestamp(lines[i]);
       if (!t) { continue; }
+      parsedCount++;
 
       const ms = t.getTime();
       if (previousTimeMs !== null && ms < previousTimeMs) {
         const diff = previousTimeMs - ms;
+        reversalCount++;
+        reversals.push({ line: i, diff });
         if (diff > bestDiff) {
           bestDiff = diff;
           bestLine = i;
         }
       }
       previousTimeMs = ms;
+    }
+
+    log(`detectRingBufferStartLine: parsed=${parsedCount}/${lines.length}, reversals=${reversalCount}, bestDiff=${bestDiff}ms, bestLine=${bestLine}`);
+    if (reversals.length > 0 && reversals.length <= 10) {
+      reversals.forEach(r => log(`  reversal at line ${r.line}: diff=${r.diff}ms`));
     }
 
     return bestLine;

@@ -14,15 +14,24 @@ import { ViewController } from './controller/ViewController';
 import { GrepController } from './controller/GrepController';
 import { RingBufferModel } from './model/RingBufferModel';
 import { TaskWatcher } from './controller/TaskWatcher';
-import { initLogger } from './model/Logger';
+import { setLogger, log } from './model/Logger';
 
 let viewController: ViewController | undefined;
 let grepController: GrepController | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
-  initLogger(context);
+  // 初始化 OutputChannel 日志
+  const outputChannel = vscode.window.createOutputChannel('Log--');
+  context.subscriptions.push(outputChannel);
+  setLogger((msg) => {
+    const ts = new Date().toISOString().slice(11, 23);
+    outputChannel.appendLine(`[${ts}] ${msg}`);
+  });
   // 安装/更新 skill 到 ~/.log--/ai/skills/
   installSkill(context);
+
+  // 确保 VS Code 折叠区域上限足够大（默认 5000，日志文件需要更多）
+  ensureFoldingMaxRegions();
 
   const regexGroupModel = new RegexGroupModel();
   const editorStateModel = new EditorStateModel(context);
@@ -261,5 +270,20 @@ function installSkill(context: vscode.ExtensionContext): void {
     } catch {
       // 权限不足等,静默跳过
     }
+  }
+}
+
+/**
+ * 确保 editor.foldingMaximumRegions 足够大（默认 5000，日志文件需要更多）。
+ * 仅在当前值 < 65000 时设置为 workspace 级别配置。
+ */
+function ensureFoldingMaxRegions(): void {
+  const config = vscode.workspace.getConfiguration('editor');
+  const current = config.get<number>('foldingMaximumRegions') ?? 5000;
+  const REQUIRED = 65000;
+  if (current < REQUIRED) {
+    config.update('foldingMaximumRegions', REQUIRED, vscode.ConfigurationTarget.Workspace)
+      .then(() => log(`Set editor.foldingMaximumRegions = ${REQUIRED}`),
+        () => { /* workspace 无 folder 时可能失败，静默忽略 */ });
   }
 }
