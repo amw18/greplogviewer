@@ -313,7 +313,7 @@ export interface Bookmark {
   id: string;
   /** 书签标题（用户输入的标注或行内容） */
   label: string;
-  /** 文件绝对路径 */
+  /** 书签指向的原始文件绝对路径（用于导航，不随移动改变） */
   filePath: string;
   /** 行号（0-based） */
   line: number;
@@ -323,6 +323,8 @@ export interface Bookmark {
   parentId: string | null;
   /** 子书签 ID 列表（有序） */
   children: string[];
+  /** 书签在树中的位置所属文件（用于跨文件嵌套，默认等于 filePath） */
+  treeFilePath: string;
 }
 
 /** 文件根节点 */

@@ -145,27 +145,27 @@
       "view/item/context": [
         {
           "command": "log-minus-minus.gotoBookmark",
-          "when": "view == log-minus-minus.bookmarksView && viewItem =~ /^bookmark/",
+          "when": "view == log-minus-minus.bookmarksView && viewItem =~ /^bookmark(-with-children)?$/",
           "group": "bookmark@1"
         },
         {
           "command": "log-minus-minus.editBookmarkLabel",
-          "when": "view == log-minus-minus.bookmarksView && viewItem =~ /^bookmark/",
+          "when": "view == log-minus-minus.bookmarksView && viewItem =~ /^bookmark(-with-children)?$/",
           "group": "bookmark@2"
         },
         {
           "command": "log-minus-minus.editBookmarkColor",
-          "when": "view == log-minus-minus.bookmarksView && viewItem =~ /^bookmark/",
+          "when": "view == log-minus-minus.bookmarksView && viewItem =~ /^bookmark(-with-children)?$/",
           "group": "bookmark@3"
         },
         {
           "command": "log-minus-minus.moveBookmark",
-          "when": "view == log-minus-minus.bookmarksView && viewItem =~ /^bookmark/",
+          "when": "view == log-minus-minus.bookmarksView && viewItem =~ /^bookmark(-with-children)?$/",
           "group": "bookmark@4"
         },
         {
           "command": "log-minus-minus.deleteBookmark",
-          "when": "view == log-minus-minus.bookmarksView && viewItem =~ /^bookmark/",
+          "when": "view == log-minus-minus.bookmarksView && viewItem =~ /^bookmark(-with-children)?$/",
           "group": "bookmark@5"
         }
       ]

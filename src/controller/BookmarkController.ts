@@ -2,27 +2,19 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { BookmarkModel } from '../model/BookmarkModel';
-import { Bookmark } from '../types';
 import { log } from '../model/Logger';
 
 const DEFAULT_COLOR = '#4488ff';
 
 export class BookmarkController {
-  private gutterDecoration: vscode.TextEditorDecorationType;
-  /** editorId -> color -> decorationType（按颜色区分 gutter icon） */
+  /** color -> decorationType（按颜色区分 gutter icon） */
   private colorDecorations = new Map<string, vscode.TextEditorDecorationType>();
 
   constructor(
     private model: BookmarkModel,
     private getGroupColorForLine?: (filePath: string, line: number) => string | undefined,
   ) {
-    // 默认蓝色 gutter 图标
-    this.gutterDecoration = vscode.window.createTextEditorDecorationType({
-      gutterIconPath: this.makeGutterIconUri(DEFAULT_COLOR),
-      gutterIconSize: 'cover',
-    });
-
-    // 编辑器切换/内容变化时刷新 gutter
+    // 编辑器切换时刷新 gutter
     vscode.window.onDidChangeActiveTextEditor(editor => {
       if (editor) { this.refreshGutter(editor); }
     });
@@ -39,7 +31,7 @@ export class BookmarkController {
     if (!editor) { return; }
     const filePath = editor.document.uri.fsPath;
     const line = editor.selection.active.line;
-    const bookmarks = this.model.getBookmarksForFile(filePath);
+    const bookmarks = this.model.getBookmarksPointingToFile(filePath);
     const bm = bookmarks.find(b => b.line === line);
     if (!bm) {
       vscode.window.showInformationMessage('Log--: No bookmark at current line.');
@@ -146,7 +138,7 @@ export class BookmarkController {
     for (const fp of this.model.getAllFiles()) {
       for (const b of this.model.getBookmarksForFile(fp)) {
         if (b.id !== bookmarkId && !this.isDescendant(b.id, bookmarkId)) {
-          allBookmarks.push({ id: b.id, label: b.label, filePath: fp });
+          allBookmarks.push({ id: b.id, label: b.label, filePath: b.filePath });
         }
       }
     }
@@ -180,9 +172,9 @@ export class BookmarkController {
     return this.isDescendant(candidate.parentId, ancestorId);
   }
 
-  /** 同步指定文件的书签颜色与当前 group 配置 */
+  /** 同步指向指定文件的书签颜色与当前 group 配置 */
   syncColorsForFile(filePath: string): void {
-    const bookmarks = this.model.getBookmarksForFile(filePath);
+    const bookmarks = this.model.getBookmarksPointingToFile(filePath);
     let changed = false;
     for (const bm of bookmarks) {
       const groupColor = this.getGroupColorForLine?.(filePath, bm.line);
@@ -199,19 +191,29 @@ export class BookmarkController {
 
   /** 同步所有文件的书签颜色 */
   syncAllColors(): void {
+    // 收集所有唯一的 filePath（不是 treeFilePath）
+    const filePaths = new Set<string>();
     for (const fp of this.model.getAllFiles()) {
+      for (const bm of this.model.getBookmarksForFile(fp)) {
+        filePaths.add(bm.filePath);
+      }
+    }
+    for (const fp of filePaths) {
       this.syncColorsForFile(fp);
     }
   }
 
-  /** 刷新编辑器 gutter 图标 */
+  /** 刷新编辑器 gutter 图标（按 filePath 过滤，即书签指向的文件） */
   refreshGutter(editor: vscode.TextEditor): void {
     const filePath = editor.document.uri.fsPath;
-    const bookmarks = this.model.getBookmarksForFile(filePath);
-    if (bookmarks.length === 0) {
-      editor.setDecorations(this.gutterDecoration, []);
-      return;
+    const bookmarks = this.model.getBookmarksPointingToFile(filePath);
+
+    // 先清除所有旧装饰
+    for (const [, deco] of this.colorDecorations) {
+      editor.setDecorations(deco, []);
     }
+
+    if (bookmarks.length === 0) { return; }
 
     // 按颜色分组
     const byColor = new Map<string, vscode.Range[]>();
@@ -219,11 +221,6 @@ export class BookmarkController {
       const ranges = byColor.get(bm.color) || [];
       ranges.push(new vscode.Range(bm.line, 0, bm.line, 0));
       byColor.set(bm.color, ranges);
-    }
-
-    // 先清除所有旧的颜色装饰
-    for (const [, deco] of this.colorDecorations) {
-      editor.setDecorations(deco, []);
     }
 
     // 应用每个颜色的装饰
@@ -243,12 +240,10 @@ export class BookmarkController {
   /** 生成 gutter 图标的 SVG data URI */
   private makeGutterIconUri(color: string): vscode.Uri {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path d="M4 1 L12 1 L12 15 L8 12 L4 15 Z" fill="${color}" stroke="#333" stroke-width="0.5"/></svg>`;
-    const encoded = Buffer.from(svg).toString('base64');
-    return vscode.Uri.parse(`data:image/svg+xml;base64,${encoded}`);
+    return vscode.Uri.parse(`data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`);
   }
 
   dispose(): void {
-    this.gutterDecoration.dispose();
     for (const [, deco] of this.colorDecorations) {
       deco.dispose();
     }

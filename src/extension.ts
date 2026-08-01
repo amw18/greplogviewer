@@ -106,27 +106,33 @@ export function activate(context: vscode.ExtensionContext) {
   // Ctrl 键状态追踪不可靠（VS Code 拖拽 API 不提供修饰键），
   // 默认拖拽=同级后插，子书签操作用右键菜单 Move Under...
 
-  // 双击编辑标注：用 selection 事件检测双击
-  let lastClickTime = 0;
+  // 单击跳转 + 双击编辑：用 selection 事件 + 300ms 定时器区分
+  let clickTimer: ReturnType<typeof setTimeout> | undefined;
   let lastClickedId: string | undefined;
-  bookmarkTreeView.onDidChangeSelection(e => {
+  const selectionDisposable = bookmarkTreeView.onDidChangeSelection(e => {
     const sel = e.selection[0];
-    // 只处理书签节点（非文件节点）
     if (!sel || 'type' in sel || !('id' in sel)) { return; }
     const bm = sel as Bookmark;
-    const now = Date.now();
-    if (bm.id === lastClickedId && now - lastClickTime < 500) {
-      bookmarkController.editLabel(bm.id);
+
+    if (clickTimer) { clearTimeout(clickTimer); clickTimer = undefined; }
+
+    if (bm.id === lastClickedId) {
+      // 双击 -> 编辑标注
       lastClickedId = undefined;
-      lastClickTime = 0;
+      bookmarkController.editLabel(bm.id);
     } else {
+      // 单击 -> 300ms 后跳转（如果没有双击覆盖）
       lastClickedId = bm.id;
-      lastClickTime = now;
+      clickTimer = setTimeout(() => {
+        clickTimer = undefined;
+        lastClickedId = undefined;
+        bookmarkController.gotoBookmark(bm.id);
+      }, 300);
     }
   });
 
   // group 颜色联动：过滤结果变化时同步书签颜色
-  filterResultModel.onChange(() => {
+  const colorSyncDisposable = filterResultModel.onChange(() => {
     bookmarkController.syncAllColors();
   });
 
@@ -302,6 +308,8 @@ export function activate(context: vscode.ExtensionContext) {
     editBookmarkColorCmd,
     moveBookmarkCmd,
     deleteBookmarkAtCursorCmd,
+    selectionDisposable,
+    colorSyncDisposable,
     { dispose: () => bookmarkController.dispose() }
   );
 }
