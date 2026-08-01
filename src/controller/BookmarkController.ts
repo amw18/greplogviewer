@@ -169,8 +169,7 @@ export class BookmarkController {
     if (picked.targetId === '') {
       this.model.moveBookmark(bookmarkId, null);
     } else {
-      const target = this.model.getBookmark(picked.targetId);
-      this.model.moveBookmark(bookmarkId, picked.targetId, target?.filePath);
+      this.model.moveBookmark(bookmarkId, picked.targetId);
     }
   }
 
@@ -179,6 +178,30 @@ export class BookmarkController {
     if (!candidate || !candidate.parentId) { return false; }
     if (candidate.parentId === ancestorId) { return true; }
     return this.isDescendant(candidate.parentId, ancestorId);
+  }
+
+  /** 同步指定文件的书签颜色与当前 group 配置 */
+  syncColorsForFile(filePath: string): void {
+    const bookmarks = this.model.getBookmarksForFile(filePath);
+    let changed = false;
+    for (const bm of bookmarks) {
+      const groupColor = this.getGroupColorForLine?.(filePath, bm.line);
+      const newColor = groupColor || DEFAULT_COLOR;
+      if (bm.color !== newColor) {
+        this.model.updateColor(bm.id, newColor);
+        changed = true;
+      }
+    }
+    if (changed) {
+      log(`Synced bookmark colors for ${path.basename(filePath)}`);
+    }
+  }
+
+  /** 同步所有文件的书签颜色 */
+  syncAllColors(): void {
+    for (const fp of this.model.getAllFiles()) {
+      this.syncColorsForFile(fp);
+    }
   }
 
   /** 刷新编辑器 gutter 图标 */

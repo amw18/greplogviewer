@@ -17,7 +17,8 @@ import { TaskWatcher } from './controller/TaskWatcher';
 import { setLogger, log } from './model/Logger';
 import { BookmarkModel } from './model/BookmarkModel';
 import { BookmarkController } from './controller/BookmarkController';
-import { BookmarkTreeProvider } from './view/BookmarkTreeProvider';
+import { BookmarkTreeProvider, BookmarkDragAndDrop } from './view/BookmarkTreeProvider';
+import { Bookmark } from './types';
 
 let viewController: ViewController | undefined;
 let grepController: GrepController | undefined;
@@ -90,13 +91,43 @@ export function activate(context: vscode.ExtensionContext) {
   // ── Bookmarks ──
   const bookmarkModel = new BookmarkModel(context);
   const bookmarkTreeProvider = new BookmarkTreeProvider(bookmarkModel);
+  const bookmarkDragAndDrop = new BookmarkDragAndDrop(bookmarkModel);
   const bookmarkTreeView = vscode.window.createTreeView('log-minus-minus.bookmarksView', {
     treeDataProvider: bookmarkTreeProvider,
     showCollapseAll: true,
+    dragAndDropController: bookmarkDragAndDrop,
+    canSelectMany: false,
   });
   // 获取行对应 group 颜色的回调
   const bookmarkController = new BookmarkController(bookmarkModel, (filePath, line) => {
     return viewController?.getGroupColorForLine(filePath, line);
+  });
+
+  // Ctrl 键状态追踪不可靠（VS Code 拖拽 API 不提供修饰键），
+  // 默认拖拽=同级后插，子书签操作用右键菜单 Move Under...
+
+  // 双击编辑标注：用 selection 事件检测双击
+  let lastClickTime = 0;
+  let lastClickedId: string | undefined;
+  bookmarkTreeView.onDidChangeSelection(e => {
+    const sel = e.selection[0];
+    // 只处理书签节点（非文件节点）
+    if (!sel || 'type' in sel || !('id' in sel)) { return; }
+    const bm = sel as Bookmark;
+    const now = Date.now();
+    if (bm.id === lastClickedId && now - lastClickTime < 500) {
+      bookmarkController.editLabel(bm.id);
+      lastClickedId = undefined;
+      lastClickTime = 0;
+    } else {
+      lastClickedId = bm.id;
+      lastClickTime = now;
+    }
+  });
+
+  // group 颜色联动：过滤结果变化时同步书签颜色
+  filterResultModel.onChange(() => {
+    bookmarkController.syncAllColors();
   });
 
   const addBookmarkCmd = vscode.commands.registerCommand('log-minus-minus.addBookmark', () => {

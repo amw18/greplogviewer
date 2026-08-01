@@ -1,11 +1,17 @@
-// BookmarkTreeProvider - 书签树视图数据源
+// BookmarkTreeProvider - 书签树视图数据源 + 拖拽支持
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { BookmarkModel } from '../model/BookmarkModel';
 import { Bookmark } from '../types';
 
+const MIME_TYPE = 'application/vnd.log--.bookmark';
+
 /** 树节点类型 */
 export type BookmarkNode = Bookmark | { type: 'file'; filePath: string; fileName: string };
+
+function isFileNode(node: BookmarkNode): node is { type: 'file'; filePath: string; fileName: string } {
+  return typeof node === 'object' && 'type' in node;
+}
 
 export class BookmarkTreeProvider implements vscode.TreeDataProvider<BookmarkNode> {
   private _onDidChange = new vscode.EventEmitter<void>();
@@ -16,8 +22,7 @@ export class BookmarkTreeProvider implements vscode.TreeDataProvider<BookmarkNod
   }
 
   getTreeItem(element: BookmarkNode): vscode.TreeItem {
-    if ('type' in element) {
-      // 文件根节点
+    if (isFileNode(element)) {
       const item = new vscode.TreeItem(element.fileName, vscode.TreeItemCollapsibleState.Expanded);
       item.id = `file:${element.filePath}`;
       item.iconPath = vscode.ThemeIcon.File;
@@ -26,7 +31,6 @@ export class BookmarkTreeProvider implements vscode.TreeDataProvider<BookmarkNod
       return item;
     }
 
-    // 书签节点
     const bm = element;
     const hasChildren = bm.children.length > 0;
     const item = new vscode.TreeItem(
@@ -36,12 +40,14 @@ export class BookmarkTreeProvider implements vscode.TreeDataProvider<BookmarkNod
     item.id = bm.id;
     item.description = `Line ${bm.line + 1}`;
     item.contextValue = hasChildren ? 'bookmark-with-children' : 'bookmark';
-    item.tooltip = `${bm.label}\n${path.basename(bm.filePath)}:${bm.line + 1}`;
 
-    // 使用颜色生成图标
+    // 跨文件书签：tooltip 显示原始文件名
+    const isCrossFile = this.isCrossFile(bm);
+    const fileTip = isCrossFile ? ` [${path.basename(bm.filePath)}]` : '';
+    item.tooltip = `${bm.label}${fileTip}\n${path.basename(bm.filePath)}:${bm.line + 1}`;
+
     item.iconPath = this.makeColorIcon(bm.color);
 
-    // 点击跳转
     item.command = {
       command: 'log-minus-minus.gotoBookmark',
       arguments: [bm.id],
@@ -51,9 +57,21 @@ export class BookmarkTreeProvider implements vscode.TreeDataProvider<BookmarkNod
     return item;
   }
 
+  /** 判断书签是否显示在非原始文件的树下 */
+  private isCrossFile(bm: Bookmark): boolean {
+    if (!bm.parentId) { return false; }
+    // 找到顶层祖先，看是否属于不同文件
+    let ancestor = bm;
+    while (ancestor.parentId) {
+      const parent = this.model.getBookmark(ancestor.parentId);
+      if (!parent) { break; }
+      ancestor = parent;
+    }
+    return ancestor.filePath !== bm.filePath;
+  }
+
   getChildren(element?: BookmarkNode): BookmarkNode[] {
     if (!element) {
-      // 顶层：所有文件根
       return this.model.getAllFiles().map(fp => ({
         type: 'file' as const,
         filePath: fp,
@@ -61,25 +79,62 @@ export class BookmarkTreeProvider implements vscode.TreeDataProvider<BookmarkNod
       }));
     }
 
-    if ('type' in element) {
-      // 文件节点的子节点：该文件的顶层书签
+    if (isFileNode(element)) {
       return this.model.getFileRoots(element.filePath)
         .map(id => this.model.getBookmark(id))
         .filter((b): b is Bookmark => !!b);
     }
 
-    // 书签节点的子节点
     const bookmark = element as Bookmark;
     return bookmark.children
       .map(id => this.model.getBookmark(id))
       .filter((b): b is Bookmark => !!b);
   }
 
-  /** 用颜色生成一个 SVG 图标 */
+  /** 用颜色生成 SVG 图标 */
   private makeColorIcon(color: string): vscode.Uri {
-    // 用 data URI 生成 SVG 圆点图标
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5" fill="${color}" stroke="#ffffff" stroke-width="1"/></svg>`;
-    const encoded = Buffer.from(svg).toString('base64');
-    return vscode.Uri.parse(`data:image/svg+xml;base64,${encoded}`);
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path d="M4 1 L12 1 L12 15 L8 12 L4 15 Z" fill="${color}" stroke="#333" stroke-width="0.5"/></svg>`;
+    return vscode.Uri.parse(`data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`);
+  }
+}
+
+/** 拖拽控制器：普通拖拽=同级后插，Ctrl+拖拽=子书签 */
+export class BookmarkDragAndDrop implements vscode.TreeDragAndDropController<BookmarkNode> {
+  readonly dragMimeTypes = [MIME_TYPE];
+  readonly dropMimeTypes = [MIME_TYPE];
+
+  constructor(private model: BookmarkModel) {}
+
+  handleDrag(source: readonly BookmarkNode[], dataTransfer: vscode.DataTransfer): void {
+    const ids = source.filter(s => !isFileNode(s)).map(s => (s as Bookmark).id);
+    if (ids.length > 0) {
+      dataTransfer.set(MIME_TYPE, new vscode.DataTransferItem(ids));
+    }
+  }
+
+  async handleDrop(target: BookmarkNode | undefined, dataTransfer: vscode.DataTransfer): Promise<void> {
+    const item = dataTransfer.get(MIME_TYPE);
+    if (!item) { return; }
+    const ids = item.value as string[];
+    if (!Array.isArray(ids) || ids.length === 0) { return; }
+
+    if (!target || isFileNode(target)) {
+      // 拖到文件根或空白：移到文件顶层
+      const fp = target ? target.filePath : undefined;
+      for (const id of ids) {
+        const bm = this.model.getBookmark(id);
+        if (bm) {
+          this.model.moveBookmark(id, null);
+        }
+      }
+      return;
+    }
+
+    const targetBm = target as Bookmark;
+    // VS Code API 不支持修饰键检测，默认拖拽=同级后插
+    // 子书签操作用右键菜单 Move Under...
+    for (const id of ids) {
+      this.model.moveBookmarkRelative(id, targetBm.id, false);
+    }
   }
 }

@@ -161,52 +161,77 @@ export class BookmarkModel {
     this.save();
   }
 
-  /** 移动书签到新父节点下（parentId=null 表示移到文件根层） */
-  moveBookmark(id: string, newParentId: string | null, newFilePath?: string): void {
+  /** 移动书签到新父节点下（parentId=null 表示移到文件根层）
+   *  注意：filePath 始终指向书签原始文件，不随移动改变 */
+  moveBookmark(id: string, newParentId: string | null): void {
     const bm = this.bookmarks.get(id);
     if (!bm) { return; }
-    if (id === newParentId) { return; }  // 不能成为自己的子
-
-    // 检查不能移动到自己的后代下（避免环）
+    if (id === newParentId) { return; }
     if (newParentId && this.isDescendant(newParentId, id)) { return; }
 
-    const oldFilePath = bm.filePath;
-    // 从旧父节点移除
+    this.removeFromParent(id);
+    bm.parentId = newParentId;
+
+    if (newParentId) {
+      const parent = this.bookmarks.get(newParentId);
+      if (parent) { parent.children.push(id); }
+    } else {
+      const roots = this.fileRoots.get(bm.filePath) || [];
+      roots.push(id);
+      this.fileRoots.set(bm.filePath, roots);
+    }
+    this.save();
+  }
+
+  /** 拖拽移动：asChild=true 作为目标子书签，否则插入到目标后面同级 */
+  moveBookmarkRelative(id: string, targetId: string, asChild: boolean): void {
+    const bm = this.bookmarks.get(id);
+    const target = this.bookmarks.get(targetId);
+    if (!bm || !target) { return; }
+    if (id === targetId) { return; }
+    if (this.isDescendant(targetId, id)) { return; }
+
+    this.removeFromParent(id);
+
+    if (asChild) {
+      bm.parentId = targetId;
+      target.children.push(id);
+    } else {
+      bm.parentId = target.parentId;
+      if (target.parentId) {
+        const parent = this.bookmarks.get(target.parentId);
+        if (parent) {
+          const idx = parent.children.indexOf(targetId);
+          parent.children.splice(idx + 1, 0, id);
+        }
+      } else {
+        const roots = this.fileRoots.get(target.filePath) || [];
+        const idx = roots.indexOf(targetId);
+        roots.splice(idx + 1, 0, id);
+        this.fileRoots.set(target.filePath, roots);
+      }
+    }
+    this.save();
+  }
+
+  /** 从父节点移除书签引用（不删除书签本身） */
+  private removeFromParent(id: string): void {
+    const bm = this.bookmarks.get(id);
+    if (!bm) { return; }
     if (bm.parentId) {
       const parent = this.bookmarks.get(bm.parentId);
       if (parent) {
         parent.children = parent.children.filter(c => c !== id);
       }
     } else {
-      const roots = this.fileRoots.get(oldFilePath);
+      const roots = this.fileRoots.get(bm.filePath);
       if (roots) {
-        this.fileRoots.set(oldFilePath, roots.filter(r => r !== id));
-        if (this.fileRoots.get(oldFilePath)!.length === 0) {
-          this.fileRoots.delete(oldFilePath);
+        this.fileRoots.set(bm.filePath, roots.filter(r => r !== id));
+        if (this.fileRoots.get(bm.filePath)!.length === 0) {
+          this.fileRoots.delete(bm.filePath);
         }
       }
     }
-
-    // 设置新父节点
-    bm.parentId = newParentId;
-    // 跨文件移动时更新 filePath
-    if (newFilePath) { bm.filePath = newFilePath; }
-
-    if (newParentId) {
-      const parent = this.bookmarks.get(newParentId);
-      if (parent) {
-        parent.children.push(id);
-        // 跨文件移动：子书签的 filePath 也跟着变
-        if (newFilePath) { this.updateChildrenFilePath(id, newFilePath); }
-      }
-    } else {
-      const fp = newFilePath || oldFilePath;
-      const roots = this.fileRoots.get(fp) || [];
-      roots.push(id);
-      this.fileRoots.set(fp, roots);
-    }
-
-    this.save();
   }
 
   /** 检查 candidateId 是否是 ancestorId 的后代 */
@@ -215,16 +240,6 @@ export class BookmarkModel {
     if (!candidate || !candidate.parentId) { return false; }
     if (candidate.parentId === ancestorId) { return true; }
     return this.isDescendant(candidate.parentId, ancestorId);
-  }
-
-  /** 递归更新子书签的 filePath */
-  private updateChildrenFilePath(id: string, filePath: string): void {
-    const bm = this.bookmarks.get(id);
-    if (!bm) { return; }
-    bm.filePath = filePath;
-    for (const childId of bm.children) {
-      this.updateChildrenFilePath(childId, filePath);
-    }
   }
 
   /** 获取指定文件的所有顶层书签 ID */
