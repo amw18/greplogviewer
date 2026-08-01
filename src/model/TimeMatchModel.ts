@@ -248,6 +248,9 @@ export class TimeMatchModel {
   detectRingBufferStartLine(lines: string[]): number | undefined {
     if (!this.isConfigured() || lines.length === 0) { return undefined; }
 
+    /** 最小回退差值阈值：小于此值视为多核时间戳抖动，非真正 ring buffer 回绕 */
+    const MIN_RING_BUFFER_DIFF_MS = 1000;  // 1 秒
+
     let previousTimeMs: number | null = null;
     let bestLine: number | undefined;
     let bestDiff = 0;
@@ -271,6 +274,12 @@ export class TimeMatchModel {
         }
       }
       previousTimeMs = ms;
+    }
+
+    // 最大回退差值太小，视为多核时间戳抖动
+    if (bestDiff < MIN_RING_BUFFER_DIFF_MS) {
+      log(`detectRingBufferStartLine: parsed=${parsedCount}/${lines.length}, reversals=${reversalCount}, bestDiff=${bestDiff}ms < ${MIN_RING_BUFFER_DIFF_MS}ms threshold, not ring buffer`);
+      return undefined;
     }
 
     log(`detectRingBufferStartLine: parsed=${parsedCount}/${lines.length}, reversals=${reversalCount}, bestDiff=${bestDiff}ms, bestLine=${bestLine}`);
