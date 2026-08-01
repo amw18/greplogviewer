@@ -117,6 +117,9 @@ export function activate(context: vscode.ExtensionContext) {
   const moveBookmarkCmd = vscode.commands.registerCommand('log-minus-minus.moveBookmark', (item: any) => {
     bookmarkController.moveBookmark(item?.id || item);
   });
+  const deleteBookmarkAtCursorCmd = vscode.commands.registerCommand('log-minus-minus.deleteBookmarkAtCursor', () => {
+    bookmarkController.deleteBookmarkAtCursor();
+  });
 
   const panelProvider = viewController.getPanelProvider();
   const sidebarView = vscode.window.registerWebviewViewProvider(
@@ -267,6 +270,7 @@ export function activate(context: vscode.ExtensionContext) {
     editBookmarkLabelCmd,
     editBookmarkColorCmd,
     moveBookmarkCmd,
+    deleteBookmarkAtCursorCmd,
     { dispose: () => bookmarkController.dispose() }
   );
 }

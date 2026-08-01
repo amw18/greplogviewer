@@ -110,6 +110,10 @@
       {
         "command": "log-minus-minus.moveBookmark",
         "title": "Move Bookmark Under..."
+      },
+      {
+        "command": "log-minus-minus.deleteBookmarkAtCursor",
+        "title": "Delete Bookmark at Cursor"
       }
     ],
     "menus": {
@@ -132,6 +136,10 @@
         {
           "command": "log-minus-minus.addBookmark",
           "group": "log--@4"
+        },
+        {
+          "command": "log-minus-minus.deleteBookmarkAtCursor",
+          "group": "log--@5"
         }
       ],
       "view/item/context": [

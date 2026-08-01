@@ -33,6 +33,21 @@ export class BookmarkController {
     });
   }
 
+  /** 删除光标所在行的书签（右键菜单入口） */
+  async deleteBookmarkAtCursor(): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) { return; }
+    const filePath = editor.document.uri.fsPath;
+    const line = editor.selection.active.line;
+    const bookmarks = this.model.getBookmarksForFile(filePath);
+    const bm = bookmarks.find(b => b.line === line);
+    if (!bm) {
+      vscode.window.showInformationMessage('Log--: No bookmark at current line.');
+      return;
+    }
+    await this.deleteBookmark(bm.id);
+  }
+
   /** 添加书签（右键菜单入口） */
   async addBookmark(): Promise<void> {
     const editor = vscode.window.activeTextEditor;
